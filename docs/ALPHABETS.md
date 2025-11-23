@@ -1,6 +1,6 @@
 # Alphabet Reference
 
-Complete reference for all 19 built-in alphabets in base-d.
+Complete reference for all 33 built-in alphabets in base-d.
 
 ## Quick Reference Table
 
@@ -20,6 +20,7 @@ Complete reference for all 19 built-in alphabets in base-d.
 | **z85** | 84 | math | ZeroMQ | ZeroMQ spec |
 | **base32_crockford** | 32 | math | Human-readable IDs | Crockford |
 | **base32_zbase** | 32 | math | Human-oriented | z-base-32 |
+| **base100** | 256 | range | Emoji encoding | base💯 |
 | **cards** | 52 | math | Fun encoding | - |
 | **dna** | 4 | math | Genetic sequences | - |
 | **binary** | 2 | math | Binary | - |
@@ -132,6 +133,16 @@ Example:  "Hi" → "nxny"
 ```
 Designed for human readability. No ambiguous pairs.
 
+### Emoji & Unicode Range
+
+#### base100
+```
+Range:    U+1F3F7 to U+1F4F6 (256 emoji)
+Example:  "Hi" → "🏿🐥"
+Mode:     Byte range (1:1 mapping)
+```
+Direct byte-to-emoji encoding with zero overhead. Each byte maps to exactly one emoji. Inspired by [base💯](https://github.com/AdamNiederer/base100).
+
 ### Other Encodings
 
 #### cards
@@ -167,6 +178,9 @@ echo "Address" | base-d -a base58
 # Human-readable
 echo "ID-12345" | base-d -a base32_crockford
 
+# Emoji encoding (base100)
+echo "Secret" | base-d -a base100
+
 # Cards
 echo "Secret" | base-d -a cards
 ```
@@ -182,5 +196,6 @@ base64:     SGVsbG8sIFdvcmxkIQ==
 base58:     72k1xXWG59fYdzSNoA
 base62:     1wJfrzvdbtXUOlUjUf
 ascii85:    bY4sj'`5!Ts/qKM9
+base100:    🏿🐥🐬🐬🐯🐴🐀🐗🐯🐲🐬🐤🐁 (13 emoji, 1:1 byte mapping)
 cards:      🂤🃉🂡🂾🂷🂸🂭🃓🃎🃉🂽🃕🂳🂻🃘🃃🃋🂮🂧🂶
 ```

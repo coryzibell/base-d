@@ -4,6 +4,11 @@
 # Mode options:
 #   "base_conversion" (default) - Treat data as single large number
 #   "chunked" - Process in fixed-size bit chunks (like standard base64)
+#   "byte_range" - Direct byte-to-character mapping using Unicode range
+
+[alphabets.base100]
+mode = "byte_range"
+start_codepoint = 127991  # U+1F3F7 (🏷️) - base100 emoji range
 
 [alphabets.cards]
 chars = "🂡🂢🂣🂤🂥🂦🂧🂨🂩🂪🂫🂭🂮🂱🂲🂳🂴🂵🂶🂷🂸🂹🂺🂻🂽🂾🃁🃂🃃🃄🃅🃆🃇🃈🃉🃊🃋🃍🃎🃑🃒🃓🃔🃕🃖🃗🃘🃙🃚🃛🃝🃞"

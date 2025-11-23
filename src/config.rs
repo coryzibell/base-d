@@ -6,6 +6,7 @@ use std::collections::HashMap;
 pub enum EncodingMode {
     BaseConversion,
     Chunked,
+    ByteRange,
 }
 
 impl Default for EncodingMode {
@@ -16,11 +17,14 @@ impl Default for EncodingMode {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct AlphabetConfig {
+    #[serde(default)]
     pub chars: String,
     #[serde(default)]
     pub mode: EncodingMode,
     #[serde(default)]
     pub padding: Option<String>,
+    #[serde(default)]
+    pub start_codepoint: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]

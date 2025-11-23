@@ -38,12 +38,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         alphabets.sort_by_key(|(name, _)| *name);
         
         for (name, alphabet_config) in alphabets {
-            let char_count = alphabet_config.chars.chars().count();
-            let preview: String = alphabet_config.chars.chars().take(20).collect();
-            let suffix = if alphabet_config.chars.chars().count() > 20 { "..." } else { "" };
+            let (char_count, preview) = match alphabet_config.mode {
+                base_d::EncodingMode::ByteRange => {
+                    if let Some(start) = alphabet_config.start_codepoint {
+                        let preview_chars: String = (0..20)
+                            .filter_map(|i| std::char::from_u32(start + i))
+                            .collect();
+                        (256, preview_chars)
+                    } else {
+                        (256, String::from("(invalid range)"))
+                    }
+                }
+                _ => {
+                    let count = alphabet_config.chars.chars().count();
+                    let preview: String = alphabet_config.chars.chars().take(20).collect();
+                    (count, preview)
+                }
+            };
+            let suffix = if char_count > 20 { "..." } else { "" };
             let mode_str = match alphabet_config.mode {
                 base_d::EncodingMode::BaseConversion => "math",
                 base_d::EncodingMode::Chunked => "chunk",
+                base_d::EncodingMode::ByteRange => "range",
             };
             println!("  {:<15} base-{:<3} {:>5}  {}{}", name, char_count, mode_str, preview, suffix);
         }
@@ -53,10 +69,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let alphabet_config = config.get_alphabet(&cli.alphabet)
         .ok_or_else(|| format!("Alphabet '{}' not found. Use --list to see available alphabets.", cli.alphabet))?;
     
-    let chars: Vec<char> = alphabet_config.chars.chars().collect();
-    let padding = alphabet_config.padding.as_ref().and_then(|s| s.chars().next());
-    let alphabet = Alphabet::new_with_mode(chars, alphabet_config.mode.clone(), padding)
-        .map_err(|e| format!("Invalid alphabet: {}", e))?;
+    let alphabet = match alphabet_config.mode {
+        base_d::EncodingMode::ByteRange => {
+            let start = alphabet_config.start_codepoint
+                .ok_or_else(|| "ByteRange mode requires start_codepoint")?;
+            Alphabet::new_with_mode_and_range(Vec::new(), alphabet_config.mode.clone(), None, Some(start))
+                .map_err(|e| format!("Invalid alphabet: {}", e))?
+        }
+        _ => {
+            let chars: Vec<char> = alphabet_config.chars.chars().collect();
+            let padding = alphabet_config.padding.as_ref().and_then(|s| s.chars().next());
+            Alphabet::new_with_mode(chars, alphabet_config.mode.clone(), padding)
+                .map_err(|e| format!("Invalid alphabet: {}", e))?
+        }
+    };
     
     // Read input data
     let input_data = if let Some(file_path) = cli.file {

@@ -3,9 +3,18 @@ use crate::{encode, decode, AlphabetsConfig, Alphabet, EncodingMode};
 fn get_alphabet(name: &str) -> Alphabet {
     let config = AlphabetsConfig::load_default().unwrap();
     let alphabet_config = config.get_alphabet(name).unwrap();
-    let chars: Vec<char> = alphabet_config.chars.chars().collect();
-    let padding = alphabet_config.padding.as_ref().and_then(|s| s.chars().next());
-    Alphabet::new_with_mode(chars, alphabet_config.mode.clone(), padding).unwrap()
+    
+    match alphabet_config.mode {
+        EncodingMode::ByteRange => {
+            let start = alphabet_config.start_codepoint.unwrap();
+            Alphabet::new_with_mode_and_range(Vec::new(), alphabet_config.mode.clone(), None, Some(start)).unwrap()
+        }
+        _ => {
+            let chars: Vec<char> = alphabet_config.chars.chars().collect();
+            let padding = alphabet_config.padding.as_ref().and_then(|s| s.chars().next());
+            Alphabet::new_with_mode(chars, alphabet_config.mode.clone(), padding).unwrap()
+        }
+    }
 }
 
 #[test]
@@ -110,6 +119,68 @@ fn test_base64_math_mode() {
     assert_ne!(encoded, standard_base64);
     
     // But should still round-trip
+    let decoded = decode(&encoded, &alphabet).unwrap();
+    assert_eq!(decoded, data);
+}
+
+#[test]
+fn test_base100_byte_range_mode() {
+    let alphabet = get_alphabet("base100");
+    assert_eq!(alphabet.mode(), &EncodingMode::ByteRange);
+    assert_eq!(alphabet.base(), 256);
+    
+    // Test simple encoding
+    let data = b"Hello, World!";
+    let encoded = encode(data, &alphabet);
+    println!("base100 encoded: {}", encoded);
+    
+    // Each byte should map to exactly one emoji
+    assert_eq!(encoded.chars().count(), data.len());
+    
+    // Verify specific codepoints for first few characters
+    // 'H' = 72, should map to 127991 + 72 = 128063 (U+1F43F)
+    let first_char = encoded.chars().next().unwrap();
+    assert_eq!(first_char as u32, 127991 + 72);
+    
+    // Test decoding
+    let decoded = decode(&encoded, &alphabet).unwrap();
+    assert_eq!(decoded, data);
+}
+
+#[test]
+fn test_base100_all_bytes() {
+    let alphabet = get_alphabet("base100");
+    
+    // Test all 256 possible byte values
+    let data: Vec<u8> = (0..=255).collect();
+    let encoded = encode(&data, &alphabet);
+    
+    // Should encode to 256 emojis
+    assert_eq!(encoded.chars().count(), 256);
+    
+    // Should round-trip correctly
+    let decoded = decode(&encoded, &alphabet).unwrap();
+    assert_eq!(decoded, data);
+}
+
+#[test]
+fn test_base100_empty() {
+    let alphabet = get_alphabet("base100");
+    
+    let data = b"";
+    let encoded = encode(data, &alphabet);
+    assert_eq!(encoded, "");
+    
+    let decoded = decode(&encoded, &alphabet).unwrap();
+    assert_eq!(decoded, data);
+}
+
+#[test]
+fn test_base100_binary_data() {
+    let alphabet = get_alphabet("base100");
+    
+    let data = &[0u8, 1, 2, 3, 255, 254, 253, 128, 127];
+    let encoded = encode(data, &alphabet);
     let decoded = decode(&encoded, &alphabet).unwrap();
     assert_eq!(decoded, data);
 }

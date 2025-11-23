@@ -122,7 +122,7 @@ chess = "♔♕♖♗♘♙♚♛♜♝♞♟"
 
 ## Built-in Alphabets
 
-base-d includes 32 pre-configured alphabets organized into several categories:
+base-d includes 33 pre-configured alphabets organized into several categories:
 
 - **RFC 4648 Standards**: base16, base32, base32hex, base64, base64url
 - **Bitcoin & Blockchain**: base58, base58flickr
@@ -131,7 +131,7 @@ base-d includes 32 pre-configured alphabets organized into several categories:
 - **Ancient Scripts**: hieroglyphs, cuneiform, runic
 - **Game Pieces**: cards, domino, mahjong, chess
 - **Esoteric Symbols**: alchemy, zodiac, weather, music, arrows
-- **Emoji**: emoji_faces, emoji_animals
+- **Emoji**: emoji_faces, emoji_animals, base100
 - **Other**: dna, binary, hex, base64_math, hex_math
 
 Run `base-d --list` to see all available alphabets with their encoding modes.
@@ -140,13 +140,15 @@ For a complete reference with examples and use cases, see [ALPHABETS.md](docs/AL
 
 ## How It Works
 
-base-d supports two encoding algorithms:
+base-d supports three encoding algorithms:
 
 1. **Mathematical Base Conversion** (default) - Treats binary data as a single large number and converts it to the target base. Works with any alphabet size.
 
 2. **Bit-Chunking** - Groups bits into fixed-size chunks for RFC 4648 compatibility (base64, base32, base16).
 
-For a detailed explanation of both modes with examples, see [ENCODING_MODES.md](docs/ENCODING_MODES.md).
+3. **Byte Range** - Direct 1:1 byte-to-character mapping using a Unicode range (like base100). Each byte maps to a specific emoji with zero encoding overhead.
+
+For a detailed explanation of all modes with examples, see [ENCODING_MODES.md](docs/ENCODING_MODES.md).
 
 ## License
 
