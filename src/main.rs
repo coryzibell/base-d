@@ -9,21 +9,17 @@ use std::path::PathBuf;
 #[command(version)]
 #[command(about = "Universal multi-alphabet encoder supporting RFC standards, emoji, ancient scripts, and 33+ custom alphabets", long_about = None)]
 struct Cli {
-    /// Output alphabet (or alphabet to use when encoding without --from)
-    #[arg(short = 't', long, default_value = "cards")]
-    to: String,
+    /// Output alphabet (encode to this alphabet)
+    #[arg(short = 't', long)]
+    to: Option<String>,
     
-    /// Input alphabet for transcoding (decode from this, encode to --to)
+    /// Input alphabet (decode from this alphabet)
     #[arg(short = 'f', long)]
     from: Option<String>,
     
     /// File to encode/decode (if not provided, reads from stdin)
     #[arg(value_name = "FILE")]
     file: Option<PathBuf>,
-    
-    /// Decode instead of encode
-    #[arg(short, long)]
-    decode: bool,
     
     /// List available alphabets
     #[arg(short, long)]
@@ -97,80 +93,111 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(alphabet)
     };
     
-    // Handle transcoding mode (--from specified)
-    if let Some(from_alphabet_name) = &cli.from {
-        if cli.decode {
-            return Err("Cannot use --decode with --from (transcoding already decodes and encodes)".into());
-        }
-        if cli.stream {
-            return Err("Streaming mode not yet supported for transcoding".into());
-        }
-        
-        let from_alphabet = create_alphabet(from_alphabet_name)?;
-        let to_alphabet = create_alphabet(&cli.to)?;
-        
-        // Read input
-        let input_data = if let Some(file_path) = cli.file {
-            fs::read_to_string(&file_path)?
-        } else {
-            let mut buffer = String::new();
-            io::stdin().read_to_string(&mut buffer)?;
-            buffer
-        };
-        
-        // Transcode: decode from input alphabet, encode to output alphabet
-        let decoded = decode(input_data.trim(), &from_alphabet)?;
-        let encoded = encode(&decoded, &to_alphabet);
-        println!("{}", encoded);
-        
-        return Ok(());
-    }
-    
-    // Standard encode/decode mode
-    let alphabet = create_alphabet(&cli.to)?;
-    
-    // Process based on mode
-    if cli.stream {
-        // Streaming mode - process in chunks
-        use base_d::{StreamingEncoder, StreamingDecoder};
-        
-        if cli.decode {
-            let mut decoder = StreamingDecoder::new(&alphabet, io::stdout());
-            if let Some(file_path) = cli.file {
-                let mut file = fs::File::open(&file_path)?;
-                decoder.decode(&mut file)?;
-            } else {
-                decoder.decode(&mut io::stdin())?;
+    // Determine operation mode based on flags
+    match (&cli.from, &cli.to) {
+        (Some(from_alphabet_name), Some(to_alphabet_name)) => {
+            // Transcode mode: --from X --to Y
+            if cli.stream {
+                return Err("Streaming mode not yet supported for transcoding".into());
             }
-        } else {
-            let mut encoder = StreamingEncoder::new(&alphabet, io::stdout());
-            if let Some(file_path) = cli.file {
-                let mut file = fs::File::open(&file_path)?;
-                encoder.encode(&mut file)?;
+            
+            let from_alphabet = create_alphabet(from_alphabet_name)?;
+            let to_alphabet = create_alphabet(to_alphabet_name)?;
+            
+            // Read input
+            let input_data = if let Some(file_path) = cli.file {
+                fs::read_to_string(&file_path)?
             } else {
-                encoder.encode(&mut io::stdin())?;
-            }
-        }
-    } else {
-        // Standard mode - load entire input into memory
-        let input_data = if let Some(file_path) = cli.file {
-            fs::read(&file_path)?
-        } else {
-            let mut buffer = Vec::new();
-            io::stdin().read_to_end(&mut buffer)?;
-            buffer
-        };
-        
-        if cli.decode {
-            // Decode mode
-            let input_str = String::from_utf8(input_data)
-                .map_err(|_| "Input must be valid UTF-8 for decoding")?;
-            let decoded = decode(input_str.trim(), &alphabet)?;
-            io::stdout().write_all(&decoded)?;
-        } else {
-            // Encode mode
-            let encoded = encode(&input_data, &alphabet);
+                let mut buffer = String::new();
+                io::stdin().read_to_string(&mut buffer)?;
+                buffer
+            };
+            
+            // Transcode: decode from input alphabet, encode to output alphabet
+            let decoded = decode(input_data.trim(), &from_alphabet)?;
+            let encoded = encode(&decoded, &to_alphabet);
             println!("{}", encoded);
+        }
+        
+        (Some(from_alphabet_name), None) => {
+            // Decode mode: --from X (decode to binary)
+            let from_alphabet = create_alphabet(from_alphabet_name)?;
+            
+            if cli.stream {
+                use base_d::StreamingDecoder;
+                let mut decoder = StreamingDecoder::new(&from_alphabet, io::stdout());
+                if let Some(file_path) = cli.file {
+                    let mut file = fs::File::open(&file_path)?;
+                    decoder.decode(&mut file)?;
+                } else {
+                    decoder.decode(&mut io::stdin())?;
+                }
+            } else {
+                let input_data = if let Some(file_path) = cli.file {
+                    fs::read_to_string(&file_path)?
+                } else {
+                    let mut buffer = String::new();
+                    io::stdin().read_to_string(&mut buffer)?;
+                    buffer
+                };
+                
+                let decoded = decode(input_data.trim(), &from_alphabet)?;
+                io::stdout().write_all(&decoded)?;
+            }
+        }
+        
+        (None, Some(to_alphabet_name)) => {
+            // Encode mode: --to X (encode from binary)
+            let to_alphabet = create_alphabet(to_alphabet_name)?;
+            
+            if cli.stream {
+                use base_d::StreamingEncoder;
+                let mut encoder = StreamingEncoder::new(&to_alphabet, io::stdout());
+                if let Some(file_path) = cli.file {
+                    let mut file = fs::File::open(&file_path)?;
+                    encoder.encode(&mut file)?;
+                } else {
+                    encoder.encode(&mut io::stdin())?;
+                }
+            } else {
+                let input_data = if let Some(file_path) = cli.file {
+                    fs::read(&file_path)?
+                } else {
+                    let mut buffer = Vec::new();
+                    io::stdin().read_to_end(&mut buffer)?;
+                    buffer
+                };
+                
+                let encoded = encode(&input_data, &to_alphabet);
+                println!("{}", encoded);
+            }
+        }
+        
+        (None, None) => {
+            // No alphabet specified - use default (cards) for encoding
+            let to_alphabet = create_alphabet("cards")?;
+            
+            if cli.stream {
+                use base_d::StreamingEncoder;
+                let mut encoder = StreamingEncoder::new(&to_alphabet, io::stdout());
+                if let Some(file_path) = cli.file {
+                    let mut file = fs::File::open(&file_path)?;
+                    encoder.encode(&mut file)?;
+                } else {
+                    encoder.encode(&mut io::stdin())?;
+                }
+            } else {
+                let input_data = if let Some(file_path) = cli.file {
+                    fs::read(&file_path)?
+                } else {
+                    let mut buffer = Vec::new();
+                    io::stdin().read_to_end(&mut buffer)?;
+                    buffer
+                };
+                
+                let encoded = encode(&input_data, &to_alphabet);
+                println!("{}", encoded);
+            }
         }
     }
     

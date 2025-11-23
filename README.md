@@ -203,11 +203,11 @@ base-d input.txt
 # Encode with specific alphabet
 echo "Data" | base-d -t dna
 
-# Decode
-echo "🃎🃅🃝🃉🂡🂣🂸🃉🃉🃇🃉🃓🂵🂣🂨🂻🃆🃍" | base-d -d
+# Decode from specific alphabet
+echo "SGVsbG8gV29ybGQNCg==" | base-d -f base64
 
-# Round-trip encoding
-echo "Secret" | base-d | base-d -d
+# Decode playing cards
+echo "🃎🃅🃝🃉🂡🂣🂸🃉🃉🃇🃉🃓🂵🂣🂨🂻🃆🃍" | base-d -f cards
 
 # Transcode between alphabets (no intermediate piping needed!)
 echo "SGVsbG8=" | base-d --from base64 --to hex
@@ -219,7 +219,7 @@ echo "🃁🃂🃃🃄" | base-d --from cards --to base64
 
 # Stream mode for large files (memory efficient)
 base-d --stream -t base64 large_file.bin > encoded.txt
-base-d --stream -t base64 -d encoded.txt > decoded.bin
+base-d --stream -f base64 encoded.txt > decoded.bin
 ```
 
 ### Custom Alphabets
