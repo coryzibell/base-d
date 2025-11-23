@@ -105,6 +105,10 @@ echo "🃎🃅🃝🃉🂡🂣🂸🃉🃉🃇🃉🃓🂵🂣🂨🂻🃆🃍" 
 
 # Round-trip encoding
 echo "Secret" | base-d | base-d -d
+
+# Stream mode for large files (memory efficient)
+base-d --stream -a base64 large_file.bin > encoded.txt
+base-d --stream -a base64 -d encoded.txt > decoded.bin
 ```
 
 ### Custom Alphabets
@@ -161,6 +165,7 @@ MIT OR Apache-2.0
 - [Alphabet Reference](docs/ALPHABETS.md) - Complete guide to all 33 built-in alphabets
 - [Custom Alphabets](docs/CUSTOM_ALPHABETS.md) - Create and load your own alphabets
 - [Encoding Modes](docs/ENCODING_MODES.md) - Detailed explanation of mathematical vs chunked vs byte range encoding
+- [Streaming](docs/STREAMING.md) - Memory-efficient processing for large files
 - [Hexadecimal Explained](docs/HEX_EXPLANATION.md) - Special case where both modes produce identical output
 - [Roadmap](docs/ROADMAP.md) - Planned features and development phases
 - [CI/CD Setup](docs/CI_CD.md) - GitHub Actions workflow documentation

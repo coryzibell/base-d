@@ -3,9 +3,11 @@ mod encoding;
 mod chunked;
 mod byte_range;
 mod config;
+mod streaming;
 
 pub use alphabet::Alphabet;
 pub use config::{AlphabetsConfig, AlphabetConfig, EncodingMode};
+pub use streaming::{StreamingEncoder, StreamingDecoder};
 
 use encoding::DecodeError;
 

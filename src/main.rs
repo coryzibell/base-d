@@ -23,6 +23,10 @@ struct Cli {
     /// List available alphabets
     #[arg(short, long)]
     list: bool,
+    
+    /// Use streaming mode for large files (memory efficient)
+    #[arg(short, long)]
+    stream: bool,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -84,26 +88,49 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
     
-    // Read input data
-    let input_data = if let Some(file_path) = cli.file {
-        fs::read(&file_path)?
-    } else {
-        let mut buffer = Vec::new();
-        io::stdin().read_to_end(&mut buffer)?;
-        buffer
-    };
-    
     // Process based on mode
-    if cli.decode {
-        // Decode mode
-        let input_str = String::from_utf8(input_data)
-            .map_err(|_| "Input must be valid UTF-8 for decoding")?;
-        let decoded = decode(input_str.trim(), &alphabet)?;
-        io::stdout().write_all(&decoded)?;
+    if cli.stream {
+        // Streaming mode - process in chunks
+        use base_d::{StreamingEncoder, StreamingDecoder};
+        
+        if cli.decode {
+            let mut decoder = StreamingDecoder::new(&alphabet, io::stdout());
+            if let Some(file_path) = cli.file {
+                let mut file = fs::File::open(&file_path)?;
+                decoder.decode(&mut file)?;
+            } else {
+                decoder.decode(&mut io::stdin())?;
+            }
+        } else {
+            let mut encoder = StreamingEncoder::new(&alphabet, io::stdout());
+            if let Some(file_path) = cli.file {
+                let mut file = fs::File::open(&file_path)?;
+                encoder.encode(&mut file)?;
+            } else {
+                encoder.encode(&mut io::stdin())?;
+            }
+        }
     } else {
-        // Encode mode
-        let encoded = encode(&input_data, &alphabet);
-        println!("{}", encoded);
+        // Standard mode - load entire input into memory
+        let input_data = if let Some(file_path) = cli.file {
+            fs::read(&file_path)?
+        } else {
+            let mut buffer = Vec::new();
+            io::stdin().read_to_end(&mut buffer)?;
+            buffer
+        };
+        
+        if cli.decode {
+            // Decode mode
+            let input_str = String::from_utf8(input_data)
+                .map_err(|_| "Input must be valid UTF-8 for decoding")?;
+            let decoded = decode(input_str.trim(), &alphabet)?;
+            io::stdout().write_all(&decoded)?;
+        } else {
+            // Encode mode
+            let encoded = encode(&input_data, &alphabet);
+            println!("{}", encoded);
+        }
     }
     
     Ok(())
