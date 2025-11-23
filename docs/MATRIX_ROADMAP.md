@@ -1,8 +1,8 @@
 # Matrix Mode Complete Implementation & Roadmap
 
-## 🎉 COMPLETED: Matrix Mode (--neo)
+## COMPLETED: Matrix Mode (--neo)
 
-**Issue #18** - ✅ CLOSED
+**Issue #18** - CLOSED
 
 Successfully implemented and merged the Matrix mode feature that transforms base-d into a Matrix-style terminal visualization.
 
@@ -42,7 +42,7 @@ feat: Add Matrix mode (--neo) and performance optimizations
 
 ---
 
-## 🚀 FUTURE ENHANCEMENTS
+## FUTURE ENHANCEMENTS
 
 New issues created for Matrix mode evolution:
 
@@ -310,6 +310,6 @@ Potential questions for users:
 
 The Matrix mode (`--neo`) is successfully implemented and working. The four new enhancement issues (#19-#22) provide a clear roadmap for evolving this feature into something even more powerful and visually stunning.
 
-The implementation is complete, documented, tested, and pushed to GitHub. Now the real fun begins: turning the Matrix mode into a fully-featured data visualization tool! 🟢
+The implementation is complete, documented, tested, and pushed to GitHub. Now the real fun begins: turning the Matrix mode into a fully-featured data visualization tool.
 
 *"Welcome to the real world."* - Morpheus

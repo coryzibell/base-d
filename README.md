@@ -75,7 +75,7 @@ echo "Happy" | base-d -e emoji_faces
 # Matrix-style base256
 echo "Wake up, Neo" | base-d -e base256_matrix
 
-# Enter the Matrix (live streaming random Matrix code) 🟢
+# Enter the Matrix (live streaming random Matrix code)
 base-d --neo
 
 # Transcode between alphabets (decode from one, encode to another)
@@ -251,7 +251,7 @@ base-d includes 35 pre-configured alphabets organized into several categories:
 
 - **RFC 4648 Standards**: base16, base32, base32hex, base64, base64url
 - **Bitcoin & Blockchain**: base58, base58flickr
-- **High-Density Encodings**: base62, base85, ascii85, z85, base256_matrix (Matrix-style!), base1024
+- **High-Density Encodings**: base62, base85, ascii85, z85, base256_matrix (Matrix-style), base1024
 - **Human-Oriented**: base32_crockford, base32_zbase
 - **Ancient Scripts**: hieroglyphs, cuneiform, runic
 - **Game Pieces**: cards, domino, mahjong, chess

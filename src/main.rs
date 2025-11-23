@@ -236,7 +236,7 @@ fn matrix_mode(config: &AlphabetsConfig) -> Result<(), Box<dyn std::error::Error
     
     println!("\x1b[2J\x1b[H"); // Clear screen and move to top
     println!("\x1b[32m"); // Green text
-    println!("🟢 ENTERING THE MATRIX 🟢");
+    println!("ENTERING THE MATRIX");
     println!("Press Ctrl+C to exit\n");
     thread::sleep(Duration::from_secs(2));
     

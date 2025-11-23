@@ -1,7 +1,7 @@
 use base_d::{AlphabetsConfig, Alphabet, encode, decode};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("🟢 WELCOME TO THE MATRIX 🟢");
+    println!("WELCOME TO THE MATRIX");
     println!("================================\n");
     
     // Load Matrix base256 alphabet
@@ -23,10 +23,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // The Matrix message
     let messages = vec![
-        ("Wake up, Neo...", "🟢 Matrix Wake-Up Call"),
-        ("Follow the white rabbit", "🐇 Follow the Rabbit"),
-        ("There is no spoon", "🥄 The Spoon"),
-        ("Free your mind", "🧠 Mind Liberation"),
+        ("Wake up, Neo...", "Matrix Wake-Up Call"),
+        ("Follow the white rabbit", "Follow the Rabbit"),
+        ("There is no spoon", "The Spoon"),
+        ("Free your mind", "Mind Liberation"),
     ];
     
     for (message, title) in messages {
@@ -43,7 +43,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     
     // Demonstrate the special property
-    println!("🔢 SPECIAL PROPERTY: Like Hexadecimal!");
+    println!("SPECIAL PROPERTY: Like Hexadecimal");
     println!("=======================================");
     println!("Base256 works identically in BOTH modes:");
     println!();
@@ -72,18 +72,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!();
     
     if chunked_encoded == math_encoded {
-        println!("✅ IDENTICAL OUTPUT!");
+        println!("IDENTICAL OUTPUT");
         println!("This works because:");
         println!("  - base256 = 2^8 (8 bits per character)");
         println!("  - 8 bits % 8 = 0 (perfect division)");
-        println!("  - Same as hexadecimal, but Matrix-style!");
+        println!("  - Same as hexadecimal, but Matrix-style");
     } else {
-        println!("❌ Outputs differ (unexpected!)");
+        println!("Outputs differ (unexpected)");
     }
     println!();
     
     // Information density comparison
-    println!("📊 EFFICIENCY COMPARISON");
+    println!("EFFICIENCY COMPARISON");
     println!("========================");
     let long_message = b"The Matrix has you... Follow the white rabbit. Knock, knock, Neo.";
     

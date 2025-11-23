@@ -1,15 +1,15 @@
-# Matrix Base256 Encoding - Like Hexadecimal, But Cooler 🟢
+# Matrix Base256 Encoding - Like Hexadecimal, But Cooler
 
 ## Overview
 
-**base256_matrix** is a special 256-character alphabet that uses Japanese characters and Unicode shapes to create a "Matrix"-style encoding. It has the unique property of working identically in both mathematical and chunked encoding modes - just like hexadecimal!
+**base256_matrix** is a special 256-character alphabet that uses Japanese characters and Unicode shapes to create a "Matrix"-style encoding. It has the unique property of working identically in both mathematical and chunked encoding modes - just like hexadecimal.
 
 ## The Magic Property
 
 ```
 Base256 = 2^8 (8 bits per character = 1 byte)
 8 bits % 8 = 0 (perfect division)
-Result: BOTH modes produce IDENTICAL output!
+Result: BOTH modes produce IDENTICAL output
 ```
 
 This is the same mathematical property that makes hexadecimal work in both modes (see `docs/HEX_EXPLANATION.md`).
@@ -49,7 +49,7 @@ Encoded:  ァサゲタゲちザダちセゼちダソゼゼセ
 ```
 Input bytes:  5
 Output chars: 5
-No expansion!
+No expansion
 ```
 
 Unlike base64 (which expands ~33%) or even hexadecimal (which doubles), base256_matrix maintains a **perfect 1:1 ratio**. Each byte maps to exactly one character.
@@ -70,7 +70,7 @@ Both encoding modes produce identical output:
 echo "Matrix" | base-d -e base256_matrix
 # Chunked mode:     ゎギチタザヅ
 # Mathematical mode: ゎギチタザヅ
-# IDENTICAL!
+# IDENTICAL
 ```
 
 ## Usage
@@ -215,7 +215,7 @@ See `docs/HEX_EXPLANATION.md` for the mathematical theory. Base256 extends this 
 | Bits/char | 4 | 8 |
 | Expansion | 2x | 1x |
 | Mode-independent | ✅ | ✅ |
-| Visual style | Boring | Matrix 🟢 |
+| Visual style | Boring | Matrix |
 
 ## Future Enhancements
 
@@ -228,7 +228,7 @@ See `docs/HEX_EXPLANATION.md` for the mathematical theory. Base256 extends this 
 
 base256_matrix is not just an encoding - it's a statement. It proves that efficient encodings don't have to be boring, and that you can have your Matrix cake and encode it too.
 
-Wake up, Neo. The Matrix has your data... and now it looks cool. 🟢
+Wake up, Neo. The Matrix has your data... and now it looks cool.
 
 ---
 

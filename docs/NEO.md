@@ -68,7 +68,7 @@ fn matrix_mode(config: &AlphabetsConfig) -> Result<(), Box<dyn std::error::Error
 ## Visual Effect
 
 ```
-🟢 ENTERING THE MATRIX 🟢
+ENTERING THE MATRIX
 Press Ctrl+C to exit
 
 ゎギチタザヅわプペホボポマミムメモャヤュユョヨラリルレロヮワヰヱヲンヴヵヶヷヸヹヺ・ーヽヾヿ
@@ -185,4 +185,4 @@ The feature is called `--neo` as a reference to the protagonist of The Matrix, w
 
 *"You take the blue pill, the story ends. You wake up in your bed and believe whatever you want to believe. You take the red pill, you stay in Wonderland, and I show you how deep the rabbit hole goes... or you use `--neo` and encode random data as Matrix-style falling code."*
 
-Welcome to the real world, Neo. 🟢
+Welcome to the real world, Neo.
