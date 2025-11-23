@@ -1,10 +1,8 @@
 # Hexadecimal and base-d: A Special Case
 
-## TL;DR
+## Summary
 
-**Hexadecimal works with BOTH encoding modes and produces identical output!**
-
-This is a special mathematical property of bases that evenly divide 8 bits.
+Hexadecimal works with both encoding modes and produces identical output. This is a special mathematical property of bases that evenly divide 8 bits.
 
 ## The Question
 
@@ -54,7 +52,7 @@ Convert to base-16:
 Reverse: "4869"
 ```
 
-**Both produce "4869"!**
+Both produce "4869".
 
 ## The Magic Formula
 
@@ -89,20 +87,18 @@ echo -n "Test" | base-d -a hex | base-d -a hex -d
 
 ## Conclusion
 
-**Hexadecimal is NOT different from our modes** - it works perfectly with both! 
-
-This is a beautiful mathematical property where:
+Hexadecimal is not different from our modes - it works with both. This is a mathematical property where:
 - Power-of-2 bases that evenly divide bytes
 - Produce identical output regardless of algorithm
 - Can use either mode with identical results
 
-For bases like **cards (52)** or **base64 (64 with padding)**, the modes differ, which is why we need both!
+For bases like cards (52) or base64 (64 with padding), the modes differ, which is why we need both.
 
 ## In base-d Configuration
 
 ```toml
-# Either mode works identically for hex!
+# Either mode works identically for hex
 [alphabets.hex]
 chars = "0123456789abcdef"
-mode = "chunked"      # or "base_conversion" - same result!
+mode = "chunked"      # or "base_conversion" - same result
 ```

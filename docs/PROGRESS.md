@@ -71,7 +71,7 @@
 
 ### Phase 4: Esoteric Alphabets - COMPLETED ✓
 
-#### Implemented (32 total alphabets!)
+#### Implemented (32 total alphabets)
 
 **Ancient Scripts (3):**
 - ✅ hieroglyphs (Egyptian, 100 chars)
@@ -124,7 +124,7 @@ echo "Hi!" | base-d -a emoji_faces
 
 ### Phase 3: Common Alphabets - COMPLETED ✓
 
-#### Implemented (19 total alphabets!)
+#### Implemented (19 total alphabets)
 
 **RFC 4648 Standards (5):**
 - ✅ base16, base32, base32hex, base64, base64url
@@ -145,7 +145,7 @@ echo "Hi!" | base-d -a emoji_faces
 - ✅ base32_crockford (no ambiguous chars)
 - ✅ base32_zbase (human-readable)
 
-**Fun/Creative (4):**
+**Other (4):**
 - ✅ cards, dna, binary, hex
 
 **Mathematical Variants (3):**

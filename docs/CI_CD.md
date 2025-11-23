@@ -171,4 +171,4 @@ The workflows are designed to be:
 - ✅ Multi-platform support
 - ✅ Crates.io integration
 
-Customize as needed for your project!
+Customize as needed for your project.

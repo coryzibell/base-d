@@ -122,108 +122,44 @@ chess = "♔♕♖♗♘♙♚♛♜♝♞♟"
 
 ## Built-in Alphabets
 
-base-d includes **32 pre-configured alphabets**:
+base-d includes 32 pre-configured alphabets organized into several categories:
 
-### RFC 4648 Standards (Chunked Mode)
-- **base16** - Uppercase hexadecimal
-- **base32** - RFC 4648 base32
-- **base32hex** - RFC 4648 base32 extended hex
-- **base64** - Standard base64
-- **base64url** - URL-safe base64
-
-### Bitcoin & Blockchain (Mathematical Mode)
-- **base58** - Bitcoin addresses (no 0, O, I, l)
-- **base58flickr** - Flickr variant
-
-### High-Density Encodings (Mathematical Mode)
-- **base62** - Alphanumeric (URL shorteners)
-- **base85** - Git pack format
-- **ascii85** - Adobe PDF encoding
-- **z85** - ZeroMQ encoding
-
-### Human-Oriented (Mathematical Mode)
-- **base32_crockford** - Douglas Crockford's base32 (no ambiguous chars)
-- **base32_zbase** - z-base-32 (designed for human use)
-
-### Ancient Scripts (Mathematical Mode)
-- **hieroglyphs** - Egyptian hieroglyphics (100 chars) 𓀀𓀁𓀂
-- **cuneiform** - Sumerian cuneiform (100 chars) 𒀀𒀁𒀂
-- **runic** - Elder Futhark & variants (81 chars) ᚠᚡᚢ
-
-### Game Pieces (Mathematical Mode)
-- **cards** - 52 Unicode playing cards 🂡🂾🃁🃞
-- **domino** - Domino tiles (100 chars) 🀰🀱🀲
-- **mahjong** - Mahjong tiles (44 chars) 🀀🀁🀂
-- **chess** - Chess pieces (12 chars) ♔♕♖♗♘♙
-
-### Esoteric Symbols (Mathematical Mode)
-- **alchemy** - Alchemical symbols (116 chars) 🜀🜁🜂
-- **zodiac** - Zodiac signs (12 chars) ♈♉♊
-- **weather** - Weather & misc symbols (72 chars) ☀☁☂
-- **music** - Musical notation (100 chars) 𝄀𝄁𝄂
-- **arrows** - Arrow symbols (112 chars) ←↑→↓
-
-### Emoji (Mathematical Mode)
-- **emoji_faces** - Emoji faces (80 chars) 😀😁😂
-- **emoji_animals** - Animal emoji (64 chars) 🐀🐁🐂
-
-### Fun & Creative (Mathematical Mode)
-- **dna** - DNA nucleotides (ACGT)
-- **binary** - Binary (01)
-- **hex** - Lowercase hexadecimal
-
-### Mathematical Variants
-- **base64_math** - Base64 with mathematical encoding
-- **hex_math** - Hex with mathematical encoding
+- **RFC 4648 Standards**: base16, base32, base32hex, base64, base64url
+- **Bitcoin & Blockchain**: base58, base58flickr
+- **High-Density Encodings**: base62, base85, ascii85, z85
+- **Human-Oriented**: base32_crockford, base32_zbase
+- **Ancient Scripts**: hieroglyphs, cuneiform, runic
+- **Game Pieces**: cards, domino, mahjong, chess
+- **Esoteric Symbols**: alchemy, zodiac, weather, music, arrows
+- **Emoji**: emoji_faces, emoji_animals
+- **Other**: dna, binary, hex, base64_math, hex_math
 
 Run `base-d --list` to see all available alphabets with their encoding modes.
+
+For a complete reference with examples and use cases, see [ALPHABETS.md](docs/ALPHABETS.md).
 
 ## How It Works
 
 base-d supports two encoding algorithms:
 
-### 1. Mathematical Base Conversion (default)
+1. **Mathematical Base Conversion** (default) - Treats binary data as a single large number and converts it to the target base. Works with any alphabet size.
 
-Treats binary data as a single large number and converts it to the target base:
+2. **Bit-Chunking** - Groups bits into fixed-size chunks for RFC 4648 compatibility (base64, base32, base16).
 
-- `"Hello, World!"` (13 bytes) → `🃎🃅🃝🃉🂡🂣🂸🃉🃉🃇🃉🃓🂵🂣🂨🂻🃆🃍` (18 cards)
-- Each character represents a digit in base-N
-- Leading zeros are preserved
-- No padding needed
-- Works with ANY alphabet size
-
-**Best for:** Playing cards, DNA, emoji, and custom alphabets
-
-### 2. Bit-Chunking (for RFC standards)
-
-Groups bits into fixed-size chunks, like standard base64:
-
-- Processes data in fixed bit-width groups
-- Compatible with RFC 4648 (standard base64)
-- Requires power-of-2 alphabet sizes (2, 4, 8, 16, 32, 64, etc.)
-- Supports padding characters
-
-**Best for:** Standard base64, base32, base16, and other RFC-compliant encodings
-
-### Alphabet Configuration
-
-Specify the encoding mode in `alphabets.toml`:
-
-```toml
-[alphabets.base64]
-chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-mode = "chunked"        # RFC 4648 compatible
-padding = "="
-
-[alphabets.cards]
-chars = "🂡🂢🂣..."
-mode = "base_conversion"  # Mathematical (default)
-```
+For a detailed explanation of both modes with examples, see [ENCODING_MODES.md](docs/ENCODING_MODES.md).
 
 ## License
 
 MIT OR Apache-2.0
 
+## Documentation
+
+- [Alphabet Reference](docs/ALPHABETS.md) - Complete guide to all 32 built-in alphabets
+- [Encoding Modes](docs/ENCODING_MODES.md) - Detailed explanation of mathematical vs chunked encoding
+- [Hexadecimal Explained](docs/HEX_EXPLANATION.md) - Special case where both modes produce identical output
+- [Roadmap](docs/ROADMAP.md) - Planned features and development phases
+- [CI/CD Setup](docs/CI_CD.md) - GitHub Actions workflow documentation
+
 ## Contributing
 
-Contributions are welcome! Please see [ROADMAP.md](ROADMAP.md) for planned features.
+Contributions are welcome! Please see [ROADMAP.md](docs/ROADMAP.md) for planned features.

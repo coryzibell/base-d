@@ -132,14 +132,14 @@ Example:  "Hi" → "nxny"
 ```
 Designed for human readability. No ambiguous pairs.
 
-### Fun & Creative
+### Other Encodings
 
 #### cards
 ```
 Alphabet: 🂡🂢🂣...🃞 (52 playing cards)
 Example:  "Hi" → "🃎🂾"
 ```
-Encode data as playing cards!
+Encode data as playing cards.
 
 #### dna
 ```
@@ -167,7 +167,7 @@ echo "Address" | base-d -a base58
 # Human-readable
 echo "ID-12345" | base-d -a base32_crockford
 
-# Fun
+# Cards
 echo "Secret" | base-d -a cards
 ```
 
