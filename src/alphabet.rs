@@ -67,6 +67,12 @@ impl Alphabet {
                     if std::char::from_u32(end_codepoint).is_none() {
                         return Err(format!("Invalid Unicode range: {}-{}", start, end_codepoint));
                     }
+                    // Validate all codepoints in range are valid Unicode
+                    for offset in 0..=255 {
+                        if std::char::from_u32(start + offset).is_none() {
+                            return Err(format!("Invalid Unicode codepoint in range: {}", start + offset));
+                        }
+                    }
                 } else {
                     return Err("Start codepoint too high for 256-byte range".to_string());
                 }
@@ -93,12 +99,38 @@ impl Alphabet {
             if !base.is_power_of_two() {
                 return Err(format!("Chunked mode requires power-of-two alphabet size, got {}", base));
             }
+            // Additional check: ensure we have valid sizes for chunked mode
+            if base != 2 && base != 4 && base != 8 && base != 16 && base != 32 && base != 64 && base != 128 && base != 256 {
+                return Err(format!("Chunked mode requires alphabet size of 2, 4, 8, 16, 32, 64, 128, or 256, got {}", base));
+            }
         }
         
+        // Validate character properties
         let mut char_to_index = HashMap::new();
         for (i, &c) in chars.iter().enumerate() {
+            // Check for duplicate characters
             if char_to_index.insert(c, i).is_some() {
-                return Err(format!("Duplicate character in alphabet: {}", c));
+                return Err(format!("Duplicate character in alphabet: '{}' (U+{:04X})", c, c as u32));
+            }
+            
+            // Check for invalid Unicode characters
+            if c.is_control() && c != '\t' && c != '\n' && c != '\r' {
+                return Err(format!("Control character not allowed in alphabet: U+{:04X}", c as u32));
+            }
+            
+            // Check for whitespace (except in specific cases)
+            if c.is_whitespace() {
+                return Err(format!("Whitespace character not allowed in alphabet: '{}' (U+{:04X})", c, c as u32));
+            }
+        }
+        
+        // Validate padding character if present
+        if let Some(pad) = padding {
+            if char_to_index.contains_key(&pad) {
+                return Err(format!("Padding character '{}' conflicts with alphabet characters", pad));
+            }
+            if pad.is_control() && pad != '\t' && pad != '\n' && pad != '\r' {
+                return Err(format!("Control character not allowed as padding: U+{:04X}", pad as u32));
             }
         }
         
@@ -182,4 +214,120 @@ impl Alphabet {
     }
 }
 
-
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[test]
+    fn test_duplicate_character_detection() {
+        let chars = vec!['a', 'b', 'c', 'a'];
+        let result = Alphabet::new(chars);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Duplicate character"));
+    }
+    
+    #[test]
+    fn test_empty_alphabet() {
+        let chars = vec![];
+        let result = Alphabet::new(chars);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("cannot be empty"));
+    }
+    
+    #[test]
+    fn test_chunked_mode_power_of_two() {
+        let chars = vec!['a', 'b', 'c'];  // 3 is not power of 2
+        let result = Alphabet::new_with_mode(chars, EncodingMode::Chunked, None);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("power-of-two"));
+    }
+    
+    #[test]
+    fn test_chunked_mode_valid_sizes() {
+        // Test all valid chunked sizes
+        for &size in &[2, 4, 8, 16, 32, 64] {
+            let chars: Vec<char> = (0..size).map(|i| {
+                // Use a wider range of Unicode characters
+                char::from_u32('A' as u32 + (i % 26) + ((i / 26) * 100)).unwrap()
+            }).collect();
+            let result = Alphabet::new_with_mode(chars, EncodingMode::Chunked, None);
+            assert!(result.is_ok(), "Size {} should be valid", size);
+        }
+    }
+    
+    #[test]
+    fn test_control_character_rejection() {
+        let chars = vec!['a', 'b', '\x00', 'c'];  // null character
+        let result = Alphabet::new(chars);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Control character"));
+    }
+    
+    #[test]
+    fn test_whitespace_rejection() {
+        let chars = vec!['a', 'b', ' ', 'c'];
+        let result = Alphabet::new(chars);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Whitespace"));
+    }
+    
+    #[test]
+    fn test_padding_conflict_with_alphabet() {
+        let chars = vec!['a', 'b', 'c', 'd'];
+        let result = Alphabet::new_with_mode(chars, EncodingMode::BaseConversion, Some('b'));
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Padding character"));
+        assert!(err.contains("conflicts"));
+    }
+    
+    #[test]
+    fn test_valid_padding() {
+        let chars = vec!['a', 'b', 'c', 'd'];
+        let result = Alphabet::new_with_mode(chars, EncodingMode::BaseConversion, Some('='));
+        assert!(result.is_ok());
+    }
+    
+    #[test]
+    fn test_byte_range_exceeds_unicode() {
+        // Test with a start codepoint so high that start + 255 exceeds max valid Unicode (0x10FFFF)
+        let result = Alphabet::new_with_mode_and_range(
+            Vec::new(),
+            EncodingMode::ByteRange,
+            None,
+            Some(0x10FF80)  // 0x10FF80 + 255 = 0x110078, exceeds 0x10FFFF
+        );
+        assert!(result.is_err());
+    }
+    
+    #[test]
+    fn test_byte_range_valid_start() {
+        let result = Alphabet::new_with_mode_and_range(
+            Vec::new(),
+            EncodingMode::ByteRange,
+            None,
+            Some(0x1F300)  // Valid start in emoji range
+        );
+        assert!(result.is_ok());
+    }
+    
+    #[test]
+    fn test_byte_range_no_start_codepoint() {
+        let result = Alphabet::new_with_mode_and_range(
+            Vec::new(),
+            EncodingMode::ByteRange,
+            None,
+            None
+        );
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("requires start_codepoint"));
+    }
+    
+    #[test]
+    fn test_detailed_error_messages() {
+        // Test that error messages include useful information
+        let chars = vec!['a', 'b', 'a'];
+        let err = Alphabet::new(chars).unwrap_err();
+        assert!(err.contains("'a'") || err.contains("U+"));
+    }
+}
