@@ -1,0 +1,15 @@
+[package]
+name = "base-d"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+num-bigint = "0.4"
+num-traits = "0.2"
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.8"
+clap = { version = "4.5", features = ["derive"] }
+
+[lib]
+name = "base_d"
+path = "src/lib.rs"

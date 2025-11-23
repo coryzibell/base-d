@@ -1,0 +1,186 @@
+# Alphabet Reference
+
+Complete reference for all 19 built-in alphabets in base-d.
+
+## Quick Reference Table
+
+| Name | Base | Mode | Use Case | RFC |
+|------|------|------|----------|-----|
+| **base16** | 16 | chunk | Hex (uppercase) | RFC 4648 |
+| **hex** | 16 | chunk | Hex (lowercase) | - |
+| **base32** | 32 | chunk | Data encoding | RFC 4648 |
+| **base32hex** | 32 | chunk | Extended hex alphabet | RFC 4648 |
+| **base64** | 64 | chunk | Standard base64 | RFC 4648 |
+| **base64url** | 64 | chunk | URL-safe base64 | RFC 4648 |
+| **base58** | 58 | math | Bitcoin addresses | - |
+| **base58flickr** | 58 | math | Flickr short URLs | - |
+| **base62** | 62 | math | URL shorteners | - |
+| **base85** | 85 | math | Git, Mercurial | - |
+| **ascii85** | 85 | math | Adobe PDF, PostScript | btoa |
+| **z85** | 84 | math | ZeroMQ | ZeroMQ spec |
+| **base32_crockford** | 32 | math | Human-readable IDs | Crockford |
+| **base32_zbase** | 32 | math | Human-oriented | z-base-32 |
+| **cards** | 52 | math | Fun encoding | - |
+| **dna** | 4 | math | Genetic sequences | - |
+| **binary** | 2 | math | Binary | - |
+| **base64_math** | 64 | math | Math variant | - |
+| **hex_math** | 16 | math | Math variant | - |
+
+## Detailed Descriptions
+
+### RFC 4648 Standards
+
+#### base16
+```
+Alphabet: 0123456789ABCDEF
+Padding:  No
+Example:  "Hi" → "4869"
+```
+Standard hexadecimal encoding (uppercase). Power-of-2 base.
+
+#### base32
+```
+Alphabet: ABCDEFGHIJKLMNOPQRSTUVWXYZ234567
+Padding:  =
+Example:  "Hi" → "JBQWY==="
+```
+RFC 4648 standard base32. Good balance of efficiency and readability.
+
+#### base32hex
+```
+Alphabet: 0123456789ABCDEFGHIJKLMNOPQRSTUV
+Padding:  =
+Example:  "Hi" → "91GOR==="
+```
+RFC 4648 extended hex alphabet variant. Preserves sort order.
+
+#### base64
+```
+Alphabet: A-Z, a-z, 0-9, +, /
+Padding:  =
+Example:  "Hi" → "SGk="
+```
+Standard base64. Most common encoding for binary-to-text.
+
+#### base64url
+```
+Alphabet: A-Z, a-z, 0-9, -, _
+Padding:  =
+Example:  "Hi" → "SGk="
+```
+URL and filename-safe variant. Uses - and _ instead of + and /.
+
+### Bitcoin & Blockchain
+
+#### base58
+```
+Alphabet: 123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz
+Example:  "Hi" → "JxF"
+```
+Bitcoin addresses. Removes confusing characters: 0, O, I, l.
+
+#### base58flickr
+```
+Alphabet: 123456789abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ
+Example:  "Hi" → "jXf"
+```
+Flickr's variant with different case ordering.
+
+### High-Density Encodings
+
+#### base62
+```
+Alphabet: 0-9, A-Z, a-z
+Example:  "Hi" → "5O"
+```
+Alphanumeric only. Popular for URL shorteners.
+
+#### base85
+```
+Alphabet: 0-9, A-Z, a-z, plus special chars
+Example:  "Hi" → "BOq"
+```
+Used by Git for pack files. More efficient than base64.
+
+#### ascii85
+```
+Alphabet: ! through u (ASCII 33-117)
+Example:  "Hi" → "BOq"
+```
+Adobe PDF and PostScript encoding. Also called "btoa".
+
+#### z85
+```
+Alphabet: 0-9, a-z, A-Z, and selected punctuation
+Example:  "Hi" → "xK#0"
+```
+ZeroMQ's string-safe encoding.
+
+### Human-Oriented
+
+#### base32_crockford
+```
+Alphabet: 0-9, A-H, J-K, M-N, P-T, V-Z (no I, L, O, U)
+Example:  "Hi" → "48B"
+```
+Douglas Crockford's base32. Removes ambiguous characters.
+
+#### base32_zbase
+```
+Alphabet: ybndrfg8ejkmcpqxot1uwisza345h769
+Example:  "Hi" → "nxny"
+```
+Designed for human readability. No ambiguous pairs.
+
+### Fun & Creative
+
+#### cards
+```
+Alphabet: 🂡🂢🂣...🃞 (52 playing cards)
+Example:  "Hi" → "🃎🂾"
+```
+Encode data as playing cards!
+
+#### dna
+```
+Alphabet: ACGT
+Example:  "Hi" → "CAGACGGC"
+```
+Represent data as DNA sequences.
+
+#### binary
+```
+Alphabet: 01
+Example:  "Hi" → "100100001101001"
+```
+Pure binary representation.
+
+## Usage Examples
+
+```bash
+# RFC standard
+echo "Data" | base-d -a base64
+
+# Bitcoin
+echo "Address" | base-d -a base58
+
+# Human-readable
+echo "ID-12345" | base-d -a base32_crockford
+
+# Fun
+echo "Secret" | base-d -a cards
+```
+
+## Comparison
+
+```bash
+Input: "Hello, World!"
+
+base16:     48656C6C6F2C20576F726C6421
+base32:     JBSWY3DPFQQFO33SNRSCC===
+base64:     SGVsbG8sIFdvcmxkIQ==
+base58:     72k1xXWG59fYdzSNoA
+base62:     1wJfrzvdbtXUOlUjUf
+ascii85:    bY4sj'`5!Ts/qKM9
+cards:      🂤🃉🂡🂾🂷🂸🂭🃓🃎🃉🂽🃕🂳🂻🃘🃃🃋🂮🂧🂶
+```
