@@ -15,11 +15,21 @@ categories = ["command-line-utilities", "encoding", "text-processing"]
 [dependencies]
 num-bigint = "0.4"
 num-traits = "0.2"
+num-integer = "0.1"
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.9"
 clap = { version = "4.5", features = ["derive"] }
 dirs = "5.0"
+rand = "0.8"
+terminal_size = "0.3"
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
 
 [lib]
 name = "base_d"
 path = "src/lib.rs"
+
+[[bench]]
+name = "encoding"
+harness = false

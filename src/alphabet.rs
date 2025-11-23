@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use crate::config::EncodingMode;
 
+const MAX_LOOKUP_TABLE_SIZE: usize = 256;
+
 /// Represents an encoding alphabet with its characters and configuration.
 ///
 /// An alphabet defines the character set and encoding mode used for converting
@@ -10,6 +12,8 @@ use crate::config::EncodingMode;
 pub struct Alphabet {
     chars: Vec<char>,
     char_to_index: HashMap<char, usize>,
+    // Fast lookup table for ASCII/extended ASCII characters
+    lookup_table: Option<Box<[Option<usize>; 256]>>,
     mode: EncodingMode,
     padding: Option<char>,
     start_codepoint: Option<u32>,
@@ -80,6 +84,7 @@ impl Alphabet {
                 return Ok(Alphabet {
                     chars: Vec::new(),
                     char_to_index: HashMap::new(),
+                    lookup_table: None,
                     mode,
                     padding,
                     start_codepoint: Some(start),
@@ -134,9 +139,21 @@ impl Alphabet {
             }
         }
         
+        // Build fast lookup table for ASCII characters
+        let lookup_table = if chars.iter().all(|&c| (c as u32) < MAX_LOOKUP_TABLE_SIZE as u32) {
+            let mut table = Box::new([None; 256]);
+            for (i, &c) in chars.iter().enumerate() {
+                table[c as usize] = Some(i);
+            }
+            Some(table)
+        } else {
+            None
+        };
+        
         Ok(Alphabet {
             chars,
             char_to_index,
+            lookup_table,
             mode,
             padding,
             start_codepoint: None,
@@ -209,7 +226,17 @@ impl Alphabet {
                 }
                 None
             }
-            _ => self.char_to_index.get(&c).copied(),
+            _ => {
+                // Use fast lookup table for ASCII characters
+                if let Some(ref table) = self.lookup_table {
+                    let char_val = c as u32;
+                    if char_val < MAX_LOOKUP_TABLE_SIZE as u32 {
+                        return table[char_val as usize];
+                    }
+                }
+                // Fall back to HashMap for non-ASCII
+                self.char_to_index.get(&c).copied()
+            }
         }
     }
 }

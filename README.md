@@ -5,17 +5,19 @@
 [![Crates.io](https://img.shields.io/crates/v/base-d.svg)](https://crates.io/crates/base-d)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE-MIT)
 
-A universal, multi-alphabet encoding library and CLI tool for Rust. Encode binary data to 33+ alphabets including RFC standards, ancient scripts, emoji, playing cards, and more.
+A universal, multi-alphabet encoding library and CLI tool for Rust. Encode binary data to 35+ alphabets including RFC standards, ancient scripts, emoji, playing cards, Matrix-style Japanese, and more.
 
 ## Overview
 
 base-d is a flexible encoding framework that goes far beyond traditional base64. It supports:
 
-- **33 built-in alphabets** - From RFC 4648 standards to hieroglyphics and emoji
+- **35 built-in alphabets** - From RFC 4648 standards to hieroglyphics, emoji, Matrix-style base256, and a 1024-character CJK alphabet
 - **3 encoding modes** - Mathematical, chunked (RFC-compliant), and byte-range
 - **Custom alphabets** - Define your own via TOML configuration
 - **Streaming support** - Memory-efficient processing for large files
 - **Library + CLI** - Use programmatically or from the command line
+- **High performance** - Optimized with fast lookup tables and efficient memory allocation
+- **Special encodings** - Matrix-style base256 that works like hex (1:1 byte mapping)
 
 ## Key Features
 
@@ -52,7 +54,7 @@ git clone https://github.com/yourusername/base-d
 cd base-d
 cargo build --release
 
-# List all 33 available alphabets
+# List all 35 available alphabets
 base-d --list
 
 # Encode with playing cards (default)
@@ -69,6 +71,12 @@ echo "Ancient" | base-d -e hieroglyphs
 
 # Emoji faces
 echo "Happy" | base-d -e emoji_faces
+
+# Matrix-style base256
+echo "Wake up, Neo" | base-d -e base256_matrix
+
+# Enter the Matrix (live streaming random Matrix code) 🟢
+base-d --neo
 
 # Transcode between alphabets (decode from one, encode to another)
 echo "SGVsbG8=" | base-d -d base64 -e hex
@@ -239,11 +247,11 @@ Or create custom alphabets in `~/.config/base-d/alphabets.toml` to use across al
 
 ## Built-in Alphabets
 
-base-d includes 33 pre-configured alphabets organized into several categories:
+base-d includes 35 pre-configured alphabets organized into several categories:
 
 - **RFC 4648 Standards**: base16, base32, base32hex, base64, base64url
 - **Bitcoin & Blockchain**: base58, base58flickr
-- **High-Density Encodings**: base62, base85, ascii85, z85
+- **High-Density Encodings**: base62, base85, ascii85, z85, base256_matrix (Matrix-style!), base1024
 - **Human-Oriented**: base32_crockford, base32_zbase
 - **Ancient Scripts**: hieroglyphs, cuneiform, runic
 - **Game Pieces**: cards, domino, mahjong, chess

@@ -7,9 +7,30 @@ pub fn encode_byte_range(data: &[u8], alphabet: &Alphabet) -> String {
     let start = alphabet.start_codepoint()
         .expect("ByteRange mode requires start_codepoint");
     
-    data.iter()
-        .filter_map(|&byte| std::char::from_u32(start + byte as u32))
-        .collect()
+    // Pre-allocate with exact capacity for better performance
+    let mut result = String::with_capacity(data.len() * 4); // Max 4 bytes per UTF-8 char
+    
+    // Process in chunks for better CPU cache utilization
+    const CHUNK_SIZE: usize = 64;
+    let chunks = data.chunks_exact(CHUNK_SIZE);
+    let remainder = chunks.remainder();
+    
+    for chunk in chunks {
+        for &byte in chunk {
+            if let Some(c) = std::char::from_u32(start + byte as u32) {
+                result.push(c);
+            }
+        }
+    }
+    
+    // Process remainder
+    for &byte in remainder {
+        if let Some(c) = std::char::from_u32(start + byte as u32) {
+            result.push(c);
+        }
+    }
+    
+    result
 }
 
 /// Decode data using byte range mode
@@ -17,9 +38,28 @@ pub fn decode_byte_range(encoded: &str, alphabet: &Alphabet) -> Result<Vec<u8>, 
     let start = alphabet.start_codepoint()
         .expect("ByteRange mode requires start_codepoint");
     
-    let mut result = Vec::with_capacity(encoded.chars().count());
+    let char_count = encoded.chars().count();
+    let mut result = Vec::with_capacity(char_count);
     
-    for c in encoded.chars() {
+    // Process in chunks for better cache utilization
+    const CHUNK_SIZE: usize = 64;
+    let chars: Vec<char> = encoded.chars().collect();
+    let chunks = chars.chunks_exact(CHUNK_SIZE);
+    let remainder = chunks.remainder();
+    
+    for chunk in chunks {
+        for &c in chunk {
+            let codepoint = c as u32;
+            if codepoint >= start && codepoint < start + 256 {
+                result.push((codepoint - start) as u8);
+            } else {
+                return Err(DecodeError::InvalidCharacter(c));
+            }
+        }
+    }
+    
+    // Process remainder
+    for &c in remainder {
         let codepoint = c as u32;
         if codepoint >= start && codepoint < start + 256 {
             result.push((codepoint - start) as u8);

@@ -7,7 +7,7 @@ use std::path::PathBuf;
 #[derive(Parser)]
 #[command(name = "base-d")]
 #[command(version)]
-#[command(about = "Universal multi-alphabet encoder supporting RFC standards, emoji, ancient scripts, and 33+ custom alphabets", long_about = None)]
+#[command(about = "Universal multi-alphabet encoder supporting RFC standards, emoji, ancient scripts, and 35+ custom alphabets", long_about = None)]
 struct Cli {
     /// Encode using this alphabet
     #[arg(short = 'e', long)]
@@ -28,6 +28,10 @@ struct Cli {
     /// Use streaming mode for large files (memory efficient)
     #[arg(short, long)]
     stream: bool,
+    
+    /// Enter the Matrix: Stream random data as Matrix-style falling code
+    #[arg(long)]
+    neo: bool,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -35,6 +39,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // Load alphabets configuration with user overrides
     let config = AlphabetsConfig::load_with_overrides()?;
+    
+    // Handle --neo mode (Matrix effect)
+    if cli.neo {
+        return matrix_mode(&config);
+    }
     
     // Handle list command
     if cli.list {
@@ -202,5 +211,60 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     
     Ok(())
+}
+
+fn matrix_mode(config: &AlphabetsConfig) -> Result<(), Box<dyn std::error::Error>> {
+    use std::thread;
+    use std::time::Duration;
+    
+    // Load the Matrix alphabet
+    let matrix_config = config.get_alphabet("base256_matrix")
+        .ok_or("base256_matrix alphabet not found")?;
+    
+    let chars: Vec<char> = matrix_config.chars.chars().collect();
+    let alphabet = Alphabet::new_with_mode(
+        chars,
+        matrix_config.mode.clone(),
+        None
+    )?;
+    
+    // Get terminal width
+    let term_width = match terminal_size::terminal_size() {
+        Some((terminal_size::Width(w), _)) => w as usize,
+        None => 80, // Default to 80 if we can't detect
+    };
+    
+    println!("\x1b[2J\x1b[H"); // Clear screen and move to top
+    println!("\x1b[32m"); // Green text
+    println!("🟢 ENTERING THE MATRIX 🟢");
+    println!("Press Ctrl+C to exit\n");
+    thread::sleep(Duration::from_secs(2));
+    
+    // Cross-platform random source
+    let mut rng = rand::thread_rng();
+    
+    loop {
+        // Generate random bytes (one line worth)
+        let bytes_per_line = term_width / 2; // Approximate, Matrix chars may be wider
+        let mut random_bytes = vec![0u8; bytes_per_line];
+        
+        use rand::RngCore;
+        rng.fill_bytes(&mut random_bytes);
+        
+        // Encode with Matrix alphabet
+        let encoded = encode(&random_bytes, &alphabet);
+        
+        // Trim to terminal width (Matrix chars can be double-width)
+        let display: String = encoded.chars().take(term_width).collect();
+        
+        // Print the line
+        println!("{}", display);
+        
+        // Flush to ensure immediate display
+        io::stdout().flush()?;
+        
+        // Sleep for half a second
+        thread::sleep(Duration::from_millis(500));
+    }
 }
 

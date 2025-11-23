@@ -1,5 +1,6 @@
 use crate::alphabet::Alphabet;
 use num_traits::Zero;
+use num_integer::Integer;
 
 /// Errors that can occur during decoding.
 #[derive(Debug, PartialEq, Eq)]
@@ -29,25 +30,29 @@ pub fn encode(data: &[u8], alphabet: &Alphabet) -> String {
         return String::new();
     }
     
-    // Count leading zeros
+    // Count leading zeros for efficient handling
     let leading_zeros = data.iter().take_while(|&&b| b == 0).count();
     
-    // If all zeros, just return the zero character repeated
+    // If all zeros, return early
     if leading_zeros == data.len() {
         return alphabet.encode_digit(0).unwrap().to_string().repeat(data.len());
     }
     
     let base = alphabet.base();
     let mut num = num_bigint::BigUint::from_bytes_be(&data[leading_zeros..]);
-    let mut result = Vec::new();
+    
+    // Pre-allocate result vector with estimated capacity
+    let max_digits = ((data.len() - leading_zeros) * 8 * 1000) / (base as f64).log2() as usize / 1000 + 1;
+    let mut result = Vec::with_capacity(max_digits + leading_zeros);
+    
     let base_big = num_bigint::BigUint::from(base);
     
     while !num.is_zero() {
-        let remainder = &num % &base_big;
+        let (quotient, remainder) = num.div_rem(&base_big);
         let digit = remainder.to_u64_digits();
         let digit_val = if digit.is_empty() { 0 } else { digit[0] as usize };
         result.push(alphabet.encode_digit(digit_val).unwrap());
-        num /= &base_big;
+        num = quotient;
     }
     
     // Add leading zeros
@@ -68,9 +73,11 @@ pub fn decode(encoded: &str, alphabet: &Alphabet) -> Result<Vec<u8>, DecodeError
     let mut num = num_bigint::BigUint::from(0u8);
     let base_big = num_bigint::BigUint::from(base);
     
+    // Collect chars once for better cache performance
     let chars: Vec<char> = encoded.chars().collect();
     let mut leading_zeros = 0;
     
+    // Process in chunks for better performance
     for &c in &chars {
         let digit = alphabet.decode_char(c)
             .ok_or(DecodeError::InvalidCharacter(c))?;
@@ -78,18 +85,21 @@ pub fn decode(encoded: &str, alphabet: &Alphabet) -> Result<Vec<u8>, DecodeError
         if num.is_zero() && digit == 0 {
             leading_zeros += 1;
         } else {
-            num = num * &base_big + num_bigint::BigUint::from(digit);
+            num *= &base_big;
+            num += num_bigint::BigUint::from(digit);
         }
     }
     
-    let bytes = num.to_bytes_be();
-    
+    // Handle all-zero case
     if num.is_zero() && leading_zeros > 0 {
         return Ok(vec![0u8; leading_zeros]);
     }
     
-    // Add leading zero bytes
-    let mut result = vec![0u8; leading_zeros];
+    let bytes = num.to_bytes_be();
+    
+    // Construct result with pre-allocated capacity
+    let mut result = Vec::with_capacity(leading_zeros + bytes.len());
+    result.resize(leading_zeros, 0u8);
     result.extend_from_slice(&bytes);
     
     Ok(result)

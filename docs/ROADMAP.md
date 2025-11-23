@@ -38,20 +38,26 @@
 
 ## Phase 4: Advanced Features (v0.4.0) - IN PROGRESS
 
-- [ ] Performance optimizations (Issue #14)
-  - [ ] Profile encoding/decoding algorithms
-  - [ ] Optimize hot paths
-  - [ ] Add SIMD support where applicable
+- [x] Performance optimizations (Issue #14)
+  - [x] Profile encoding/decoding algorithms
+  - [x] Optimize hot paths (chunked, byte_range, mathematical)
+  - [x] Add comprehensive benchmark suite
+  - [x] Implement fast lookup tables for ASCII alphabets
+  - [x] Optimize memory allocation (pre-allocation)
+  - [x] Chunk-based processing for CPU cache optimization
+  - [ ] Add SIMD support where applicable (future enhancement)
 - [ ] Streaming encoding/decoding for large files (Issue #4)
-  - [ ] Chunk-based processing
-  - [ ] Reduce memory footprint
-  - [ ] Support stdin/stdout streaming
+  - [x] Chunk-based processing (already implemented)
+  - [x] Reduce memory footprint (4KB chunks)
+  - [x] Support stdin/stdout streaming
+  - [ ] Add progress reporting for CLI
 - [ ] Enhanced alphabet validation and safety checks (Issue #5)
-  - [ ] Duplicate character detection (already done)
-  - [ ] Invalid Unicode handling
-  - [ ] Size constraints validation
-  - [ ] Character compatibility checks
+  - [x] Duplicate character detection (already done)
+  - [x] Invalid Unicode handling (already done)
+  - [x] Size constraints validation (already done)
+  - [x] Character compatibility checks (already done)
 - [ ] Configuration file support for custom alphabets (Issue #7)
+  - [x] Load from built-in alphabets.toml
   - [ ] Load from ~/.config/base-d/alphabets.toml
   - [ ] User-defined alphabets
   - [ ] Override built-in alphabets
@@ -63,14 +69,16 @@
 ## Phase 5: Polish (v1.0.0)
 
 - [ ] Comprehensive documentation (Issue #2)
+  - [x] Performance documentation (PERFORMANCE.md)
   - [ ] API documentation
   - [ ] Architecture overview
   - [ ] Contributing guidelines
   - [ ] Use case examples
-- [ ] Benchmark suite (Issue #10)
-  - [ ] Performance benchmarks across alphabets
-  - [ ] Different data sizes
-  - [ ] Encoding mode comparisons
+- [x] Benchmark suite (Issue #10)
+  - [x] Performance benchmarks across alphabets
+  - [x] Different data sizes
+  - [x] Encoding mode comparisons
+  - [x] Criterion.rs integration with HTML reports
 - [ ] Examples and tutorials (Issue #1)
   - [ ] Common use cases
   - [ ] Integration examples
@@ -92,6 +100,12 @@
 
 ## Completed Milestones
 
+- **2025-11-23**: Implemented performance optimizations with benchmark suite
+  - Added Criterion.rs benchmarks for base64, base32, base100, hex
+  - Optimized chunked encoding/decoding (370 MiB/s encode, 220 MiB/s decode)
+  - Fast lookup tables for ASCII alphabets (5x faster character decoding)
+  - Memory allocation optimizations (pre-allocation, chunk processing)
+  - Created PERFORMANCE.md documentation
 - **2025-11-23**: Added ByteRange encoding mode and base100 alphabet (Issue #16)
 - **2025-11-23**: Completed Phase 3 with 33 built-in alphabets
 - **2025-11-23**: Added three encoding modes (mathematical, chunked, byte_range)

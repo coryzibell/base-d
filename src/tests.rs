@@ -184,3 +184,155 @@ fn test_base100_binary_data() {
     let decoded = decode(&encoded, &alphabet).unwrap();
     assert_eq!(decoded, data);
 }
+
+#[test]
+fn test_base1024_large_alphabet() {
+    // Test that we can load and use a 1024-character alphabet
+    let alphabet = get_alphabet("base1024");
+    
+    // Verify base size
+    assert_eq!(alphabet.base(), 1024);
+    
+    // Test encoding/decoding various data sizes
+    let test_data = vec![
+        b"A".to_vec(),
+        b"Hello".to_vec(),
+        b"Hello, World!".to_vec(),
+        (0u8..=255).collect::<Vec<u8>>(), // All bytes
+    ];
+    
+    for data in test_data {
+        let encoded = encode(&data, &alphabet);
+        let decoded = decode(&encoded, &alphabet).unwrap();
+        assert_eq!(decoded, data, "Failed for data of length {}", data.len());
+        
+        // Verify that encoding with larger base produces shorter output
+        // For mathematical mode, larger base = more compact representation
+        // Each 1024-base digit represents ~10 bits (log2(1024) = 10)
+        let bits_in = data.len() * 8;
+        let max_chars = (bits_in + 9) / 10; // ceiling division
+        assert!(
+            encoded.chars().count() <= max_chars + 1,
+            "Encoding too long: {} chars for {} bytes (expected <= {})",
+            encoded.chars().count(),
+            data.len(),
+            max_chars + 1
+        );
+    }
+}
+
+#[test]
+fn test_base1024_uses_hashmap() {
+    // Base1024 uses non-ASCII characters, so it should use HashMap not lookup table
+    let alphabet = get_alphabet("base1024");
+    
+    // Test that decoding works correctly (verifies HashMap fallback)
+    let data = b"Testing large alphabet HashMap fallback";
+    let encoded = encode(data, &alphabet);
+    let decoded = decode(&encoded, &alphabet).unwrap();
+    assert_eq!(decoded, data);
+}
+
+#[test]
+fn test_base1024_efficiency() {
+    let alphabet = get_alphabet("base1024");
+    
+    // Compare with base64 for same data
+    let base64 = get_alphabet("base64");
+    let data = b"The quick brown fox jumps over the lazy dog";
+    
+    let encoded_1024 = encode(data, &alphabet);
+    let encoded_64 = encode(data, &base64);
+    
+    // Base1024 should produce fewer characters than base64
+    // base1024: ~10 bits per char, base64: 6 bits per char
+    assert!(
+        encoded_1024.chars().count() < encoded_64.chars().count(),
+        "Base1024 ({} chars) should be shorter than base64 ({} chars)",
+        encoded_1024.chars().count(),
+        encoded_64.chars().count()
+    );
+}
+
+#[test]
+fn test_base256_matrix_like_hex() {
+    // Test that base256_matrix works identically in both modes (like hexadecimal)
+    let alphabet_chunked = get_alphabet("base256_matrix");
+    
+    // Verify it's a 256-character alphabet
+    assert_eq!(alphabet_chunked.base(), 256);
+    
+    // Create mathematical mode version
+    let config = AlphabetsConfig::load_default().unwrap();
+    let matrix_config = config.get_alphabet("base256_matrix").unwrap();
+    let chars: Vec<char> = matrix_config.chars.chars().collect();
+    let alphabet_math = Alphabet::new_with_mode(
+        chars,
+        EncodingMode::BaseConversion,
+        None
+    ).unwrap();
+    
+    // Test various data sizes
+    let test_data = vec![
+        b"A".to_vec(),
+        b"Hi".to_vec(),
+        b"Matrix".to_vec(),
+        b"The Matrix has you...".to_vec(),
+        (0u8..=255).collect::<Vec<u8>>(), // All bytes
+    ];
+    
+    for data in test_data {
+        let chunked_encoded = encode(&data, &alphabet_chunked);
+        let math_encoded = encode(&data, &alphabet_math);
+        
+        // Both modes should produce IDENTICAL output (like hexadecimal)
+        assert_eq!(
+            chunked_encoded, 
+            math_encoded,
+            "Modes should produce identical output for {} bytes (like hex!)",
+            data.len()
+        );
+        
+        // Verify round-trip
+        let decoded = decode(&chunked_encoded, &alphabet_chunked).unwrap();
+        assert_eq!(decoded, data);
+        
+        // Verify 1:1 mapping (256 = 2^8 = 1 byte per char)
+        assert_eq!(
+            chunked_encoded.chars().count(),
+            data.len(),
+            "Base256 should have 1:1 char-to-byte ratio"
+        );
+    }
+}
+
+#[test]
+fn test_base256_matrix_perfect_encoding() {
+    let alphabet = get_alphabet("base256_matrix");
+    
+    // Test the special property: 8 bits % log2(256) = 8 % 8 = 0
+    // This means no expansion, perfect 1:1 mapping
+    let data = b"Follow the white rabbit";
+    let encoded = encode(data, &alphabet);
+    
+    // Should be exactly the same length
+    assert_eq!(encoded.chars().count(), data.len());
+    
+    // Decode should work perfectly
+    let decoded = decode(&encoded, &alphabet).unwrap();
+    assert_eq!(decoded, data);
+}
+
+#[test]
+fn test_base256_matrix_all_bytes() {
+    let alphabet = get_alphabet("base256_matrix");
+    
+    // Test that all 256 possible byte values can be encoded/decoded
+    let all_bytes: Vec<u8> = (0..=255).collect();
+    let encoded = encode(&all_bytes, &alphabet);
+    let decoded = decode(&encoded, &alphabet).unwrap();
+    
+    assert_eq!(decoded, all_bytes);
+    assert_eq!(encoded.chars().count(), 256); // 1:1 ratio
+}
+
