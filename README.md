@@ -1,5 +1,7 @@
 # base-d
 
+![base-d demo](assets/impressive-based.gif)
+
 [![Crates.io](https://img.shields.io/crates/v/base-d.svg)](https://crates.io/crates/base-d)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE-MIT)
 
