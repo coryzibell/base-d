@@ -9,9 +9,13 @@ use std::path::PathBuf;
 #[command(version)]
 #[command(about = "Universal multi-alphabet encoder supporting RFC standards, emoji, ancient scripts, and 33+ custom alphabets", long_about = None)]
 struct Cli {
-    /// Alphabet to use for encoding/decoding
+    /// Alphabet to use for encoding (or output alphabet when transcoding)
     #[arg(short, long, default_value = "cards")]
     alphabet: String,
+    
+    /// Input alphabet for transcoding (decode from this, encode to --alphabet)
+    #[arg(short = 'f', long)]
+    from: Option<String>,
     
     /// File to encode/decode (if not provided, reads from stdin)
     #[arg(value_name = "FILE")]
@@ -71,23 +75,59 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
     
-    let alphabet_config = config.get_alphabet(&cli.alphabet)
-        .ok_or_else(|| format!("Alphabet '{}' not found. Use --list to see available alphabets.", cli.alphabet))?;
-    
-    let alphabet = match alphabet_config.mode {
-        base_d::EncodingMode::ByteRange => {
-            let start = alphabet_config.start_codepoint
-                .ok_or_else(|| "ByteRange mode requires start_codepoint")?;
-            Alphabet::new_with_mode_and_range(Vec::new(), alphabet_config.mode.clone(), None, Some(start))
-                .map_err(|e| format!("Invalid alphabet: {}", e))?
-        }
-        _ => {
-            let chars: Vec<char> = alphabet_config.chars.chars().collect();
-            let padding = alphabet_config.padding.as_ref().and_then(|s| s.chars().next());
-            Alphabet::new_with_mode(chars, alphabet_config.mode.clone(), padding)
-                .map_err(|e| format!("Invalid alphabet: {}", e))?
-        }
+    // Helper function to create alphabet from config
+    let create_alphabet = |name: &str| -> Result<Alphabet, Box<dyn std::error::Error>> {
+        let alphabet_config = config.get_alphabet(name)
+            .ok_or_else(|| format!("Alphabet '{}' not found. Use --list to see available alphabets.", name))?;
+        
+        let alphabet = match alphabet_config.mode {
+            base_d::EncodingMode::ByteRange => {
+                let start = alphabet_config.start_codepoint
+                    .ok_or_else(|| "ByteRange mode requires start_codepoint")?;
+                Alphabet::new_with_mode_and_range(Vec::new(), alphabet_config.mode.clone(), None, Some(start))
+                    .map_err(|e| format!("Invalid alphabet: {}", e))?
+            }
+            _ => {
+                let chars: Vec<char> = alphabet_config.chars.chars().collect();
+                let padding = alphabet_config.padding.as_ref().and_then(|s| s.chars().next());
+                Alphabet::new_with_mode(chars, alphabet_config.mode.clone(), padding)
+                    .map_err(|e| format!("Invalid alphabet: {}", e))?
+            }
+        };
+        Ok(alphabet)
     };
+    
+    // Handle transcoding mode (--from specified)
+    if let Some(from_alphabet_name) = &cli.from {
+        if cli.decode {
+            return Err("Cannot use --decode with --from (transcoding already decodes and encodes)".into());
+        }
+        if cli.stream {
+            return Err("Streaming mode not yet supported for transcoding".into());
+        }
+        
+        let from_alphabet = create_alphabet(from_alphabet_name)?;
+        let to_alphabet = create_alphabet(&cli.alphabet)?;
+        
+        // Read input
+        let input_data = if let Some(file_path) = cli.file {
+            fs::read_to_string(&file_path)?
+        } else {
+            let mut buffer = String::new();
+            io::stdin().read_to_string(&mut buffer)?;
+            buffer
+        };
+        
+        // Transcode: decode from input alphabet, encode to output alphabet
+        let decoded = decode(input_data.trim(), &from_alphabet)?;
+        let encoded = encode(&decoded, &to_alphabet);
+        println!("{}", encoded);
+        
+        return Ok(());
+    }
+    
+    // Standard encode/decode mode
+    let alphabet = create_alphabet(&cli.alphabet)?;
     
     // Process based on mode
     if cli.stream {

@@ -52,7 +52,7 @@ git clone https://github.com/yourusername/base-d
 cd base-d
 cargo build --release
 
-# List all 32 available alphabets
+# List all 33 available alphabets
 base-d --list
 
 # Encode with playing cards (default)
@@ -69,6 +69,10 @@ echo "Ancient" | base-d -a hieroglyphs
 
 # Emoji faces
 echo "Happy" | base-d -a emoji_faces
+
+# Transcode between alphabets (decode from one, encode to another)
+echo "SGVsbG8=" | base-d --from base64 -a hex
+echo "48656c6c6f" | base-d --from hex -a emoji_faces
 
 # Process files
 base-d input.txt > encoded.txt
@@ -204,6 +208,14 @@ echo "🃎🃅🃝🃉🂡🂣🂸🃉🃉🃇🃉🃓🂵🂣🂨🂻🃆🃍" 
 
 # Round-trip encoding
 echo "Secret" | base-d | base-d -d
+
+# Transcode between alphabets (no intermediate piping needed!)
+echo "SGVsbG8=" | base-d --from base64 -a hex
+# Output: 48656c6c6f
+
+# Convert between any two alphabets
+echo "ACGTACGT" | base-d --from dna -a emoji_faces
+echo "🃁🃂🃃🃄" | base-d --from cards -a base64
 
 # Stream mode for large files (memory efficient)
 base-d --stream -a base64 large_file.bin > encoded.txt
