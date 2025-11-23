@@ -9,15 +9,15 @@ use std::path::PathBuf;
 #[command(version)]
 #[command(about = "Universal multi-alphabet encoder supporting RFC standards, emoji, ancient scripts, and 33+ custom alphabets", long_about = None)]
 struct Cli {
-    /// Output alphabet (encode to this alphabet)
-    #[arg(short = 't', long)]
-    to: Option<String>,
+    /// Encode using this alphabet
+    #[arg(short = 'e', long)]
+    encode: Option<String>,
     
-    /// Input alphabet (decode from this alphabet)
-    #[arg(short = 'f', long)]
-    from: Option<String>,
+    /// Decode from this alphabet
+    #[arg(short = 'd', long)]
+    decode: Option<String>,
     
-    /// File to encode/decode (if not provided, reads from stdin)
+    /// File to process (if not provided, reads from stdin)
     #[arg(value_name = "FILE")]
     file: Option<PathBuf>,
     
@@ -94,15 +94,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     
     // Determine operation mode based on flags
-    match (&cli.from, &cli.to) {
-        (Some(from_alphabet_name), Some(to_alphabet_name)) => {
-            // Transcode mode: --from X --to Y
+    match (&cli.decode, &cli.encode) {
+        (Some(decode_alphabet_name), Some(encode_alphabet_name)) => {
+            // Transcode mode: --decode X --encode Y
             if cli.stream {
                 return Err("Streaming mode not yet supported for transcoding".into());
             }
             
-            let from_alphabet = create_alphabet(from_alphabet_name)?;
-            let to_alphabet = create_alphabet(to_alphabet_name)?;
+            let decode_alphabet = create_alphabet(decode_alphabet_name)?;
+            let encode_alphabet = create_alphabet(encode_alphabet_name)?;
             
             // Read input
             let input_data = if let Some(file_path) = cli.file {
@@ -114,18 +114,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
             
             // Transcode: decode from input alphabet, encode to output alphabet
-            let decoded = decode(input_data.trim(), &from_alphabet)?;
-            let encoded = encode(&decoded, &to_alphabet);
+            let decoded = decode(input_data.trim(), &decode_alphabet)?;
+            let encoded = encode(&decoded, &encode_alphabet);
             println!("{}", encoded);
         }
         
-        (Some(from_alphabet_name), None) => {
-            // Decode mode: --from X (decode to binary)
-            let from_alphabet = create_alphabet(from_alphabet_name)?;
+        (Some(decode_alphabet_name), None) => {
+            // Decode mode: --decode X (decode to binary)
+            let decode_alphabet = create_alphabet(decode_alphabet_name)?;
             
             if cli.stream {
                 use base_d::StreamingDecoder;
-                let mut decoder = StreamingDecoder::new(&from_alphabet, io::stdout());
+                let mut decoder = StreamingDecoder::new(&decode_alphabet, io::stdout());
                 if let Some(file_path) = cli.file {
                     let mut file = fs::File::open(&file_path)?;
                     decoder.decode(&mut file)?;
@@ -141,18 +141,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     buffer
                 };
                 
-                let decoded = decode(input_data.trim(), &from_alphabet)?;
+                let decoded = decode(input_data.trim(), &decode_alphabet)?;
                 io::stdout().write_all(&decoded)?;
             }
         }
         
-        (None, Some(to_alphabet_name)) => {
-            // Encode mode: --to X (encode from binary)
-            let to_alphabet = create_alphabet(to_alphabet_name)?;
+        (None, Some(encode_alphabet_name)) => {
+            // Encode mode: --encode X (encode from binary)
+            let encode_alphabet = create_alphabet(encode_alphabet_name)?;
             
             if cli.stream {
                 use base_d::StreamingEncoder;
-                let mut encoder = StreamingEncoder::new(&to_alphabet, io::stdout());
+                let mut encoder = StreamingEncoder::new(&encode_alphabet, io::stdout());
                 if let Some(file_path) = cli.file {
                     let mut file = fs::File::open(&file_path)?;
                     encoder.encode(&mut file)?;
@@ -168,18 +168,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     buffer
                 };
                 
-                let encoded = encode(&input_data, &to_alphabet);
+                let encoded = encode(&input_data, &encode_alphabet);
                 println!("{}", encoded);
             }
         }
         
         (None, None) => {
             // No alphabet specified - use default (cards) for encoding
-            let to_alphabet = create_alphabet("cards")?;
+            let encode_alphabet = create_alphabet("cards")?;
             
             if cli.stream {
                 use base_d::StreamingEncoder;
-                let mut encoder = StreamingEncoder::new(&to_alphabet, io::stdout());
+                let mut encoder = StreamingEncoder::new(&encode_alphabet, io::stdout());
                 if let Some(file_path) = cli.file {
                     let mut file = fs::File::open(&file_path)?;
                     encoder.encode(&mut file)?;
@@ -195,7 +195,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     buffer
                 };
                 
-                let encoded = encode(&input_data, &to_alphabet);
+                let encoded = encode(&input_data, &encode_alphabet);
                 println!("{}", encoded);
             }
         }

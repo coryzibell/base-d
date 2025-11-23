@@ -59,24 +59,24 @@ base-d --list
 echo "Secret message" | base-d
 
 # RFC 4648 base32
-echo "Data" | base-d -t base32
+echo "Data" | base-d -e base32
 
 # Bitcoin base58
-echo "Address" | base-d -t base58
+echo "Address" | base-d -e base58
 
 # Egyptian hieroglyphics
-echo "Ancient" | base-d -t hieroglyphs
+echo "Ancient" | base-d -e hieroglyphs
 
 # Emoji faces
-echo "Happy" | base-d -t emoji_faces
+echo "Happy" | base-d -e emoji_faces
 
 # Transcode between alphabets (decode from one, encode to another)
-echo "SGVsbG8=" | base-d --from base64 --to hex
-echo "48656c6c6f" | base-d --from hex --to emoji_faces
+echo "SGVsbG8=" | base-d -d base64 -e hex
+echo "48656c6c6f" | base-d -d hex -e emoji_faces
 
 # Process files
-base-d input.txt > encoded.txt
-base-d -d encoded.txt > output.txt
+base-d -e base64 input.txt > encoded.txt
+base-d -d base64 encoded.txt > output.txt
 ```
 
 ## Installation
@@ -201,25 +201,25 @@ echo "Hello, World!" | base-d
 base-d input.txt
 
 # Encode with specific alphabet
-echo "Data" | base-d -t dna
+echo "Data" | base-d -e dna
 
 # Decode from specific alphabet
-echo "SGVsbG8gV29ybGQNCg==" | base-d -f base64
+echo "SGVsbG8gV29ybGQNCg==" | base-d -d base64
 
 # Decode playing cards
-echo "🃎🃅🃝🃉🂡🂣🂸🃉🃉🃇🃉🃓🂵🂣🂨🂻🃆🃍" | base-d -f cards
+echo "🃎🃅🃝🃉🂡🂣🂸🃉🃉🃇🃉🃓🂵🂣🂨🂻🃆🃍" | base-d -d cards
 
 # Transcode between alphabets (no intermediate piping needed!)
-echo "SGVsbG8=" | base-d --from base64 --to hex
+echo "SGVsbG8=" | base-d -d base64 -e hex
 # Output: 48656c6c6f
 
 # Convert between any two alphabets
-echo "ACGTACGT" | base-d --from dna --to emoji_faces
-echo "🃁🃂🃃🃄" | base-d --from cards --to base64
+echo "ACGTACGT" | base-d -d dna -e emoji_faces
+echo "🃁🃂🃃🃄" | base-d -d cards -e base64
 
 # Stream mode for large files (memory efficient)
-base-d --stream -t base64 large_file.bin > encoded.txt
-base-d --stream -f base64 encoded.txt > decoded.bin
+base-d --stream -e base64 large_file.bin > encoded.txt
+base-d --stream -d base64 encoded.txt > decoded.bin
 ```
 
 ### Custom Alphabets
