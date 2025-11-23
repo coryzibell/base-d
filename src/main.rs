@@ -236,9 +236,32 @@ fn matrix_mode(config: &AlphabetsConfig) -> Result<(), Box<dyn std::error::Error
     
     println!("\x1b[2J\x1b[H"); // Clear screen and move to top
     println!("\x1b[32m"); // Green text
-    println!("ENTERING THE MATRIX");
-    println!("Press Ctrl+C to exit\n");
-    thread::sleep(Duration::from_secs(2));
+    
+    // Iconic Matrix messages - typed character by character
+    let messages = [
+        "Wake up, Neo...",
+        "The Matrix has you...",
+        "Follow the white rabbit.",
+        "Knock, knock, Neo.",
+    ];
+    
+    for message in &messages {
+        // Type out character by character
+        for ch in message.chars() {
+            print!("{}", ch);
+            io::stdout().flush()?;
+            thread::sleep(Duration::from_millis(100));
+        }
+        thread::sleep(Duration::from_millis(800)); // Pause to read
+        
+        // Clear the line
+        print!("\r\x1b[K");
+        io::stdout().flush()?;
+        thread::sleep(Duration::from_millis(200));
+    }
+    
+    // Small pause before starting the stream
+    thread::sleep(Duration::from_millis(500));
     
     // Cross-platform random source
     let mut rng = rand::thread_rng();

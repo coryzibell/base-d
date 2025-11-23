@@ -14,11 +14,12 @@ Press `Ctrl+C` to exit.
 
 ## What It Does
 
-1. **Loads base256_matrix alphabet** - The Matrix-style Japanese and geometric character set
-2. **Generates random data** - Cross-platform random bytes using `rand` crate
-3. **Encodes in real-time** - Converts random bytes to Matrix characters
-4. **Streams to terminal** - Displays new line every 500ms
-5. **Fills the screen** - Previous lines scroll up naturally
+1. **Displays iconic messages** - Types "Wake up, Neo..." and other messages character by character
+2. **Loads base256_matrix alphabet** - The Matrix-style Japanese and geometric character set
+3. **Generates random data** - Cross-platform random bytes using `rand` crate
+4. **Encodes in real-time** - Converts random bytes to Matrix characters
+5. **Streams to terminal** - Displays new line every 500ms
+6. **Fills the screen** - Previous lines scroll up naturally
 
 ## Technical Details
 
@@ -42,24 +43,27 @@ Press `Ctrl+C` to exit.
 
 ```rust
 fn matrix_mode(config: &AlphabetsConfig) -> Result<(), Box<dyn std::error::Error>> {
-    // Load Matrix alphabet
-    let alphabet = /* base256_matrix */;
+    // Display iconic messages - typed character by character
+    let messages = ["Wake up, Neo...", "The Matrix has you...", 
+                    "Follow the white rabbit.", "Knock, knock, Neo."];
     
-    // Get terminal width
-    let term_width = terminal_size::terminal_size()
-        .map(|(w, _)| w.0 as usize)
-        .unwrap_or(80);
+    for message in &messages {
+        for ch in message.chars() {
+            print!("{}", ch);
+            stdout().flush()?;
+            thread::sleep(Duration::from_millis(100));
+        }
+        thread::sleep(Duration::from_millis(800));
+        print!("\r\x1b[K"); // Clear line
+        stdout().flush()?;
+    }
     
+    // Stream encoded data
     loop {
-        // Generate random bytes
         let mut random_bytes = vec![0u8; term_width / 2];
         rng.fill_bytes(&mut random_bytes);
-        
-        // Encode and display
         let encoded = encode(&random_bytes, &alphabet);
         println!("{}", encoded);
-        
-        // Wait 500ms
         thread::sleep(Duration::from_millis(500));
     }
 }
@@ -67,10 +71,22 @@ fn matrix_mode(config: &AlphabetsConfig) -> Result<(), Box<dyn std::error::Error
 
 ## Visual Effect
 
-```
-ENTERING THE MATRIX
-Press Ctrl+C to exit
+The mode begins with iconic messages typed character by character:
 
+```
+Wake up, Neo...
+(disappears)
+
+The Matrix has you...
+(disappears)
+
+Follow the white rabbit.
+(disappears)
+
+Knock, knock, Neo.
+(disappears)
+
+(then streams encoded data)
 ゎギチタザヅわプペホボポマミムメモャヤュユョヨラリルレロヮワヰヱヲンヴヵヶヷヸヹヺ・ーヽヾヿ
 プペホボポマミムメモャヤュユョヨラリルレロヮワヰヱヲンヴヵヶヷヸヹヺ・ーヽヾヿプペホボポマミム
 ホボポマミムメモャヤュユョヨラリルレロヮワヰヱヲンヴヵヶヷヸヹヺ・ーヽヾヿプペホボポマミムメモ
@@ -79,6 +95,15 @@ Press Ctrl+C to exit
 ```
 
 ## Features
+
+### Iconic Intro Sequence
+Messages appear character by character (100ms per character):
+- "Wake up, Neo..."
+- "The Matrix has you..."
+- "Follow the white rabbit."
+- "Knock, knock, Neo."
+
+Each message displays, pauses, then clears before the next appears.
 
 ### Green Terminal Effect
 The code uses ANSI escape sequences to set green text:
@@ -89,6 +114,7 @@ println!("\x1b[32m"); // Green text
 ### Screen Management
 ```rust
 println!("\x1b[2J\x1b[H"); // Clear screen and move to top
+print!("\r\x1b[K");         // Clear current line
 ```
 
 ### Graceful Exit
