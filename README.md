@@ -5,19 +5,41 @@
 [![Crates.io](https://img.shields.io/crates/v/base-d.svg)](https://crates.io/crates/base-d)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE-MIT)
 
-A Rust library and CLI tool for encoding binary data using esoteric, curated alphabets.
+A universal, multi-alphabet encoding library and CLI tool for Rust. Encode binary data to 33+ alphabets including RFC standards, ancient scripts, emoji, playing cards, and more.
 
 ## Overview
 
-Similar to how base58 encodes binary data to a carefully selected set of characters, base-d provides encoding and decoding functionality for various custom alphabets. Define alphabets in a simple TOML configuration file, or use the built-in alphabets.
+base-d is a flexible encoding framework that goes far beyond traditional base64. It supports:
 
-## Features
+- **33 built-in alphabets** - From RFC 4648 standards to hieroglyphics and emoji
+- **3 encoding modes** - Mathematical, chunked (RFC-compliant), and byte-range
+- **Custom alphabets** - Define your own via TOML configuration
+- **Streaming support** - Memory-efficient processing for large files
+- **Library + CLI** - Use programmatically or from the command line
 
-- **TOML-based Alphabet Configuration**: Define custom alphabets in `alphabets.toml`
-- **Multiple Alphabet Support**: Built-in alphabets and easy custom alphabet creation
-- **Playing Card Alphabet**: 52-character encoding using Unicode playing card symbols
-- **Library and Binary**: Use as a Rust crate or standalone CLI tool
-- **Efficient Encoding**: Fast binary-to-alphabet conversion using arbitrary-precision arithmetic
+## Key Features
+
+### Multiple Encoding Modes
+
+1. **Mathematical Base Conversion** - Treats data as a large number, works with any alphabet size
+2. **Chunked Mode** - RFC 4648 compatible (base64, base32, base16)
+3. **Byte Range Mode** - Direct 1:1 byte-to-emoji mapping (base100)
+
+### Extensive Alphabet Collection
+
+- **Standards**: base64, base32, base16, base58 (Bitcoin), base85 (Git)
+- **Ancient Scripts**: Egyptian hieroglyphics, Sumerian cuneiform, Elder Futhark runes
+- **Game Pieces**: Playing cards, mahjong tiles, domino tiles, chess pieces
+- **Esoteric**: Alchemical symbols, zodiac signs, weather symbols, musical notation
+- **Emoji**: Face emoji, animal emoji, base100 (256 emoji range)
+- **Custom**: Define your own alphabets in TOML
+
+### Advanced Capabilities
+
+- **Streaming Mode** - Process multi-GB files with constant 4KB memory usage
+- **User Configuration** - Load custom alphabets from `~/.config/base-d/alphabets.toml`
+- **Project-Local Config** - Override alphabets per-project with `./alphabets.toml`
+- **Three Independent Algorithms** - Choose the right mode for your use case
 
 ## Quick Start
 
@@ -63,24 +85,101 @@ cargo install base-d
 
 ### As a Library
 
+Add to your `Cargo.toml`:
+
+```toml
+[dependencies]
+base-d = "0.1"
+```
+
+#### Basic Encoding/Decoding
+
 ```rust
 use base_d::{AlphabetsConfig, Alphabet, encode, decode};
 
-fn main() {
-    // Load alphabets from configuration
-    let config = AlphabetsConfig::load_default().unwrap();
-    let cards_str = config.get_alphabet("cards").unwrap();
-    let alphabet = Alphabet::from_str(cards_str).unwrap();
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Load built-in alphabets
+    let config = AlphabetsConfig::load_default()?;
+    let alphabet_config = config.get_alphabet("base64").unwrap();
     
-    // Encode data
+    // Create alphabet from config
+    let chars: Vec<char> = alphabet_config.chars.chars().collect();
+    let padding = alphabet_config.padding.as_ref().and_then(|s| s.chars().next());
+    let alphabet = Alphabet::new_with_mode(
+        chars, 
+        alphabet_config.mode.clone(), 
+        padding
+    )?;
+    
+    // Encode
     let data = b"Hello, World!";
     let encoded = encode(data, &alphabet);
-    println!("Encoded: {}", encoded);
+    println!("Encoded: {}", encoded); // SGVsbG8sIFdvcmxkIQ==
     
-    // Decode data
-    let decoded = decode(&encoded, &alphabet).unwrap();
+    // Decode
+    let decoded = decode(&encoded, &alphabet)?;
     assert_eq!(data, &decoded[..]);
+    
+    Ok(())
 }
+```
+
+#### Streaming for Large Files
+
+```rust
+use base_d::{AlphabetsConfig, StreamingEncoder, StreamingDecoder};
+use std::fs::File;
+
+fn stream_encode() -> Result<(), Box<dyn std::error::Error>> {
+    let config = AlphabetsConfig::load_default()?;
+    let alphabet_config = config.get_alphabet("base64").unwrap();
+    
+    // ... create alphabet (same as above)
+    
+    let mut input = File::open("large_file.bin")?;
+    let mut output = File::create("encoded.txt")?;
+    
+    let mut encoder = StreamingEncoder::new(&alphabet, output);
+    encoder.encode(&mut input)?;
+    
+    Ok(())
+}
+```
+
+#### Custom Alphabets
+
+```rust
+use base_d::{Alphabet, EncodingMode, encode};
+
+fn custom_alphabet() -> Result<(), Box<dyn std::error::Error>> {
+    // Define a custom alphabet
+    let chars: Vec<char> = "😀😁😂🤣😃😄😅😆😉😊😋😎😍😘🥰😗".chars().collect();
+    let alphabet = Alphabet::new_with_mode(
+        chars,
+        EncodingMode::BaseConversion,
+        None
+    )?;
+    
+    let encoded = encode(b"Hi", &alphabet);
+    println!("{}", encoded); // 😍😁
+    
+    Ok(())
+}
+```
+
+#### Loading User Configurations
+
+```rust
+use base_d::AlphabetsConfig;
+
+// Load with user overrides from:
+// 1. Built-in alphabets
+// 2. ~/.config/base-d/alphabets.toml  
+// 3. ./alphabets.toml
+let config = AlphabetsConfig::load_with_overrides()?;
+
+// Or load from specific file
+let config = AlphabetsConfig::load_from_file("custom.toml".as_ref())?;
 ```
 
 ### As a CLI Tool

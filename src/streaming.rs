@@ -4,18 +4,31 @@ use std::io::{Read, Write};
 
 const CHUNK_SIZE: usize = 4096; // 4KB chunks
 
-/// Streaming encoder that processes data in chunks
+/// Streaming encoder for processing large amounts of data efficiently.
+///
+/// Processes data in chunks to avoid loading entire files into memory.
+/// Suitable for encoding large files or network streams.
 pub struct StreamingEncoder<'a, W: Write> {
     alphabet: &'a Alphabet,
     writer: W,
 }
 
 impl<'a, W: Write> StreamingEncoder<'a, W> {
+    /// Creates a new streaming encoder.
+    ///
+    /// # Arguments
+    ///
+    /// * `alphabet` - The alphabet to use for encoding
+    /// * `writer` - The destination for encoded output
     pub fn new(alphabet: &'a Alphabet, writer: W) -> Self {
         StreamingEncoder { alphabet, writer }
     }
     
-    /// Encode data from a reader in chunks
+    /// Encodes data from a reader in chunks.
+    ///
+    /// Note: BaseConversion mode requires reading the entire input at once
+    /// due to the mathematical nature of the algorithm. For truly streaming
+    /// behavior, use Chunked or ByteRange modes.
     pub fn encode<R: Read>(&mut self, reader: &mut R) -> std::io::Result<()> {
         match self.alphabet.mode() {
             crate::config::EncodingMode::Chunked => {
@@ -74,18 +87,31 @@ impl<'a, W: Write> StreamingEncoder<'a, W> {
     }
 }
 
-/// Streaming decoder that processes data in chunks
+/// Streaming decoder for processing large amounts of encoded data efficiently.
+///
+/// Processes data in chunks to avoid loading entire files into memory.
+/// Suitable for decoding large files or network streams.
 pub struct StreamingDecoder<'a, W: Write> {
     alphabet: &'a Alphabet,
     writer: W,
 }
 
 impl<'a, W: Write> StreamingDecoder<'a, W> {
+    /// Creates a new streaming decoder.
+    ///
+    /// # Arguments
+    ///
+    /// * `alphabet` - The alphabet used for encoding
+    /// * `writer` - The destination for decoded output
     pub fn new(alphabet: &'a Alphabet, writer: W) -> Self {
         StreamingDecoder { alphabet, writer }
     }
     
-    /// Decode data from a reader in chunks
+    /// Decodes data from a reader in chunks.
+    ///
+    /// Note: BaseConversion mode requires reading the entire input at once
+    /// due to the mathematical nature of the algorithm. For truly streaming
+    /// behavior, use Chunked or ByteRange modes.
     pub fn decode<R: Read>(&mut self, reader: &mut R) -> Result<(), DecodeError> {
         match self.alphabet.mode() {
             crate::config::EncodingMode::Chunked => {

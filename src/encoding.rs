@@ -1,10 +1,14 @@
 use crate::alphabet::Alphabet;
 use num_traits::Zero;
 
+/// Errors that can occur during decoding.
 #[derive(Debug, PartialEq, Eq)]
 pub enum DecodeError {
+    /// The input contains a character not in the alphabet
     InvalidCharacter(char),
+    /// The input string is empty
     EmptyInput,
+    /// The padding is malformed or incorrect
     InvalidPadding,
 }
 
