@@ -6,6 +6,7 @@ use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(name = "base-d")]
+#[command(version)]
 #[command(about = "Encode and decode binary data using esoteric alphabets", long_about = None)]
 struct Cli {
     /// Alphabet to use for encoding/decoding
