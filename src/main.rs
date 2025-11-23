@@ -9,11 +9,11 @@ use std::path::PathBuf;
 #[command(version)]
 #[command(about = "Universal multi-alphabet encoder supporting RFC standards, emoji, ancient scripts, and 33+ custom alphabets", long_about = None)]
 struct Cli {
-    /// Alphabet to use for encoding (or output alphabet when transcoding)
-    #[arg(short, long, default_value = "cards")]
-    alphabet: String,
+    /// Output alphabet (or alphabet to use when encoding without --from)
+    #[arg(short = 't', long, default_value = "cards")]
+    to: String,
     
-    /// Input alphabet for transcoding (decode from this, encode to --alphabet)
+    /// Input alphabet for transcoding (decode from this, encode to --to)
     #[arg(short = 'f', long)]
     from: Option<String>,
     
@@ -107,7 +107,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         
         let from_alphabet = create_alphabet(from_alphabet_name)?;
-        let to_alphabet = create_alphabet(&cli.alphabet)?;
+        let to_alphabet = create_alphabet(&cli.to)?;
         
         // Read input
         let input_data = if let Some(file_path) = cli.file {
@@ -127,7 +127,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     
     // Standard encode/decode mode
-    let alphabet = create_alphabet(&cli.alphabet)?;
+    let alphabet = create_alphabet(&cli.to)?;
     
     // Process based on mode
     if cli.stream {
