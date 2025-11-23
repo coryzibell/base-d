@@ -28,8 +28,8 @@ struct Cli {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
     
-    // Load alphabets configuration
-    let config = AlphabetsConfig::load_default()?;
+    // Load alphabets configuration with user overrides
+    let config = AlphabetsConfig::load_with_overrides()?;
     
     // Handle list command
     if cli.list {

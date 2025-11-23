@@ -120,6 +120,8 @@ hex_emoji = "😀😁😂🤣😃😄😅😆😉😊😋😎😍😘🥰😗"
 chess = "♔♕♖♗♘♙♚♛♜♝♞♟"
 ```
 
+Or create custom alphabets in `~/.config/base-d/alphabets.toml` to use across all projects. See [Custom Alphabets Guide](docs/CUSTOM_ALPHABETS.md) for details.
+
 ## Built-in Alphabets
 
 base-d includes 33 pre-configured alphabets organized into several categories:
@@ -156,8 +158,9 @@ MIT OR Apache-2.0
 
 ## Documentation
 
-- [Alphabet Reference](docs/ALPHABETS.md) - Complete guide to all 32 built-in alphabets
-- [Encoding Modes](docs/ENCODING_MODES.md) - Detailed explanation of mathematical vs chunked encoding
+- [Alphabet Reference](docs/ALPHABETS.md) - Complete guide to all 33 built-in alphabets
+- [Custom Alphabets](docs/CUSTOM_ALPHABETS.md) - Create and load your own alphabets
+- [Encoding Modes](docs/ENCODING_MODES.md) - Detailed explanation of mathematical vs chunked vs byte range encoding
 - [Hexadecimal Explained](docs/HEX_EXPLANATION.md) - Special case where both modes produce identical output
 - [Roadmap](docs/ROADMAP.md) - Planned features and development phases
 - [CI/CD Setup](docs/CI_CD.md) - GitHub Actions workflow documentation
