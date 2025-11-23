@@ -7,7 +7,7 @@ use std::path::PathBuf;
 #[derive(Parser)]
 #[command(name = "base-d")]
 #[command(version)]
-#[command(about = "Encode and decode binary data using esoteric alphabets", long_about = None)]
+#[command(about = "Universal multi-alphabet encoder supporting RFC standards, emoji, ancient scripts, and 33+ custom alphabets", long_about = None)]
 struct Cli {
     /// Alphabet to use for encoding/decoding
     #[arg(short, long, default_value = "cards")]
