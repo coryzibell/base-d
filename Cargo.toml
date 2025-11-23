@@ -16,7 +16,7 @@ categories = ["command-line-utilities", "encoding", "text-processing"]
 num-bigint = "0.4"
 num-traits = "0.2"
 serde = { version = "1.0", features = ["derive"] }
-toml = "0.8"
+toml = "0.9"
 clap = { version = "4.5", features = ["derive"] }
 
 [lib]
