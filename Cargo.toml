@@ -22,6 +22,10 @@ clap = { version = "4.5", features = ["derive"] }
 dirs = "5.0"
 rand = "0.8"
 terminal_size = "0.3"
+flate2 = "1.0"
+brotli = "7.0"
+zstd = "0.13"
+lz4 = "1.28"
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
