@@ -26,16 +26,19 @@ The project supports three distinct encoding strategies:
 
 ```
 src/
-├── lib.rs              # Public API: encode(), decode()
+├── lib.rs              # Public API: encode(), decode(), hash()
 ├── main.rs             # CLI with clap parser
 ├── core/
 │   ├── dictionary.rs   # Dictionary struct with fast ASCII lookup tables
 │   └── config.rs       # TOML config, EncodingMode enum
-└── encoders/
-    ├── encoding.rs     # Mathematical BigUint base conversion
-    ├── chunked.rs      # RFC 4648 bit-chunking (base64/32/16)
-    ├── byte_range.rs   # Direct byte-to-codepoint mapping
-    └── streaming.rs    # Memory-efficient large file processing
+├── encoders/
+│   ├── encoding.rs     # Mathematical BigUint base conversion
+│   ├── chunked.rs      # RFC 4648 bit-chunking (base64/32/16)
+│   ├── byte_range.rs   # Direct byte-to-codepoint mapping
+│   └── streaming.rs    # Memory-efficient large file processing
+├── compression.rs      # 6 compression algorithms (gzip, zstd, brotli, lz4, snappy, lzma)
+├── hashing.rs          # 24 hash algorithms (cryptographic, CRC, xxHash)
+└── detection.rs        # Dictionary auto-detection from encoded input
 ```
 
 ### Key Data Types
@@ -44,6 +47,8 @@ src/
 - **DictionariesConfig**: Loads and manages dictionary definitions from TOML files
 - **EncodingMode**: Enum determining which encoding algorithm to use
 - **StreamingEncoder/Decoder**: Process large files with constant 4KB memory usage
+- **CompressionAlgorithm**: Enum for 6 compression algorithms (pure Rust)
+- **HashAlgorithm**: Enum for 24 hash algorithms (16 crypto + 4 CRC + 4 xxHash)
 
 ## Configuration System
 
@@ -64,9 +69,38 @@ Recent optimizations (see OPTIMIZATION_SUMMARY.md):
 - Benchmarks: Criterion.rs suite achieving ~370 MiB/s for base64 encoding
 
 Performance targets:
-- Base64 encode: ~370 MiB/s (large data)
-- Base64 decode: ~220 MiB/s (large data)
-- Streaming: Constant 4KB memory regardless of file size
+- **Encoding**: Base64 ~370 MiB/s, base256_matrix 1:1 mapping (no overhead)
+- **Compression**: Snappy ~600 MB/s, LZ4 ~500 MB/s, Gzip ~80 MB/s
+- **Hashing**: xxHash3 ~30 GB/s, BLAKE3 ~1 GB/s, SHA-256 ~300 MB/s
+- **Streaming**: Constant 4KB memory regardless of file size
+
+## Recent Features (2024)
+
+### Compression Support
+- 6 algorithms: gzip, zstd, brotli, lz4, snappy, lzma
+- Pure Rust implementations (no OpenSSL)
+- CLI: `--compress <algo>`, `--decompress <algo>`, `--level <N>`
+- Libraries: flate2, zstd, brotli, lz4, snap, xz2
+
+### Hashing Support
+- 24 algorithms total:
+  - 16 cryptographic: MD5, SHA-2 family, SHA-3 family, Keccak, BLAKE2/3
+  - 4 CRC checksums: CRC16, CRC32, CRC32C, CRC64
+  - 4 xxHash: xxHash32, xxHash64, xxHash3-64, xxHash3-128
+- Pure Rust implementations (RustCrypto, crc, twox-hash)
+- CLI: `--hash <algo>` with optional encoding via `-e`
+- Default hex output, or encode hash with any dictionary
+
+### Dictionary Auto-Detection
+- Automatically identify encoding dictionary from input
+- CLI: `--detect` with optional `--show-candidates <N>`
+- Supports base64, base32, hex, and pattern-based detection
+
+### Known Limitations
+- **Streaming mode**: Does NOT yet support compression or hashing
+  - Line 150-152 in main.rs: Explicit error if compression + streaming
+  - No hash integration with streaming mode
+  - TODO: Add streaming compression and streaming hashing support
 
 ## Code Style & Conventions
 
@@ -75,8 +109,8 @@ Performance targets:
 - **Minimal modifications**: Only change what's necessary to achieve the goal
 - **Preserve optimizations**: Fast lookup tables, pre-allocation, chunking patterns
 - **Match existing patterns**: Follow established encoder structure in `encoders/` directory
-- **No breaking changes**: Keep public API stable (encode, decode functions)
-- **Test coverage**: Run `cargo test` (38 tests) before committing
+- **No breaking changes**: Keep public API stable (encode, decode, hash, compress functions)
+- **Test coverage**: Run `cargo test` (73 tests as of 2024-11) before committing
 
 ### Dictionary-Related Code
 
@@ -85,6 +119,16 @@ When working with dictionaries:
 - ASCII-only dictionaries automatically get fast lookup tables in `Dictionary::new_with_mode_and_range()`
 - Always validate dictionary size matches mode requirements (power-of-two for Chunked)
 - Use `create_alphabet()` helper pattern in CLI code
+
+### Hashing Code
+
+When working with hashing:
+- All hash algorithms use `HashAlgorithm` enum in `src/hashing.rs`
+- Use appropriate library: RustCrypto (crypto), crc (checksums), twox-hash (xxHash)
+- xxHash3 modules: `twox_hash::xxhash3_64::Hasher`, `twox_hash::xxhash3_128::Hasher`
+- Hash output defaults to hex, or encode with `-e <dictionary>` flag
+- For xxHash32, cast to u32: `(hasher.finish() as u32).to_be_bytes()`
+- For xxHash3-128, use `finish_128()` method, not `finish_ext()`
 
 ### Performance-Critical Code
 
@@ -206,10 +250,13 @@ When implementing future features, maintain backward compatibility with existing
 ## Critical Files Reference
 
 - `src/lib.rs` - Public API surface, must remain stable
-- `src/main.rs` - CLI entry point and argument parsing
+- `src/main.rs` - CLI entry point and argument parsing (includes streaming mode handling)
 - `src/core/dictionary.rs` - Core Dictionary type with lookup optimization
 - `src/core/config.rs` - Configuration and EncodingMode enum
 - `src/encoders/*.rs` - Algorithm implementations for each mode
+- `src/compression.rs` - 6 compression algorithms (pure Rust)
+- `src/hashing.rs` - 24 hash algorithms (crypto, CRC, xxHash)
+- `src/detection.rs` - Dictionary auto-detection logic
 - `dictionaries.toml` - Built-in dictionary definitions
 - `benches/encoding.rs` - Performance benchmarks
 
@@ -221,6 +268,10 @@ When implementing future features, maintain backward compatibility with existing
 - `docs/CUSTOM_DICTIONARIES.md` - User dictionary creation guide
 - `docs/STREAMING.md` - Large file processing documentation
 - `docs/PERFORMANCE.md` - Optimization implementation details
+- `docs/COMPRESSION.md` - Compression algorithms and usage
+- `docs/HASHING.md` - Hash algorithms, performance comparison, use cases
+- `docs/DETECTION.md` - Auto-detection feature documentation
 - `OPTIMIZATION_SUMMARY.md` - Recent performance optimization work
+- `COMPRESSION_FEATURE.md` - Compression implementation details
 
 When updating functionality, keep relevant documentation in sync.
