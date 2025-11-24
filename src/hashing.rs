@@ -3,6 +3,8 @@ use sha3::{Sha3_224, Sha3_256, Sha3_384, Sha3_512, Keccak224, Keccak256, Keccak3
 use blake2::{Blake2b512, Blake2s256};
 use blake3::Hasher as Blake3Hasher;
 use md5::Md5;
+use twox_hash::{XxHash32, XxHash64};
+use std::hash::Hasher;
 
 /// Supported hash algorithms.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -23,6 +25,14 @@ pub enum HashAlgorithm {
     Blake2b,
     Blake2s,
     Blake3,
+    // CRC variants
+    Crc32,
+    Crc32c,
+    Crc16,
+    Crc64,
+    // xxHash variants
+    XxHash32,
+    XxHash64,
 }
 
 impl HashAlgorithm {
@@ -45,6 +55,12 @@ impl HashAlgorithm {
             "blake2b" | "blake2b-512" => Ok(HashAlgorithm::Blake2b),
             "blake2s" | "blake2s-256" => Ok(HashAlgorithm::Blake2s),
             "blake3" => Ok(HashAlgorithm::Blake3),
+            "crc32" => Ok(HashAlgorithm::Crc32),
+            "crc32c" => Ok(HashAlgorithm::Crc32c),
+            "crc16" => Ok(HashAlgorithm::Crc16),
+            "crc64" => Ok(HashAlgorithm::Crc64),
+            "xxhash32" | "xxh32" => Ok(HashAlgorithm::XxHash32),
+            "xxhash64" | "xxh64" => Ok(HashAlgorithm::XxHash64),
             _ => Err(format!("Unknown hash algorithm: {}", s)),
         }
     }
@@ -67,6 +83,12 @@ impl HashAlgorithm {
             HashAlgorithm::Blake2b => "blake2b",
             HashAlgorithm::Blake2s => "blake2s",
             HashAlgorithm::Blake3 => "blake3",
+            HashAlgorithm::Crc32 => "crc32",
+            HashAlgorithm::Crc32c => "crc32c",
+            HashAlgorithm::Crc16 => "crc16",
+            HashAlgorithm::Crc64 => "crc64",
+            HashAlgorithm::XxHash32 => "xxhash32",
+            HashAlgorithm::XxHash64 => "xxhash64",
         }
     }
 
@@ -89,6 +111,12 @@ impl HashAlgorithm {
             HashAlgorithm::Blake2b => 64,
             HashAlgorithm::Blake2s => 32,
             HashAlgorithm::Blake3 => 32,
+            HashAlgorithm::Crc16 => 2,
+            HashAlgorithm::Crc32 => 4,
+            HashAlgorithm::Crc32c => 4,
+            HashAlgorithm::Crc64 => 8,
+            HashAlgorithm::XxHash32 => 4,
+            HashAlgorithm::XxHash64 => 8,
         }
     }
 }
@@ -176,6 +204,36 @@ pub fn hash(data: &[u8], algorithm: HashAlgorithm) -> Vec<u8> {
             hasher.update(data);
             hasher.finalize().as_bytes().to_vec()
         }
+        HashAlgorithm::Crc16 => {
+            let crc = crc::Crc::<u16>::new(&crc::CRC_16_IBM_SDLC);
+            let result = crc.checksum(data);
+            result.to_be_bytes().to_vec()
+        }
+        HashAlgorithm::Crc32 => {
+            let crc = crc::Crc::<u32>::new(&crc::CRC_32_ISO_HDLC);
+            let result = crc.checksum(data);
+            result.to_be_bytes().to_vec()
+        }
+        HashAlgorithm::Crc32c => {
+            let crc = crc::Crc::<u32>::new(&crc::CRC_32_ISCSI);
+            let result = crc.checksum(data);
+            result.to_be_bytes().to_vec()
+        }
+        HashAlgorithm::Crc64 => {
+            let crc = crc::Crc::<u64>::new(&crc::CRC_64_ECMA_182);
+            let result = crc.checksum(data);
+            result.to_be_bytes().to_vec()
+        }
+        HashAlgorithm::XxHash32 => {
+            let mut hasher = XxHash32::with_seed(0);
+            hasher.write(data);
+            (hasher.finish() as u32).to_be_bytes().to_vec()
+        }
+        HashAlgorithm::XxHash64 => {
+            let mut hasher = XxHash64::with_seed(0);
+            hasher.write(data);
+            hasher.finish().to_be_bytes().to_vec()
+        }
     }
 }
 
@@ -257,5 +315,58 @@ mod tests {
         assert_eq!(HashAlgorithm::Sha256.output_size(), 32);
         assert_eq!(HashAlgorithm::Sha512.output_size(), 64);
         assert_eq!(HashAlgorithm::Blake3.output_size(), 32);
+        assert_eq!(HashAlgorithm::Crc16.output_size(), 2);
+        assert_eq!(HashAlgorithm::Crc32.output_size(), 4);
+        assert_eq!(HashAlgorithm::Crc64.output_size(), 8);
+        assert_eq!(HashAlgorithm::XxHash32.output_size(), 4);
+        assert_eq!(HashAlgorithm::XxHash64.output_size(), 8);
+    }
+    
+    #[test]
+    fn test_crc32() {
+        let data = b"hello world";
+        let result = hash(data, HashAlgorithm::Crc32);
+        assert_eq!(result.len(), 4);
+        // CRC32 is deterministic
+        let result2 = hash(data, HashAlgorithm::Crc32);
+        assert_eq!(result, result2);
+    }
+    
+    #[test]
+    fn test_crc32c() {
+        let data = b"hello world";
+        let result = hash(data, HashAlgorithm::Crc32c);
+        assert_eq!(result.len(), 4);
+    }
+    
+    #[test]
+    fn test_crc16() {
+        let data = b"hello world";
+        let result = hash(data, HashAlgorithm::Crc16);
+        assert_eq!(result.len(), 2);
+    }
+    
+    #[test]
+    fn test_crc64() {
+        let data = b"hello world";
+        let result = hash(data, HashAlgorithm::Crc64);
+        assert_eq!(result.len(), 8);
+    }
+    
+    #[test]
+    fn test_xxhash32() {
+        let data = b"hello world";
+        let result = hash(data, HashAlgorithm::XxHash32);
+        assert_eq!(result.len(), 4);
+        // xxHash is deterministic with same seed
+        let result2 = hash(data, HashAlgorithm::XxHash32);
+        assert_eq!(result, result2);
+    }
+    
+    #[test]
+    fn test_xxhash64() {
+        let data = b"hello world";
+        let result = hash(data, HashAlgorithm::XxHash64);
+        assert_eq!(result.len(), 8);
     }
 }
