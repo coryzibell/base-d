@@ -21,13 +21,17 @@ struct Cli {
     #[arg(short = 'c', long)]
     compress: Option<String>,
     
-    /// Decompress data after decoding (gzip, zstd, brotli, lz4)
+    /// Decompress data after decoding (gzip, zstd, brotli, lz4, snappy, lzma)
     #[arg(long)]
     decompress: Option<String>,
     
     /// Compression level (algorithm-specific, typically 1-9)
     #[arg(long)]
     level: Option<u32>,
+    
+    /// Compute hash of input data (md5, sha256, sha512, blake3, etc.)
+    #[arg(long)]
+    hash: Option<String>,
     
     /// Output raw binary data (no encoding after compression)
     #[arg(short = 'r', long)]
@@ -228,13 +232,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         data = base_d::decompress(&data, algo)?;
     }
     
-    // Step 3: Compress if requested
+    // Step 3: Hash if requested
+    if let Some(hash_name) = &cli.hash {
+        let hash_algo = base_d::HashAlgorithm::from_str(hash_name)?;
+        let hash_output = base_d::hash(&data, hash_algo);
+        
+        // If encoding specified, encode the hash; otherwise output as hex
+        if let Some(encode_name) = &cli.encode {
+            let encode_alphabet = create_alphabet(encode_name)?;
+            let encoded = encode(&hash_output, &encode_alphabet);
+            println!("{}", encoded);
+        } else {
+            // Default to hex output for hashes
+            for byte in hash_output {
+                print!("{:02x}", byte);
+            }
+            println!();
+        }
+        return Ok(());
+    }
+    
+    // Step 4: Compress if requested
     if let Some(algo) = compress_algo {
         let level = get_compression_level(algo);
         data = base_d::compress(&data, algo, level)?;
     }
     
-    // Step 4: Encode if requested, or output raw/default
+    // Step 5: Encode if requested, or output raw/default
     if cli.raw {
         // Raw binary output
         io::stdout().write_all(&data)?;
