@@ -13,6 +13,7 @@ base-d is a flexible encoding framework that goes far beyond traditional base64.
 
 - **Numerous built-in dictionaries** - From RFC 4648 standards to hieroglyphics, emoji, Matrix-style base256, and a 1024-character CJK dictionary
 - **3 encoding modes** - Mathematical, chunked (RFC-compliant), and byte-range
+- **Auto-detection** - Automatically identify which dictionary was used to encode data
 - **Compression support** - Built-in gzip, zstd, brotli, and lz4 compression with configurable levels
 - **Custom dictionaries** - Define your own via TOML configuration
 - **Streaming support** - Memory-efficient processing for large files
@@ -40,6 +41,7 @@ base-d is a flexible encoding framework that goes far beyond traditional base64.
 ### Advanced Capabilities
 
 - **Streaming Mode** - Process multi-GB files with constant 4KB memory usage
+- **Dictionary Detection** - Automatically identify encoding format without prior knowledge
 - **Compression Pipeline** - Compress before encoding with gzip, zstd, brotli, or lz4
 - **User Configuration** - Load custom dictionaries from `~/.config/base-d/dictionaries.toml`
 - **Project-Local Config** - Override dictionaries per-project with `./dictionaries.toml`
@@ -79,6 +81,12 @@ echo "Wake up, Neo" | base-d -e base256_matrix
 
 # Enter the Matrix (live streaming random Matrix code)
 base-d --neo
+
+# Auto-detect dictionary and decode
+echo "SGVsbG8sIFdvcmxkIQ==" | base-d --detect
+
+# Show top candidates with confidence scores
+base-d --detect --show-candidates 5 input.txt
 
 # Transcode between dictionaries (decode from one, encode to another)
 echo "SGVsbG8=" | base-d -d base64 -e hex

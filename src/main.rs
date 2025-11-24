@@ -33,6 +33,14 @@ struct Cli {
     #[arg(short = 'r', long)]
     raw: bool,
     
+    /// Auto-detect dictionary from input and decode
+    #[arg(long)]
+    detect: bool,
+    
+    /// Show top N candidate dictionaries when using --detect
+    #[arg(long, value_name = "N")]
+    show_candidates: Option<usize>,
+    
     /// File to process (if not provided, reads from stdin)
     #[arg(value_name = "FILE")]
     file: Option<PathBuf>,
@@ -61,6 +69,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(alphabet_opt) = &cli.neo {
         let alphabet_name = alphabet_opt.as_deref().unwrap_or("base256_matrix");
         return matrix_mode(&config, alphabet_name);
+    }
+    
+    // Handle --detect mode (auto-detect dictionary)
+    if cli.detect {
+        return detect_mode(&config, &cli);
     }
     
     // Handle list command
@@ -326,5 +339,71 @@ fn matrix_mode(config: &DictionariesConfig, alphabet_name: &str) -> Result<(), B
         // Sleep for half a second
         thread::sleep(Duration::from_millis(500));
     }
+}
+
+fn detect_mode(config: &DictionariesConfig, cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
+    use base_d::DictionaryDetector;
+    
+    // Read input
+    let input = if let Some(file_path) = &cli.file {
+        fs::read_to_string(file_path)?
+    } else {
+        let mut buffer = String::new();
+        io::stdin().read_to_string(&mut buffer)?;
+        buffer
+    };
+    
+    // Create detector and detect
+    let detector = DictionaryDetector::new(config)?;
+    let matches = detector.detect(input.trim());
+    
+    if matches.is_empty() {
+        eprintln!("Could not detect dictionary - no matches found.");
+        eprintln!("The input may not be encoded data, or uses an unknown dictionary.");
+        std::process::exit(1);
+    }
+    
+    // If --show-candidates is specified, show top N candidates
+    if let Some(n) = cli.show_candidates {
+        println!("Top {} candidate dictionaries:\n", n);
+        for (i, m) in matches.iter().take(n).enumerate() {
+            println!("{}. {} (confidence: {:.1}%)", 
+                i + 1, 
+                m.name, 
+                m.confidence * 100.0
+            );
+        }
+        return Ok(());
+    }
+    
+    // Otherwise, use the best match to decode
+    let best_match = &matches[0];
+    
+    // Show what was detected (to stderr so it doesn't interfere with output)
+    eprintln!("Detected: {} (confidence: {:.1}%)", 
+        best_match.name, 
+        best_match.confidence * 100.0
+    );
+    
+    // If confidence is low, warn the user
+    if best_match.confidence < 0.7 {
+        eprintln!("Warning: Low confidence detection. Results may be incorrect.");
+    }
+    
+    // Decode using the detected dictionary
+    let decoded = decode(input.trim(), &best_match.dictionary)?;
+    
+    // Handle decompression if requested
+    let output = if let Some(decompress_name) = &cli.decompress {
+        let algo = base_d::CompressionAlgorithm::from_str(decompress_name)?;
+        base_d::decompress(&decoded, algo)?
+    } else {
+        decoded
+    };
+    
+    // Output the decoded data
+    io::stdout().write_all(&output)?;
+    
+    Ok(())
 }
 
