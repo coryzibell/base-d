@@ -3,6 +3,7 @@ use clap::Parser;
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
+use hex;
 
 #[derive(Parser)]
 #[command(name = "base-d")]
@@ -147,37 +148,76 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .transpose()?;
     
     // Validate flags
-    if cli.stream && (compress_algo.is_some() || decompress_algo.is_some()) {
-        return Err("Streaming mode is not yet supported with compression".into());
-    }
-    
     if cli.raw && cli.encode.is_some() {
         return Err("Cannot use --raw with --encode (output would not be raw)".into());
     }
     
-    // Handle streaming mode separately (no compression support yet)
+    // Handle streaming mode separately (now with compression/hashing support)
     if cli.stream {
         if let Some(decode_name) = &cli.decode {
             use base_d::StreamingDecoder;
             let decode_alphabet = create_alphabet(decode_name)?;
             let mut decoder = StreamingDecoder::new(&decode_alphabet, io::stdout());
-            if let Some(file_path) = &cli.file {
-                let mut file = fs::File::open(file_path)?;
-                decoder.decode(&mut file)?;
-            } else {
-                decoder.decode(&mut io::stdin())?;
+            
+            // Add decompression if specified
+            if let Some(algo) = decompress_algo {
+                decoder = decoder.with_decompression(algo);
             }
+            
+            // Add hashing if specified  
+            if let Some(hash_name) = &cli.hash {
+                let hash_algo = base_d::HashAlgorithm::from_str(hash_name)?;
+                decoder = decoder.with_hashing(hash_algo);
+            }
+            
+            let hash = if let Some(file_path) = &cli.file {
+                let mut file = fs::File::open(file_path)?;
+                decoder.decode(&mut file).map_err(|e| format!("{:?}", e))?
+            } else {
+                decoder.decode(&mut io::stdin()).map_err(|e| format!("{:?}", e))?
+            };
+            
+            // Print hash if computed
+            if let Some(hash_bytes) = hash {
+                if let Some(encode_name) = &cli.encode {
+                    let encode_alphabet = create_alphabet(encode_name)?;
+                    let hash_encoded = encode(&hash_bytes, &encode_alphabet);
+                    eprintln!("Hash: {}", hash_encoded);
+                } else {
+                    eprintln!("Hash: {}", hex::encode(hash_bytes));
+                }
+            }
+            
             return Ok(());
         } else if let Some(encode_name) = &cli.encode {
             use base_d::StreamingEncoder;
             let encode_alphabet = create_alphabet(encode_name)?;
             let mut encoder = StreamingEncoder::new(&encode_alphabet, io::stdout());
-            if let Some(file_path) = &cli.file {
-                let mut file = fs::File::open(file_path)?;
-                encoder.encode(&mut file)?;
-            } else {
-                encoder.encode(&mut io::stdin())?;
+            
+            // Add compression if specified
+            if let Some(algo) = compress_algo {
+                let level = cli.level.unwrap_or(6);
+                encoder = encoder.with_compression(algo, level);
             }
+            
+            // Add hashing if specified
+            if let Some(hash_name) = &cli.hash {
+                let hash_algo = base_d::HashAlgorithm::from_str(hash_name)?;
+                encoder = encoder.with_hashing(hash_algo);
+            }
+            
+            let hash = if let Some(file_path) = &cli.file {
+                let mut file = fs::File::open(file_path)?;
+                encoder.encode(&mut file).map_err(|e| format!("{}", e))?
+            } else {
+                encoder.encode(&mut io::stdin()).map_err(|e| format!("{}", e))?
+            };
+            
+            // Print hash if computed
+            if let Some(hash_bytes) = hash {
+                eprintln!("Hash: {}", hex::encode(hash_bytes));
+            }
+            
             return Ok(());
         } else {
             return Err("Streaming mode requires either --encode or --decode".into());
