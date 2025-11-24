@@ -14,7 +14,7 @@ base-d --neo
 
 - **Cross-platform random generation** using `rand` crate
 - **Terminal-aware width detection** with `terminal_size` crate
-- **base256_matrix alphabet**: 256 Japanese/geometric characters
+- **base256_matrix dictionary**: 256 Japanese/geometric characters
 - **500ms refresh rate**: Smooth streaming effect
 - **Green ANSI colors**: Classic Matrix aesthetic
 - **Efficient encoding**: One line at a time
@@ -27,7 +27,7 @@ commit 77d03f4
 feat: Add Matrix mode (--neo) and performance optimizations
 
 - Matrix mode with cross-platform random generation
-- base256_matrix alphabet (like hex, both modes identical)
+- base256_matrix dictionary (like hex, both modes identical)
 - Performance optimizations (5x faster decoding)
 - Comprehensive benchmark suite
 - 44 tests passing
@@ -92,16 +92,16 @@ base-d --neo --color-map rainbow       # Full spectrum
 
 ---
 
-### Issue #21: Alphabet Selection for Matrix Mode
+### Issue #21: Dictionary Selection for Matrix Mode
 **Priority**: High | **Complexity**: Low
 
-Choose which alphabet to display:
+Choose which dictionary to display:
 ```bash
-base-d --neo --alphabet base64         # ASCII Matrix
-base-d --neo --alphabet emoji_faces    # Emoji Matrix
-base-d --neo --alphabet hieroglyphs    # Ancient Matrix
-base-d --neo --alphabet base1024       # Dense CJK Matrix
-base-d --neo --alphabet cards          # Playing card Matrix
+base-d --neo --dictionary base64         # ASCII Matrix
+base-d --neo --dictionary emoji_faces    # Emoji Matrix
+base-d --neo --dictionary hieroglyphs    # Ancient Matrix
+base-d --neo --dictionary base1024       # Dense CJK Matrix
+base-d --neo --dictionary cards          # Playing card Matrix
 ```
 
 **Examples**:
@@ -111,14 +111,14 @@ base-d --neo --alphabet cards          # Playing card Matrix
 
 **Benefit**: 35 different visual styles, testing, fun
 
-**Implementation**: Reuse existing alphabet system
+**Implementation**: Reuse existing dictionary system
 
 ---
 
-### Issue #22: Dynamic Alphabet Switching
+### Issue #22: Dynamic Dictionary Switching
 **Priority**: Medium | **Complexity**: High
 
-Automatically switch alphabets during streaming:
+Automatically switch dictionaries during streaming:
 
 #### Timer-Based
 ```bash
@@ -134,8 +134,8 @@ base-d --neo --entropy-based           # Randomness-based
 ```
 
 **Logic Examples**:
-- **High entropy** → Complex alphabets (base1024)
-- **Low entropy** → Simple alphabets (binary, hex)
+- **High entropy** → Complex dictionaries (base1024)
+- **Low entropy** → Simple dictionaries (binary, hex)
 - **ASCII range** → Emoji, cards
 - **Binary data** → Hieroglyphs, cuneiform
 
@@ -155,12 +155,12 @@ base-d --neo --entropy-based           # Randomness-based
 
 **Benefits**:
 - Never boring
-- Showcases all alphabets
+- Showcases all dictionaries
 - Data pattern visualization
 - Hypnotic effect
 
 **Implementation**:
-- Alphabet pool
+- Dictionary pool
 - Timer or data triggers
 - Entropy calculation
 - Smooth transitions
@@ -170,7 +170,7 @@ base-d --neo --entropy-based           # Randomness-based
 ## Implementation Priority
 
 ### Phase 1: Easy Wins
-1. **Issue #21**: Alphabet selection (Low complexity, high value)
+1. **Issue #21**: Dictionary selection (Low complexity, high value)
 2. **Issue #19**: Theme support (Low complexity, good UX)
 
 ### Phase 2: Visual Enhancement
@@ -194,7 +194,7 @@ base-d --neo --entropy-based           # Randomness-based
 ### Performance Impact
 - **Current**: Minimal (one line encoding per 500ms)
 - **Color mapping**: Small overhead (color lookup)
-- **Alphabet switching**: Negligible (alphabet reload)
+- **Dictionary switching**: Negligible (dictionary reload)
 
 ### Terminal Compatibility
 - ANSI colors: Wide support
@@ -218,7 +218,7 @@ base-d --neo --entropy-based           # Randomness-based
 ### Story 3: Variety
 *"As a user, I want to see different character styles so the Matrix mode doesn't get boring."*
 
-**Solution**: Issue #21 - Alphabet selection
+**Solution**: Issue #21 - Dictionary selection
 
 ### Story 4: Dynamic Experience
 *"As a user, I want the display to evolve automatically so it's always interesting."*
@@ -240,8 +240,8 @@ base-d --neo --entropy-based           # Randomness-based
 - [ ] Performance impact < 10%
 - [ ] Visually useful for pattern recognition
 
-### For Issue #21 (Alphabet Selection)
-- [ ] All 35 alphabets supported
+### For Issue #21 (Dictionary Selection)
+- [ ] All 35 dictionaries supported
 - [ ] Works with existing --neo mode
 - [ ] Default to base256_matrix
 - [ ] Clear error messages
@@ -268,9 +268,9 @@ base-d --neo --entropy-based           # Randomness-based
 - Performance benchmarks
 - Terminal compatibility tests
 
-### Issue #21 (Alphabet Selection)
-- Test with all 35 alphabets
-- Verify error handling for invalid alphabets
+### Issue #21 (Dictionary Selection)
+- Test with all 35 dictionaries
+- Verify error handling for invalid dictionaries
 - Check terminal width handling
 - Test Unicode rendering
 
@@ -300,8 +300,8 @@ Potential questions for users:
 
 1. What themes/colors would you want?
 2. What color mapping schemes make sense?
-3. Which alphabets look best in Matrix mode?
-4. How fast/slow should alphabet switching be?
+3. Which dictionaries look best in Matrix mode?
+4. How fast/slow should dictionary switching be?
 5. What data patterns would you visualize?
 
 ---

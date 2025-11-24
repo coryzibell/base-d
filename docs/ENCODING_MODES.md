@@ -8,7 +8,7 @@ base-d supports two fundamentally different encoding algorithms, each optimized 
 
 1. Interpret the entire input as one big-endian integer
 2. Convert that number to the target base using division/modulo
-3. Map remainders to alphabet characters
+3. Map remainders to dictionary characters
 
 ### Example: "Hi" with base-64
 
@@ -26,7 +26,7 @@ Result: Ehh (LSB first, then reversed)
 
 ### Characteristics
 
-✅ Works with ANY alphabet size (52, 7, 100, etc.)
+✅ Works with ANY dictionary size (52, 7, 100, etc.)
 ✅ No padding needed
 ✅ Elegant and mathematically pure
 ✅ Leading zeros are preserved
@@ -37,7 +37,7 @@ Result: Ehh (LSB first, then reversed)
 
 - Playing cards (52 characters)
 - DNA sequences (4 characters)
-- Custom emoji alphabets
+- Custom emoji dictionaries
 - Any creative/esoteric encoding
 
 ## Bit-Chunking (RFC-compatible)
@@ -57,7 +57,7 @@ Split into 6-bit chunks:
   010010 000110 1001??  (pad last group)
      18      6     36
 
-Map to alphabet:
+Map to dictionary:
   18 → 'S'
    6 → 'G'
   36 → 'k'
@@ -72,7 +72,7 @@ Result: SGk=
 ✅ Streamable (process chunks independently)
 ✅ Constant encoding overhead
 ✅ Industry standard for data transport
-❌ Requires power-of-2 alphabet sizes
+❌ Requires power-of-2 dictionary sizes
 ❌ Needs padding character
 
 ### Best For
@@ -86,7 +86,7 @@ Result: SGk=
 
 | Feature | Mathematical | Chunked |
 |---------|-------------|---------|
-| Alphabet size | Any | Must be power of 2 |
+| Dictionary size | Any | Must be power of 2 |
 | Padding | No | Yes (optional) |
 | Output length | Variable | Predictable |
 | Leading zeros | Preserved | N/A |
@@ -96,10 +96,10 @@ Result: SGk=
 
 ## Configuration
 
-Choose the mode in `alphabets.toml`:
+Choose the mode in `dictionaries.toml`:
 
 ```toml
-[alphabets.my_alphabet]
+[dictionaries.my_alphabet]
 chars = "ABC..."
 mode = "base_conversion"  # or "chunked"
 padding = "="  # optional, only for chunked mode
@@ -116,7 +116,7 @@ echo "Data" | base-d -a cards
 echo "Data" | base-d -a base64  
 # Output: RGF0YQo=
 
-# Same alphabet, different mode
+# Same dictionary, different mode
 echo "Data" | base-d -a base64_math
 # Output: BEF0YQo= (no padding, different encoding)
 ```

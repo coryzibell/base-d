@@ -1,10 +1,10 @@
-use base_d::{Alphabet, encode, decode};
+use base_d::{Dictionary, encode, decode};
 
 fn main() {
-    // Create a custom alphabet with just 4 DNA bases
-    let dna_alphabet = Alphabet::from_str("ACGT").unwrap();
+    // Create a custom dictionary with just 4 DNA bases
+    let dna_alphabet = Dictionary::from_str("ACGT").unwrap();
     
-    println!("DNA Alphabet (base-4)");
+    println!("DNA Dictionary (base-4)");
     println!("=====================\n");
     
     // Encode some data

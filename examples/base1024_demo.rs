@@ -1,26 +1,26 @@
-use base_d::{AlphabetsConfig, Alphabet, encode, decode};
+use base_d::{DictionariesConfig, Dictionary, encode, decode};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Load base1024 alphabet - a 1024-character alphabet using CJK ideographs
-    let config = AlphabetsConfig::load_default()?;
-    let base1024_config = config.get_alphabet("base1024").unwrap();
+    // Load base1024 dictionary - a 1024-character dictionary using CJK ideographs
+    let config = DictionariesConfig::load_default()?;
+    let base1024_config = config.get_dictionary("base1024").unwrap();
     
     let chars: Vec<char> = base1024_config.chars.chars().collect();
-    let alphabet = Alphabet::new_with_mode(
+    let dictionary = Dictionary::new_with_mode(
         chars,
         base1024_config.mode.clone(),
         None
     )?;
     
-    println!("Base1024 Alphabet Demo");
+    println!("Base1024 Dictionary Demo");
     println!("======================");
-    println!("Alphabet size: {} characters", alphabet.base());
-    println!("Encoding mode: {:?}", alphabet.mode());
+    println!("Dictionary size: {} characters", dictionary.base());
+    println!("Encoding mode: {:?}", dictionary.mode());
     println!();
     
     // Demonstrate encoding efficiency
     let data = b"Hello, World! This is a test of the base1024 encoding system.";
-    let encoded = encode(data, &alphabet);
+    let encoded = encode(data, &dictionary);
     
     println!("Original data: {} bytes", data.len());
     println!("Original text: {}", String::from_utf8_lossy(data));
@@ -31,10 +31,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!();
     
     // Compare with base64
-    let base64_config = config.get_alphabet("base64").unwrap();
+    let base64_config = config.get_dictionary("base64").unwrap();
     let base64_chars: Vec<char> = base64_config.chars.chars().collect();
     let base64_padding = base64_config.padding.as_ref().and_then(|s| s.chars().next());
-    let base64_alphabet = Alphabet::new_with_mode(
+    let base64_alphabet = Dictionary::new_with_mode(
         base64_chars,
         base64_config.mode.clone(),
         base64_padding
@@ -52,7 +52,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!();
     
     // Decode
-    let decoded = decode(&encoded, &alphabet)?;
+    let decoded = decode(&encoded, &dictionary)?;
     assert_eq!(decoded, data);
     
     println!("Decoded successfully!");

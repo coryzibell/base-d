@@ -2,7 +2,7 @@
 
 ## Overview
 
-**base256_matrix** is a special 256-character alphabet that uses Japanese characters and Unicode shapes to create a "Matrix"-style encoding. It has the unique property of working identically in both mathematical and chunked encoding modes - just like hexadecimal.
+**base256_matrix** is a special 256-character dictionary that uses Japanese characters and Unicode shapes to create a "Matrix"-style encoding. It has the unique property of working identically in both mathematical and chunked encoding modes - just like hexadecimal.
 
 ## The Magic Property
 
@@ -16,31 +16,34 @@ This is the same mathematical property that makes hexadecimal work in both modes
 
 ## Character Composition
 
-The alphabet uses 256 carefully selected Unicode characters:
+The dictionary uses 256 carefully selected Unicode characters, optimized for consistent terminal grid alignment using half-width characters:
 
 | Block | Count | Range | Examples |
 |-------|-------|-------|----------|
-| **Hiragana** | 83 | U+3041-U+3093 | ぁあぃいぅうぇえぉおか |
-| **Katakana** | 96 | U+30A0-U+30FF | ゠ァアィイゥウェエォオカ |
-| **Box Drawing** | 32 | U+2500-U+251F | ─━│┃┄┅┆┇┈┉┊┋ |
-| **Geometric Shapes** | 16 | U+25A0-U+25AF | ■□▢▣▤▥▦▧▨▩▪▫ |
-| **Block Elements** | 32 | U+2580-U+259F | ▀▁▂▃▄▅▆▇█▉▊▋ |
+| **Half-width Katakana** | 63 | U+FF61-U+FF9F | ｡｢｣､･ｦｧｨｩｪｫｬｭｮｯｰｱｲｳｴｵ |
+| **Greek Letters** | 32 | U+03B1-U+03D6 | αβγδεζηθικλμνξοπρστυφχψωΑΒΓΔΕΖΗΘ |
+| **Mathematical Symbols** | 25 | Various | +-×÷=≠≤≥∑∏√∫∂∞∈∉∪∩⊂⊃⊆⊇∧∨¬ |
+| **Box Drawing** | 32 | U+2500-U+256B | ─│┌┐└┘├┤┬┴┼═║╔╗╚╝╠╣╦╩╬┏┓┗┛┣┫┳┻╋ |
+| **Block Elements** | 32 | U+2580-U+259F | ▀▁▂▃▄▅▆▇█▉▊▋▌▍▎▏▐░▒▓▔▕▖▗▘▙▚▛▜▝▞▟ |
+| **Arrows** | 32 | U+2190-U+21AF | ←↑→↓↔↕↖↗↘↙↚↛↜↝↞↟↠↡↢↣↤↥↦↧↨↩↪↫↬↭↮↯ |
+| **Geometric Shapes** | 30 | U+25CB-U+25EA | ○●◌◍◎◐◑◒◓◔◕◖◗◘◙◚◛◜◝◞◟◠◡◢◣◤◥◦◧◨◩ |
+| **Card Suits & Misc** | 10 | Various | ♠♥♦♣★☆◆◇■□ |
 
-Total: **256 characters** (trimmed to exactly 256 from 259 available)
+Total: **256 characters** (terminal-optimized for grid display)
 
 ## Visual Style
 
-The encoding looks like the falling code from The Matrix:
+The encoding looks like the falling code from The Matrix, with half-width characters for better terminal alignment:
 
 ```
 Original: Wake up, Neo...
-Encoded:  イギジゲちヂソねちわゲゼははは
+Encoded:  Α×∂≤ﾁ∧∩ﾍﾁπ≤∪ﾏﾏﾏｫ
 
-Original: Follow the white rabbit
-Encoded:  ょゼススゼツちチサゲちツサザチゲちタギククザチ
+Original: The Matrix has you
+Encoded:  χ∏≤ﾁο×⊇⊃√─ﾁ∏×⊆ﾁ│∪∧ｫ
 
 Original: There is no spoon
-Encoded:  ァサゲタゲちザダちセゼちダソゼゼセ
+Encoded:  χ∏≤⊃≤ﾁ√⊆ﾁ∉∪ﾁ⊆∩∪∪∉ｫ
 ```
 
 ## Properties
@@ -86,30 +89,30 @@ echo "The Matrix has you" | base-d -e base256_matrix
 echo "ァサゲちゎギチタザヅちサギダちテゼヂぎか" | base-d -d base256_matrix
 # Output: The Matrix has you
 
-# List alphabets
+# List dictionaries
 base-d --list | grep matrix
 ```
 
 ### Library
 
 ```rust
-use base_d::{AlphabetsConfig, Alphabet, encode, decode};
+use base_d::{DictionariesConfig, Dictionary, encode, decode};
 
-let config = AlphabetsConfig::load_default()?;
-let matrix_config = config.get_alphabet("base256_matrix")?;
+let config = DictionariesConfig::load_default()?;
+let matrix_config = config.get_dictionary("base256_matrix")?;
 
 let chars: Vec<char> = matrix_config.chars.chars().collect();
-let alphabet = Alphabet::new_with_mode(
+let dictionary = Dictionary::new_with_mode(
     chars,
     matrix_config.mode.clone(),
     None
 )?;
 
 let data = b"Free your mind";
-let encoded = encode(data, &alphabet);
+let encoded = encode(data, &dictionary);
 // ょタゲゲちテゼヂタちズザセケ
 
-let decoded = decode(&encoded, &alphabet)?;
+let decoded = decode(&encoded, &dictionary)?;
 assert_eq!(decoded, data);
 ```
 
@@ -157,9 +160,10 @@ Both produce identical output:
 ### Configuration
 
 ```toml
-[alphabets.base256_matrix]
-chars = "ぁあぃいぅうぇえぉお..." # 256 characters
+[dictionaries.base256_matrix]
+chars = "｡｢｣､･ｦｧｨｩｪｫｬｭｮｯｰ..." # 256 half-width chars (Katakana, Greek, Math, Box, Block, Arrows, Geometric)
 mode = "chunked"  # or "base_conversion" - identical!
+# Terminal-optimized: half-width characters for consistent grid alignment
 ```
 
 ## Use Cases

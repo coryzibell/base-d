@@ -1,23 +1,23 @@
-use base_d::{AlphabetsConfig, Alphabet, encode, decode};
+use base_d::{DictionariesConfig, Dictionary, encode, decode};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("WELCOME TO THE MATRIX");
     println!("================================\n");
     
-    // Load Matrix base256 alphabet
-    let config = AlphabetsConfig::load_default()?;
-    let matrix_config = config.get_alphabet("base256_matrix").unwrap();
+    // Load Matrix base256 dictionary
+    let config = DictionariesConfig::load_default()?;
+    let matrix_config = config.get_dictionary("base256_matrix").unwrap();
     
     let chars: Vec<char> = matrix_config.chars.chars().collect();
-    let alphabet = Alphabet::new_with_mode(
+    let dictionary = Dictionary::new_with_mode(
         chars,
         matrix_config.mode.clone(),
         None
     )?;
     
-    println!("Alphabet: base256_matrix");
-    println!("Size: {} characters", alphabet.base());
-    println!("Mode: {:?}", alphabet.mode());
+    println!("Dictionary: base256_matrix");
+    println!("Size: {} characters", dictionary.base());
+    println!("Mode: {:?}", dictionary.mode());
     println!("Style: Katakana + Hiragana + Box Drawing + Geometric Shapes");
     println!();
     
@@ -33,10 +33,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("{}", title);
         println!("Original: {}", message);
         
-        let encoded = encode(message.as_bytes(), &alphabet);
+        let encoded = encode(message.as_bytes(), &dictionary);
         println!("Matrix:   {}", encoded);
         
-        let decoded = decode(&encoded, &alphabet)?;
+        let decoded = decode(&encoded, &dictionary)?;
         let decoded_text = String::from_utf8_lossy(&decoded);
         println!("Decoded:  {}", decoded_text);
         println!();
@@ -51,7 +51,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let test_data = b"Matrix";
     
     // Test with chunked mode
-    let chunked_alphabet = Alphabet::new_with_mode(
+    let chunked_alphabet = Dictionary::new_with_mode(
         matrix_config.chars.chars().collect(),
         base_d::EncodingMode::Chunked,
         None
@@ -59,7 +59,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let chunked_encoded = encode(test_data, &chunked_alphabet);
     
     // Test with mathematical mode
-    let math_alphabet = Alphabet::new_with_mode(
+    let math_alphabet = Dictionary::new_with_mode(
         matrix_config.chars.chars().collect(),
         base_d::EncodingMode::BaseConversion,
         None
@@ -87,16 +87,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("========================");
     let long_message = b"The Matrix has you... Follow the white rabbit. Knock, knock, Neo.";
     
-    let base64_config = config.get_alphabet("base64").unwrap();
+    let base64_config = config.get_dictionary("base64").unwrap();
     let base64_chars: Vec<char> = base64_config.chars.chars().collect();
     let base64_padding = base64_config.padding.as_ref().and_then(|s| s.chars().next());
-    let base64_alphabet = Alphabet::new_with_mode(
+    let base64_alphabet = Dictionary::new_with_mode(
         base64_chars,
         base64_config.mode.clone(),
         base64_padding
     )?;
     
-    let matrix_encoded = encode(long_message, &alphabet);
+    let matrix_encoded = encode(long_message, &dictionary);
     let base64_encoded = encode(long_message, &base64_alphabet);
     
     println!("Message: {} bytes", long_message.len());

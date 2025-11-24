@@ -4,7 +4,7 @@ use std::io::Write;
 fn main() -> std::io::Result<()> {
     let mut chars = Vec::new();
     
-    // Strategy: Create a Matrix-style 256-character alphabet
+    // Strategy: Create a Matrix-style 256-character dictionary
     // Using Katakana, Hiragana, and Unicode shapes that look "Matrix-like"
     
     // 1. Hiragana (83 chars) - U+3041 to U+3093
@@ -71,9 +71,9 @@ fn main() -> std::io::Result<()> {
     // Trim to exactly 256 characters
     chars.truncate(256);
     
-    println!("Generated {} characters for Matrix-style base256 alphabet", chars.len());
+    println!("Generated {} characters for Matrix-style base256 dictionary", chars.len());
     
-    // Create the alphabet string
+    // Create the dictionary string
     let alphabet_str: String = chars.iter().collect();
     
     // Write to file
@@ -81,7 +81,7 @@ fn main() -> std::io::Result<()> {
     writeln!(file, "[alphabets.base256_matrix]")?;
     writeln!(file, "chars = \"{}\"", alphabet_str)?;
     writeln!(file, "mode = \"chunked\"  # Can also use 'base_conversion' - both produce identical output!")?;
-    writeln!(file, "# Matrix-style 256-character alphabet")?;
+    writeln!(file, "# Matrix-style 256-character dictionary")?;
     writeln!(file, "# Uses: Hiragana, Katakana, Box Drawing, Geometric Shapes, Block Elements")?;
     writeln!(file, "# Special property: 8 bits % log2(256) = 8 % 8 = 0")?;
     writeln!(file, "# This means chunked and mathematical modes produce IDENTICAL output!")?;

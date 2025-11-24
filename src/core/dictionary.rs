@@ -3,13 +3,13 @@ use crate::core::config::EncodingMode;
 
 const MAX_LOOKUP_TABLE_SIZE: usize = 256;
 
-/// Represents an encoding alphabet with its characters and configuration.
+/// Represents an encoding dictionary with its characters and configuration.
 ///
-/// An alphabet defines the character set and encoding mode used for converting
+/// An dictionary defines the character set and encoding mode used for converting
 /// binary data to text. Supports three modes: mathematical base conversion,
 /// chunked (RFC 4648), and byte-range mapping.
 #[derive(Debug, Clone)]
-pub struct Alphabet {
+pub struct Dictionary {
     chars: Vec<char>,
     char_to_index: HashMap<char, usize>,
     // Fast lookup table for ASCII/extended ASCII characters
@@ -19,38 +19,38 @@ pub struct Alphabet {
     start_codepoint: Option<u32>,
 }
 
-impl Alphabet {
-    /// Creates a new alphabet with default settings (BaseConversion mode, no padding).
+impl Dictionary {
+    /// Creates a new dictionary with default settings (BaseConversion mode, no padding).
     ///
     /// # Arguments
     ///
-    /// * `chars` - Vector of characters to use in the alphabet
+    /// * `chars` - Vector of characters to use in the dictionary
     ///
     /// # Errors
     ///
-    /// Returns an error if the alphabet is empty or contains duplicate characters.
+    /// Returns an error if the dictionary is empty or contains duplicate characters.
     pub fn new(chars: Vec<char>) -> Result<Self, String> {
         Self::new_with_mode(chars, EncodingMode::BaseConversion, None)
     }
     
-    /// Creates a new alphabet with specified encoding mode and optional padding.
+    /// Creates a new dictionary with specified encoding mode and optional padding.
     ///
     /// # Arguments
     ///
-    /// * `chars` - Vector of characters to use in the alphabet
+    /// * `chars` - Vector of characters to use in the dictionary
     /// * `mode` - Encoding mode (BaseConversion, Chunked, or ByteRange)
     /// * `padding` - Optional padding character (typically '=' for RFC modes)
     ///
     /// # Errors
     ///
     /// Returns an error if:
-    /// - The alphabet is empty or contains duplicates
-    /// - Chunked mode is used with a non-power-of-two alphabet size
+    /// - The dictionary is empty or contains duplicates
+    /// - Chunked mode is used with a non-power-of-two dictionary size
     pub fn new_with_mode(chars: Vec<char>, mode: EncodingMode, padding: Option<char>) -> Result<Self, String> {
         Self::new_with_mode_and_range(chars, mode, padding, None)
     }
     
-    /// Creates a new alphabet with full configuration including byte-range support.
+    /// Creates a new dictionary with full configuration including byte-range support.
     ///
     /// # Arguments
     ///
@@ -81,7 +81,7 @@ impl Alphabet {
                     return Err("Start codepoint too high for 256-byte range".to_string());
                 }
                 
-                return Ok(Alphabet {
+                return Ok(Dictionary {
                     chars: Vec::new(),
                     char_to_index: HashMap::new(),
                     lookup_table: None,
@@ -95,18 +95,18 @@ impl Alphabet {
         }
         
         if chars.is_empty() {
-            return Err("Alphabet cannot be empty".to_string());
+            return Err("Dictionary cannot be empty".to_string());
         }
         
-        // Validate alphabet size for chunked mode
+        // Validate dictionary size for chunked mode
         if mode == EncodingMode::Chunked {
             let base = chars.len();
             if !base.is_power_of_two() {
-                return Err(format!("Chunked mode requires power-of-two alphabet size, got {}", base));
+                return Err(format!("Chunked mode requires power-of-two dictionary size, got {}", base));
             }
             // Additional check: ensure we have valid sizes for chunked mode
             if base != 2 && base != 4 && base != 8 && base != 16 && base != 32 && base != 64 && base != 128 && base != 256 {
-                return Err(format!("Chunked mode requires alphabet size of 2, 4, 8, 16, 32, 64, 128, or 256, got {}", base));
+                return Err(format!("Chunked mode requires dictionary size of 2, 4, 8, 16, 32, 64, 128, or 256, got {}", base));
             }
         }
         
@@ -115,24 +115,24 @@ impl Alphabet {
         for (i, &c) in chars.iter().enumerate() {
             // Check for duplicate characters
             if char_to_index.insert(c, i).is_some() {
-                return Err(format!("Duplicate character in alphabet: '{}' (U+{:04X})", c, c as u32));
+                return Err(format!("Duplicate character in dictionary: '{}' (U+{:04X})", c, c as u32));
             }
             
             // Check for invalid Unicode characters
             if c.is_control() && c != '\t' && c != '\n' && c != '\r' {
-                return Err(format!("Control character not allowed in alphabet: U+{:04X}", c as u32));
+                return Err(format!("Control character not allowed in dictionary: U+{:04X}", c as u32));
             }
             
             // Check for whitespace (except in specific cases)
             if c.is_whitespace() {
-                return Err(format!("Whitespace character not allowed in alphabet: '{}' (U+{:04X})", c, c as u32));
+                return Err(format!("Whitespace character not allowed in dictionary: '{}' (U+{:04X})", c, c as u32));
             }
         }
         
         // Validate padding character if present
         if let Some(pad) = padding {
             if char_to_index.contains_key(&pad) {
-                return Err(format!("Padding character '{}' conflicts with alphabet characters", pad));
+                return Err(format!("Padding character '{}' conflicts with dictionary characters", pad));
             }
             if pad.is_control() && pad != '\t' && pad != '\n' && pad != '\r' {
                 return Err(format!("Control character not allowed as padding: U+{:04X}", pad as u32));
@@ -150,7 +150,7 @@ impl Alphabet {
             None
         };
         
-        Ok(Alphabet {
+        Ok(Dictionary {
             chars,
             char_to_index,
             lookup_table,
@@ -160,17 +160,17 @@ impl Alphabet {
         })
     }
     
-    /// Creates an alphabet from a string of characters.
+    /// Creates an dictionary from a string of characters.
     ///
     /// # Arguments
     ///
-    /// * `s` - String containing the alphabet characters
+    /// * `s` - String containing the dictionary characters
     pub fn from_str(s: &str) -> Result<Self, String> {
         let chars: Vec<char> = s.chars().collect();
         Self::new(chars)
     }
     
-    /// Returns the base (radix) of the alphabet.
+    /// Returns the base (radix) of the dictionary.
     ///
     /// For ByteRange mode, always returns 256. Otherwise returns the number of characters.
     pub fn base(&self) -> usize {
@@ -180,7 +180,7 @@ impl Alphabet {
         }
     }
     
-    /// Returns the encoding mode of this alphabet.
+    /// Returns the encoding mode of this dictionary.
     pub fn mode(&self) -> &EncodingMode {
         &self.mode
     }
@@ -214,7 +214,7 @@ impl Alphabet {
     
     /// Decodes a character back to its digit value.
     ///
-    /// Returns `None` if the character is not in the alphabet.
+    /// Returns `None` if the character is not in the dictionary.
     pub fn decode_char(&self, c: char) -> Option<usize> {
         match self.mode {
             EncodingMode::ByteRange => {
@@ -248,7 +248,7 @@ mod tests {
     #[test]
     fn test_duplicate_character_detection() {
         let chars = vec!['a', 'b', 'c', 'a'];
-        let result = Alphabet::new(chars);
+        let result = Dictionary::new(chars);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Duplicate character"));
     }
@@ -256,7 +256,7 @@ mod tests {
     #[test]
     fn test_empty_alphabet() {
         let chars = vec![];
-        let result = Alphabet::new(chars);
+        let result = Dictionary::new(chars);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("cannot be empty"));
     }
@@ -264,7 +264,7 @@ mod tests {
     #[test]
     fn test_chunked_mode_power_of_two() {
         let chars = vec!['a', 'b', 'c'];  // 3 is not power of 2
-        let result = Alphabet::new_with_mode(chars, EncodingMode::Chunked, None);
+        let result = Dictionary::new_with_mode(chars, EncodingMode::Chunked, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("power-of-two"));
     }
@@ -277,7 +277,7 @@ mod tests {
                 // Use a wider range of Unicode characters
                 char::from_u32('A' as u32 + (i % 26) + ((i / 26) * 100)).unwrap()
             }).collect();
-            let result = Alphabet::new_with_mode(chars, EncodingMode::Chunked, None);
+            let result = Dictionary::new_with_mode(chars, EncodingMode::Chunked, None);
             assert!(result.is_ok(), "Size {} should be valid", size);
         }
     }
@@ -285,7 +285,7 @@ mod tests {
     #[test]
     fn test_control_character_rejection() {
         let chars = vec!['a', 'b', '\x00', 'c'];  // null character
-        let result = Alphabet::new(chars);
+        let result = Dictionary::new(chars);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Control character"));
     }
@@ -293,7 +293,7 @@ mod tests {
     #[test]
     fn test_whitespace_rejection() {
         let chars = vec!['a', 'b', ' ', 'c'];
-        let result = Alphabet::new(chars);
+        let result = Dictionary::new(chars);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Whitespace"));
     }
@@ -301,7 +301,7 @@ mod tests {
     #[test]
     fn test_padding_conflict_with_alphabet() {
         let chars = vec!['a', 'b', 'c', 'd'];
-        let result = Alphabet::new_with_mode(chars, EncodingMode::BaseConversion, Some('b'));
+        let result = Dictionary::new_with_mode(chars, EncodingMode::BaseConversion, Some('b'));
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.contains("Padding character"));
@@ -311,14 +311,14 @@ mod tests {
     #[test]
     fn test_valid_padding() {
         let chars = vec!['a', 'b', 'c', 'd'];
-        let result = Alphabet::new_with_mode(chars, EncodingMode::BaseConversion, Some('='));
+        let result = Dictionary::new_with_mode(chars, EncodingMode::BaseConversion, Some('='));
         assert!(result.is_ok());
     }
     
     #[test]
     fn test_byte_range_exceeds_unicode() {
         // Test with a start codepoint so high that start + 255 exceeds max valid Unicode (0x10FFFF)
-        let result = Alphabet::new_with_mode_and_range(
+        let result = Dictionary::new_with_mode_and_range(
             Vec::new(),
             EncodingMode::ByteRange,
             None,
@@ -329,7 +329,7 @@ mod tests {
     
     #[test]
     fn test_byte_range_valid_start() {
-        let result = Alphabet::new_with_mode_and_range(
+        let result = Dictionary::new_with_mode_and_range(
             Vec::new(),
             EncodingMode::ByteRange,
             None,
@@ -340,7 +340,7 @@ mod tests {
     
     #[test]
     fn test_byte_range_no_start_codepoint() {
-        let result = Alphabet::new_with_mode_and_range(
+        let result = Dictionary::new_with_mode_and_range(
             Vec::new(),
             EncodingMode::ByteRange,
             None,
@@ -354,7 +354,7 @@ mod tests {
     fn test_detailed_error_messages() {
         // Test that error messages include useful information
         let chars = vec!['a', 'b', 'a'];
-        let err = Alphabet::new(chars).unwrap_err();
+        let err = Dictionary::new(chars).unwrap_err();
         assert!(err.contains("'a'") || err.contains("U+"));
     }
 }

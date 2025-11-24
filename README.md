@@ -5,15 +5,15 @@
 [![Crates.io](https://img.shields.io/crates/v/base-d.svg)](https://crates.io/crates/base-d)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE-MIT)
 
-A universal, multi-alphabet encoding library and CLI tool for Rust. Encode binary data to 35+ alphabets including RFC standards, ancient scripts, emoji, playing cards, Matrix-style Japanese, and more.
+A universal, multi-dictionary encoding library and CLI tool for Rust. Encode binary data using numerous dictionaries including RFC standards, ancient scripts, emoji, playing cards, Matrix-style Japanese, and more.
 
 ## Overview
 
 base-d is a flexible encoding framework that goes far beyond traditional base64. It supports:
 
-- **35 built-in alphabets** - From RFC 4648 standards to hieroglyphics, emoji, Matrix-style base256, and a 1024-character CJK alphabet
+- **Numerous built-in dictionaries** - From RFC 4648 standards to hieroglyphics, emoji, Matrix-style base256, and a 1024-character CJK dictionary
 - **3 encoding modes** - Mathematical, chunked (RFC-compliant), and byte-range
-- **Custom alphabets** - Define your own via TOML configuration
+- **Custom dictionaries** - Define your own via TOML configuration
 - **Streaming support** - Memory-efficient processing for large files
 - **Library + CLI** - Use programmatically or from the command line
 - **High performance** - Optimized with fast lookup tables and efficient memory allocation
@@ -23,24 +23,24 @@ base-d is a flexible encoding framework that goes far beyond traditional base64.
 
 ### Multiple Encoding Modes
 
-1. **Mathematical Base Conversion** - Treats data as a large number, works with any alphabet size
+1. **Mathematical Base Conversion** - Treats data as a large number, works with any dictionary size
 2. **Chunked Mode** - RFC 4648 compatible (base64, base32, base16)
 3. **Byte Range Mode** - Direct 1:1 byte-to-emoji mapping (base100)
 
-### Extensive Alphabet Collection
+### Extensive Dictionary Collection
 
 - **Standards**: base64, base32, base16, base58 (Bitcoin), base85 (Git)
 - **Ancient Scripts**: Egyptian hieroglyphics, Sumerian cuneiform, Elder Futhark runes
 - **Game Pieces**: Playing cards, mahjong tiles, domino tiles, chess pieces
 - **Esoteric**: Alchemical symbols, zodiac signs, weather symbols, musical notation
 - **Emoji**: Face emoji, animal emoji, base100 (256 emoji range)
-- **Custom**: Define your own alphabets in TOML
+- **Custom**: Define your own dictionaries in TOML
 
 ### Advanced Capabilities
 
 - **Streaming Mode** - Process multi-GB files with constant 4KB memory usage
-- **User Configuration** - Load custom alphabets from `~/.config/base-d/alphabets.toml`
-- **Project-Local Config** - Override alphabets per-project with `./alphabets.toml`
+- **User Configuration** - Load custom dictionaries from `~/.config/base-d/dictionaries.toml`
+- **Project-Local Config** - Override dictionaries per-project with `./dictionaries.toml`
 - **Three Independent Algorithms** - Choose the right mode for your use case
 
 ## Quick Start
@@ -54,7 +54,7 @@ git clone https://github.com/yourusername/base-d
 cd base-d
 cargo build --release
 
-# List all 35 available alphabets
+# List all available dictionaries
 base-d --list
 
 # Encode with playing cards (default)
@@ -78,7 +78,7 @@ echo "Wake up, Neo" | base-d -e base256_matrix
 # Enter the Matrix (live streaming random Matrix code)
 base-d --neo
 
-# Transcode between alphabets (decode from one, encode to another)
+# Transcode between dictionaries (decode from one, encode to another)
 echo "SGVsbG8=" | base-d -d base64 -e hex
 echo "48656c6c6f" | base-d -d hex -e emoji_faces
 
@@ -107,17 +107,17 @@ base-d = "0.1"
 #### Basic Encoding/Decoding
 
 ```rust
-use base_d::{AlphabetsConfig, Alphabet, encode, decode};
+use base_d::{DictionariesConfig, Dictionary, encode, decode};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Load built-in alphabets
-    let config = AlphabetsConfig::load_default()?;
-    let alphabet_config = config.get_alphabet("base64").unwrap();
+    // Load built-in dictionaries
+    let config = DictionariesConfig::load_default()?;
+    let alphabet_config = config.get_dictionary("base64").unwrap();
     
-    // Create alphabet from config
+    // Create dictionary from config
     let chars: Vec<char> = alphabet_config.chars.chars().collect();
     let padding = alphabet_config.padding.as_ref().and_then(|s| s.chars().next());
-    let alphabet = Alphabet::new_with_mode(
+    let dictionary = Dictionary::new_with_mode(
         chars, 
         alphabet_config.mode.clone(), 
         padding
@@ -125,11 +125,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // Encode
     let data = b"Hello, World!";
-    let encoded = encode(data, &alphabet);
+    let encoded = encode(data, &dictionary);
     println!("Encoded: {}", encoded); // SGVsbG8sIFdvcmxkIQ==
     
     // Decode
-    let decoded = decode(&encoded, &alphabet)?;
+    let decoded = decode(&encoded, &dictionary)?;
     assert_eq!(data, &decoded[..]);
     
     Ok(())
@@ -139,40 +139,40 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 #### Streaming for Large Files
 
 ```rust
-use base_d::{AlphabetsConfig, StreamingEncoder, StreamingDecoder};
+use base_d::{DictionariesConfig, StreamingEncoder, StreamingDecoder};
 use std::fs::File;
 
 fn stream_encode() -> Result<(), Box<dyn std::error::Error>> {
-    let config = AlphabetsConfig::load_default()?;
-    let alphabet_config = config.get_alphabet("base64").unwrap();
+    let config = DictionariesConfig::load_default()?;
+    let alphabet_config = config.get_dictionary("base64").unwrap();
     
-    // ... create alphabet (same as above)
+    // ... create dictionary (same as above)
     
     let mut input = File::open("large_file.bin")?;
     let mut output = File::create("encoded.txt")?;
     
-    let mut encoder = StreamingEncoder::new(&alphabet, output);
+    let mut encoder = StreamingEncoder::new(&dictionary, output);
     encoder.encode(&mut input)?;
     
     Ok(())
 }
 ```
 
-#### Custom Alphabets
+#### Custom Dictionaries
 
 ```rust
-use base_d::{Alphabet, EncodingMode, encode};
+use base_d::{Dictionary, EncodingMode, encode};
 
 fn custom_alphabet() -> Result<(), Box<dyn std::error::Error>> {
-    // Define a custom alphabet
+    // Define a custom dictionary
     let chars: Vec<char> = "😀😁😂🤣😃😄😅😆😉😊😋😎😍😘🥰😗".chars().collect();
-    let alphabet = Alphabet::new_with_mode(
+    let dictionary = Dictionary::new_with_mode(
         chars,
         EncodingMode::BaseConversion,
         None
     )?;
     
-    let encoded = encode(b"Hi", &alphabet);
+    let encoded = encode(b"Hi", &dictionary);
     println!("{}", encoded); // 😍😁
     
     Ok(())
@@ -182,46 +182,46 @@ fn custom_alphabet() -> Result<(), Box<dyn std::error::Error>> {
 #### Loading User Configurations
 
 ```rust
-use base_d::AlphabetsConfig;
+use base_d::DictionariesConfig;
 
 // Load with user overrides from:
-// 1. Built-in alphabets
-// 2. ~/.config/base-d/alphabets.toml  
-// 3. ./alphabets.toml
-let config = AlphabetsConfig::load_with_overrides()?;
+// 1. Built-in dictionaries
+// 2. ~/.config/base-d/dictionaries.toml  
+// 3. ./dictionaries.toml
+let config = DictionariesConfig::load_with_overrides()?;
 
 // Or load from specific file
-let config = AlphabetsConfig::load_from_file("custom.toml".as_ref())?;
+let config = DictionariesConfig::load_from_file("custom.toml".as_ref())?;
 ```
 
 ### As a CLI Tool
 
-Encode and decode data using any alphabet defined in `alphabets.toml`:
+Encode and decode data using any dictionary defined in `dictionaries.toml`:
 
 ```bash
-# List available alphabets
+# List available dictionaries
 base-d --list
 
-# Encode from stdin (default alphabet is "cards")
+# Encode from stdin (default dictionary is "cards")
 echo "Hello, World!" | base-d
 
 # Encode a file
 base-d input.txt
 
-# Encode with specific alphabet
+# Encode with specific dictionary
 echo "Data" | base-d -e dna
 
-# Decode from specific alphabet
+# Decode from specific dictionary
 echo "SGVsbG8gV29ybGQNCg==" | base-d -d base64
 
 # Decode playing cards
 echo "🃎🃅🃝🃉🂡🂣🂸🃉🃉🃇🃉🃓🂵🂣🂨🂻🃆🃍" | base-d -d cards
 
-# Transcode between alphabets (no intermediate piping needed!)
+# Transcode between dictionaries (no intermediate piping needed!)
 echo "SGVsbG8=" | base-d -d base64 -e hex
 # Output: 48656c6c6f
 
-# Convert between any two alphabets
+# Convert between any two dictionaries
 echo "ACGTACGT" | base-d -d dna -e emoji_faces
 echo "🃁🃂🃃🃄" | base-d -d cards -e base64
 
@@ -230,24 +230,24 @@ base-d --stream -e base64 large_file.bin > encoded.txt
 base-d --stream -d base64 encoded.txt > decoded.bin
 ```
 
-### Custom Alphabets
+### Custom Dictionaries
 
-Add your own alphabets to `alphabets.toml`:
+Add your own dictionaries to `dictionaries.toml`:
 
 ```toml
-[alphabets]
-# Your custom 16-character alphabet
+[dictionaries]
+# Your custom 16-character dictionary
 hex_emoji = "😀😁😂🤣😃😄😅😆😉😊😋😎😍😘🥰😗"
 
 # Chess pieces (12 characters)
 chess = "♔♕♖♗♘♙♚♛♜♝♞♟"
 ```
 
-Or create custom alphabets in `~/.config/base-d/alphabets.toml` to use across all projects. See [Custom Alphabets Guide](docs/CUSTOM_ALPHABETS.md) for details.
+Or create custom dictionaries in `~/.config/base-d/dictionaries.toml` to use across all projects. See [Custom Dictionaries Guide](docs/CUSTOM_DICTIONARIES.md) for details.
 
-## Built-in Alphabets
+## Built-in Dictionaries
 
-base-d includes 35 pre-configured alphabets organized into several categories:
+base-d includes 35 pre-configured dictionaries organized into several categories:
 
 - **RFC 4648 Standards**: base16, base32, base32hex, base64, base64url
 - **Bitcoin & Blockchain**: base58, base58flickr
@@ -259,15 +259,15 @@ base-d includes 35 pre-configured alphabets organized into several categories:
 - **Emoji**: emoji_faces, emoji_animals, base100
 - **Other**: dna, binary, hex, base64_math, hex_math
 
-Run `base-d --list` to see all available alphabets with their encoding modes.
+Run `base-d --list` to see all available dictionaries with their encoding modes.
 
-For a complete reference with examples and use cases, see [ALPHABETS.md](docs/ALPHABETS.md).
+For a complete reference with examples and use cases, see [DICTIONARIES.md](docs/DICTIONARIES.md).
 
 ## How It Works
 
 base-d supports three encoding algorithms:
 
-1. **Mathematical Base Conversion** (default) - Treats binary data as a single large number and converts it to the target base. Works with any alphabet size.
+1. **Mathematical Base Conversion** (default) - Treats binary data as a single large number and converts it to the target base. Works with any dictionary size.
 
 2. **Bit-Chunking** - Groups bits into fixed-size chunks for RFC 4648 compatibility (base64, base32, base16).
 
@@ -281,8 +281,8 @@ MIT OR Apache-2.0
 
 ## Documentation
 
-- [Alphabet Reference](docs/ALPHABETS.md) - Complete guide to all 33 built-in alphabets
-- [Custom Alphabets](docs/CUSTOM_ALPHABETS.md) - Create and load your own alphabets
+- [Dictionary Reference](docs/DICTIONARIES.md) - Complete guide to all numerous built-in dictionaries
+- [Custom Dictionaries](docs/CUSTOM_DICTIONARIES.md) - Create and load your own dictionaries
 - [Encoding Modes](docs/ENCODING_MODES.md) - Detailed explanation of mathematical vs chunked vs byte range encoding
 - [Streaming](docs/STREAMING.md) - Memory-efficient processing for large files
 - [Hexadecimal Explained](docs/HEX_EXPLANATION.md) - Special case where both modes produce identical output

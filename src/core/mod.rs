@@ -1,2 +1,2 @@
-pub mod alphabet;
+pub mod dictionary;
 pub mod config;

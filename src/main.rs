@@ -1,4 +1,4 @@
-use base_d::{AlphabetsConfig, Alphabet, encode, decode};
+use base_d::{DictionariesConfig, Dictionary, encode, decode};
 use clap::Parser;
 use std::fs;
 use std::io::{self, Read, Write};
@@ -7,13 +7,13 @@ use std::path::PathBuf;
 #[derive(Parser)]
 #[command(name = "base-d")]
 #[command(version)]
-#[command(about = "Universal multi-alphabet encoder supporting RFC standards, emoji, ancient scripts, and 35+ custom alphabets", long_about = None)]
+#[command(about = "Universal multi-dictionary encoder supporting RFC standards, emoji, ancient scripts, and numerous custom dictionaries", long_about = None)]
 struct Cli {
-    /// Encode using this alphabet
+    /// Encode using this dictionary
     #[arg(short = 'e', long)]
     encode: Option<String>,
     
-    /// Decode from this alphabet
+    /// Decode from this dictionary
     #[arg(short = 'd', long)]
     decode: Option<String>,
     
@@ -21,7 +21,7 @@ struct Cli {
     #[arg(value_name = "FILE")]
     file: Option<PathBuf>,
     
-    /// List available alphabets
+    /// List available dictionaries
     #[arg(short, long)]
     list: bool,
     
@@ -30,25 +30,27 @@ struct Cli {
     stream: bool,
     
     /// Enter the Matrix: Stream random data as Matrix-style falling code
-    #[arg(long)]
-    neo: bool,
+    /// Optionally specify a dictionary (default: base256_matrix)
+    #[arg(long, value_name = "DICTIONARY")]
+    neo: Option<Option<String>>,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
     
-    // Load alphabets configuration with user overrides
-    let config = AlphabetsConfig::load_with_overrides()?;
+    // Load dictionaries configuration with user overrides
+    let config = DictionariesConfig::load_with_overrides()?;
     
     // Handle --neo mode (Matrix effect)
-    if cli.neo {
-        return matrix_mode(&config);
+    if let Some(alphabet_opt) = &cli.neo {
+        let alphabet_name = alphabet_opt.as_deref().unwrap_or("base256_matrix");
+        return matrix_mode(&config, alphabet_name);
     }
     
     // Handle list command
     if cli.list {
-        println!("Available alphabets:\n");
-        let mut alphabets: Vec<_> = config.alphabets.iter().collect();
+        println!("Available dictionaries:\n");
+        let mut alphabets: Vec<_> = config.dictionaries.iter().collect();
         alphabets.sort_by_key(|(name, _)| *name);
         
         for (name, alphabet_config) in alphabets {
@@ -80,26 +82,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
     
-    // Helper function to create alphabet from config
-    let create_alphabet = |name: &str| -> Result<Alphabet, Box<dyn std::error::Error>> {
-        let alphabet_config = config.get_alphabet(name)
-            .ok_or_else(|| format!("Alphabet '{}' not found. Use --list to see available alphabets.", name))?;
+    // Helper function to create dictionary from config
+    let create_alphabet = |name: &str| -> Result<Dictionary, Box<dyn std::error::Error>> {
+        let alphabet_config = config.get_dictionary(name)
+            .ok_or_else(|| format!("Dictionary '{}' not found. Use --list to see available dictionaries.", name))?;
         
-        let alphabet = match alphabet_config.mode {
+        let dictionary = match alphabet_config.mode {
             base_d::EncodingMode::ByteRange => {
                 let start = alphabet_config.start_codepoint
                     .ok_or_else(|| "ByteRange mode requires start_codepoint")?;
-                Alphabet::new_with_mode_and_range(Vec::new(), alphabet_config.mode.clone(), None, Some(start))
-                    .map_err(|e| format!("Invalid alphabet: {}", e))?
+                Dictionary::new_with_mode_and_range(Vec::new(), alphabet_config.mode.clone(), None, Some(start))
+                    .map_err(|e| format!("Invalid dictionary: {}", e))?
             }
             _ => {
                 let chars: Vec<char> = alphabet_config.chars.chars().collect();
                 let padding = alphabet_config.padding.as_ref().and_then(|s| s.chars().next());
-                Alphabet::new_with_mode(chars, alphabet_config.mode.clone(), padding)
-                    .map_err(|e| format!("Invalid alphabet: {}", e))?
+                Dictionary::new_with_mode(chars, alphabet_config.mode.clone(), padding)
+                    .map_err(|e| format!("Invalid dictionary: {}", e))?
             }
         };
-        Ok(alphabet)
+        Ok(dictionary)
     };
     
     // Determine operation mode based on flags
@@ -122,7 +124,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 buffer
             };
             
-            // Transcode: decode from input alphabet, encode to output alphabet
+            // Transcode: decode from input dictionary, encode to output dictionary
             let decoded = decode(input_data.trim(), &decode_alphabet)?;
             let encoded = encode(&decoded, &encode_alphabet);
             println!("{}", encoded);
@@ -183,7 +185,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         
         (None, None) => {
-            // No alphabet specified - use default (cards) for encoding
+            // No dictionary specified - use default (cards) for encoding
             let encode_alphabet = create_alphabet("cards")?;
             
             if cli.stream {
@@ -213,18 +215,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn matrix_mode(config: &AlphabetsConfig) -> Result<(), Box<dyn std::error::Error>> {
+fn matrix_mode(config: &DictionariesConfig, alphabet_name: &str) -> Result<(), Box<dyn std::error::Error>> {
     use std::thread;
     use std::time::Duration;
     
-    // Load the Matrix alphabet
-    let matrix_config = config.get_alphabet("base256_matrix")
-        .ok_or("base256_matrix alphabet not found")?;
+    // Load the specified dictionary
+    let alphabet_config = config.get_dictionary(alphabet_name)
+        .ok_or(format!("{} dictionary not found", alphabet_name))?;
     
-    let chars: Vec<char> = matrix_config.chars.chars().collect();
-    let alphabet = Alphabet::new_with_mode(
+    let chars: Vec<char> = alphabet_config.chars.chars().collect();
+    let dictionary = Dictionary::new_with_mode(
         chars,
-        matrix_config.mode.clone(),
+        alphabet_config.mode.clone(),
         None
     )?;
     
@@ -274,8 +276,8 @@ fn matrix_mode(config: &AlphabetsConfig) -> Result<(), Box<dyn std::error::Error
         use rand::RngCore;
         rng.fill_bytes(&mut random_bytes);
         
-        // Encode with Matrix alphabet
-        let encoded = encode(&random_bytes, &alphabet);
+        // Encode with Matrix dictionary
+        let encoded = encode(&random_bytes, &dictionary);
         
         // Trim to terminal width (Matrix chars can be double-width)
         let display: String = encoded.chars().take(term_width).collect();

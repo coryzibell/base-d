@@ -1,4 +1,4 @@
-use crate::core::alphabet::Alphabet;
+use crate::core::dictionary::Dictionary;
 use crate::encoders::encoding::DecodeError;
 use std::io::{Read, Write};
 
@@ -9,7 +9,7 @@ const CHUNK_SIZE: usize = 4096; // 4KB chunks
 /// Processes data in chunks to avoid loading entire files into memory.
 /// Suitable for encoding large files or network streams.
 pub struct StreamingEncoder<'a, W: Write> {
-    alphabet: &'a Alphabet,
+    dictionary: &'a Dictionary,
     writer: W,
 }
 
@@ -18,10 +18,10 @@ impl<'a, W: Write> StreamingEncoder<'a, W> {
     ///
     /// # Arguments
     ///
-    /// * `alphabet` - The alphabet to use for encoding
+    /// * `dictionary` - The dictionary to use for encoding
     /// * `writer` - The destination for encoded output
-    pub fn new(alphabet: &'a Alphabet, writer: W) -> Self {
-        StreamingEncoder { alphabet, writer }
+    pub fn new(dictionary: &'a Dictionary, writer: W) -> Self {
+        StreamingEncoder { dictionary, writer }
     }
     
     /// Encodes data from a reader in chunks.
@@ -30,7 +30,7 @@ impl<'a, W: Write> StreamingEncoder<'a, W> {
     /// due to the mathematical nature of the algorithm. For truly streaming
     /// behavior, use Chunked or ByteRange modes.
     pub fn encode<R: Read>(&mut self, reader: &mut R) -> std::io::Result<()> {
-        match self.alphabet.mode() {
+        match self.dictionary.mode() {
             crate::core::config::EncodingMode::Chunked => {
                 self.encode_chunked(reader)
             }
@@ -41,7 +41,7 @@ impl<'a, W: Write> StreamingEncoder<'a, W> {
                 // Mathematical mode requires entire input - read all and encode
                 let mut buffer = Vec::new();
                 reader.read_to_end(&mut buffer)?;
-                let encoded = crate::encoders::encoding::encode(&buffer, self.alphabet);
+                let encoded = crate::encoders::encoding::encode(&buffer, self.dictionary);
                 self.writer.write_all(encoded.as_bytes())?;
                 Ok(())
             }
@@ -49,7 +49,7 @@ impl<'a, W: Write> StreamingEncoder<'a, W> {
     }
     
     fn encode_chunked<R: Read>(&mut self, reader: &mut R) -> std::io::Result<()> {
-        let base = self.alphabet.base();
+        let base = self.dictionary.base();
         let bits_per_char = (base as f64).log2() as usize;
         let bytes_per_group = bits_per_char;
         
@@ -63,7 +63,7 @@ impl<'a, W: Write> StreamingEncoder<'a, W> {
                 break;
             }
             
-            let encoded = crate::encoders::chunked::encode_chunked(&buffer[..bytes_read], self.alphabet);
+            let encoded = crate::encoders::chunked::encode_chunked(&buffer[..bytes_read], self.dictionary);
             self.writer.write_all(encoded.as_bytes())?;
         }
         
@@ -79,7 +79,7 @@ impl<'a, W: Write> StreamingEncoder<'a, W> {
                 break;
             }
             
-            let encoded = crate::encoders::byte_range::encode_byte_range(&buffer[..bytes_read], self.alphabet);
+            let encoded = crate::encoders::byte_range::encode_byte_range(&buffer[..bytes_read], self.dictionary);
             self.writer.write_all(encoded.as_bytes())?;
         }
         
@@ -92,7 +92,7 @@ impl<'a, W: Write> StreamingEncoder<'a, W> {
 /// Processes data in chunks to avoid loading entire files into memory.
 /// Suitable for decoding large files or network streams.
 pub struct StreamingDecoder<'a, W: Write> {
-    alphabet: &'a Alphabet,
+    dictionary: &'a Dictionary,
     writer: W,
 }
 
@@ -101,10 +101,10 @@ impl<'a, W: Write> StreamingDecoder<'a, W> {
     ///
     /// # Arguments
     ///
-    /// * `alphabet` - The alphabet used for encoding
+    /// * `dictionary` - The dictionary used for encoding
     /// * `writer` - The destination for decoded output
-    pub fn new(alphabet: &'a Alphabet, writer: W) -> Self {
-        StreamingDecoder { alphabet, writer }
+    pub fn new(dictionary: &'a Dictionary, writer: W) -> Self {
+        StreamingDecoder { dictionary, writer }
     }
     
     /// Decodes data from a reader in chunks.
@@ -113,7 +113,7 @@ impl<'a, W: Write> StreamingDecoder<'a, W> {
     /// due to the mathematical nature of the algorithm. For truly streaming
     /// behavior, use Chunked or ByteRange modes.
     pub fn decode<R: Read>(&mut self, reader: &mut R) -> Result<(), DecodeError> {
-        match self.alphabet.mode() {
+        match self.dictionary.mode() {
             crate::core::config::EncodingMode::Chunked => {
                 self.decode_chunked(reader)
             }
@@ -125,7 +125,7 @@ impl<'a, W: Write> StreamingDecoder<'a, W> {
                 let mut buffer = String::new();
                 reader.read_to_string(&mut buffer)
                     .map_err(|_| DecodeError::InvalidCharacter('\0'))?;
-                let decoded = crate::encoders::encoding::decode(&buffer, self.alphabet)?;
+                let decoded = crate::encoders::encoding::decode(&buffer, self.dictionary)?;
                 self.writer.write_all(&decoded)
                     .map_err(|_| DecodeError::InvalidCharacter('\0'))?;
                 Ok(())
@@ -134,7 +134,7 @@ impl<'a, W: Write> StreamingDecoder<'a, W> {
     }
     
     fn decode_chunked<R: Read>(&mut self, reader: &mut R) -> Result<(), DecodeError> {
-        let base = self.alphabet.base();
+        let base = self.dictionary.base();
         let bits_per_char = (base as f64).log2() as usize;
         let chars_per_group = 8 / bits_per_char;
         
@@ -159,7 +159,7 @@ impl<'a, W: Write> StreamingDecoder<'a, W> {
             
             if complete_groups > 0 {
                 let to_decode: String = chars[..complete_groups].iter().collect();
-                let decoded = crate::encoders::chunked::decode_chunked(&to_decode, self.alphabet)?;
+                let decoded = crate::encoders::chunked::decode_chunked(&to_decode, self.dictionary)?;
                 self.writer.write_all(&decoded)
                     .map_err(|_| DecodeError::InvalidCharacter('\0'))?;
                 
@@ -170,7 +170,7 @@ impl<'a, W: Write> StreamingDecoder<'a, W> {
         
         // Process any remaining characters
         if !text_buffer.is_empty() {
-            let decoded = crate::encoders::chunked::decode_chunked(&text_buffer, self.alphabet)?;
+            let decoded = crate::encoders::chunked::decode_chunked(&text_buffer, self.dictionary)?;
             self.writer.write_all(&decoded)
                 .map_err(|_| DecodeError::InvalidCharacter('\0'))?;
         }
@@ -191,7 +191,7 @@ impl<'a, W: Write> StreamingDecoder<'a, W> {
             let chunk_str = std::str::from_utf8(&char_buffer[..bytes_read])
                 .map_err(|_| DecodeError::InvalidCharacter('\0'))?;
             
-            let decoded = crate::encoders::byte_range::decode_byte_range(chunk_str, self.alphabet)?;
+            let decoded = crate::encoders::byte_range::decode_byte_range(chunk_str, self.dictionary)?;
             self.writer.write_all(&decoded)
                 .map_err(|_| DecodeError::InvalidCharacter('\0'))?;
         }
@@ -203,35 +203,35 @@ impl<'a, W: Write> StreamingDecoder<'a, W> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{AlphabetsConfig, Alphabet};
+    use crate::{DictionariesConfig, Dictionary};
     use std::io::Cursor;
     
-    fn get_alphabet(name: &str) -> Alphabet {
-        let config = AlphabetsConfig::load_default().unwrap();
-        let alphabet_config = config.get_alphabet(name).unwrap();
+    fn get_dictionary(name: &str) -> Dictionary {
+        let config = DictionariesConfig::load_default().unwrap();
+        let alphabet_config = config.get_dictionary(name).unwrap();
         
         match alphabet_config.mode {
             crate::core::config::EncodingMode::ByteRange => {
                 let start = alphabet_config.start_codepoint.unwrap();
-                Alphabet::new_with_mode_and_range(Vec::new(), alphabet_config.mode.clone(), None, Some(start)).unwrap()
+                Dictionary::new_with_mode_and_range(Vec::new(), alphabet_config.mode.clone(), None, Some(start)).unwrap()
             }
             _ => {
                 let chars: Vec<char> = alphabet_config.chars.chars().collect();
                 let padding = alphabet_config.padding.as_ref().and_then(|s| s.chars().next());
-                Alphabet::new_with_mode(chars, alphabet_config.mode.clone(), padding).unwrap()
+                Dictionary::new_with_mode(chars, alphabet_config.mode.clone(), padding).unwrap()
             }
         }
     }
     
     #[test]
     fn test_streaming_encode_decode_base64() {
-        let alphabet = get_alphabet("base64");
+        let dictionary = get_dictionary("base64");
         let data = b"Hello, World! This is a streaming test with multiple chunks of data.";
         
         // Encode
         let mut encoded_output = Vec::new();
         {
-            let mut encoder = StreamingEncoder::new(&alphabet, &mut encoded_output);
+            let mut encoder = StreamingEncoder::new(&dictionary, &mut encoded_output);
             let mut reader = Cursor::new(data);
             encoder.encode(&mut reader).unwrap();
         }
@@ -239,7 +239,7 @@ mod tests {
         // Decode
         let mut decoded_output = Vec::new();
         {
-            let mut decoder = StreamingDecoder::new(&alphabet, &mut decoded_output);
+            let mut decoder = StreamingDecoder::new(&dictionary, &mut decoded_output);
             let mut reader = Cursor::new(&encoded_output);
             decoder.decode(&mut reader).unwrap();
         }
@@ -249,13 +249,13 @@ mod tests {
     
     #[test]
     fn test_streaming_encode_decode_base100() {
-        let alphabet = get_alphabet("base100");
+        let dictionary = get_dictionary("base100");
         let data = b"Test data for byte range streaming";
         
         // Encode
         let mut encoded_output = Vec::new();
         {
-            let mut encoder = StreamingEncoder::new(&alphabet, &mut encoded_output);
+            let mut encoder = StreamingEncoder::new(&dictionary, &mut encoded_output);
             let mut reader = Cursor::new(data);
             encoder.encode(&mut reader).unwrap();
         }
@@ -263,7 +263,7 @@ mod tests {
         // Decode
         let mut decoded_output = Vec::new();
         {
-            let mut decoder = StreamingDecoder::new(&alphabet, &mut decoded_output);
+            let mut decoder = StreamingDecoder::new(&dictionary, &mut decoded_output);
             let mut reader = Cursor::new(&encoded_output);
             decoder.decode(&mut reader).unwrap();
         }
@@ -273,14 +273,14 @@ mod tests {
     
     #[test]
     fn test_streaming_large_data() {
-        let alphabet = get_alphabet("base64");
+        let dictionary = get_dictionary("base64");
         // Create 100KB of data
         let data: Vec<u8> = (0..100000).map(|i| (i % 256) as u8).collect();
         
         // Encode
         let mut encoded_output = Vec::new();
         {
-            let mut encoder = StreamingEncoder::new(&alphabet, &mut encoded_output);
+            let mut encoder = StreamingEncoder::new(&dictionary, &mut encoded_output);
             let mut reader = Cursor::new(&data);
             encoder.encode(&mut reader).unwrap();
         }
@@ -288,7 +288,7 @@ mod tests {
         // Decode
         let mut decoded_output = Vec::new();
         {
-            let mut decoder = StreamingDecoder::new(&alphabet, &mut decoded_output);
+            let mut decoder = StreamingDecoder::new(&dictionary, &mut decoded_output);
             let mut reader = Cursor::new(&encoded_output);
             decoder.decode(&mut reader).unwrap();
         }

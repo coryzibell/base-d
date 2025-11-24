@@ -5,7 +5,7 @@
 Implemented performance optimizations for base-d encoding/decoding operations with focus on:
 1. **Memory allocation efficiency** - Pre-allocate buffers with correct capacity
 2. **CPU cache optimization** - Process data in chunks for better cache utilization  
-3. **Fast lookup tables** - Array-based lookups for ASCII alphabets instead of HashMap
+3. **Fast lookup tables** - Array-based lookups for ASCII dictionaries instead of HashMap
 4. **Algorithmic improvements** - Use `div_rem` instead of separate division and modulo operations
 
 ## Optimizations Applied
@@ -26,7 +26,7 @@ Implemented performance optimizations for base-d encoding/decoding operations wi
 - **Vec::resize** instead of loop for leading zeros
 - **Pre-collect chars** for decode path
 
-### 4. Fast Alphabet Lookups - `src/alphabet.rs`
+### 4. Fast Dictionary Lookups - `src/dictionary.rs`
 - **Added lookup table** for ASCII characters (Box<[Option<usize>; 256]>)
 - **O(1) array access** for ASCII chars instead of O(log n) HashMap lookup
 - **Fallback to HashMap** for non-ASCII characters
@@ -74,16 +74,16 @@ Pre-allocation reduces:
 - CPU cycles spent in allocator
 
 ### Lookup Table vs HashMap
-For ASCII alphabets (base64, base32, hex):
+For ASCII dictionaries (base64, base32, hex):
 - Array lookup: ~1-2 ns (direct memory access)
 - HashMap lookup: ~5-10 ns (hash calculation + probe)
 - **Result**: ~5x faster character decoding
 
-For large non-ASCII alphabets (base1024):
+For large non-ASCII dictionaries (base1024):
 - Uses HashMap for all characters (no lookup table)
 - Still benefits from pre-allocation and chunking optimizations
 - Encode: ~7 MiB/s, Decode: ~21 MiB/s (64-byte blocks)
-- Mathematical mode with large alphabets is computationally intensive due to BigUint operations
+- Mathematical mode with large dictionaries is computationally intensive due to BigUint operations
 
 ## Future Optimization Opportunities
 

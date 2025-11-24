@@ -98,7 +98,7 @@ For bases like cards (52) or base64 (64 with padding), the modes differ, which i
 
 ```toml
 # Either mode works identically for hex
-[alphabets.hex]
+[dictionaries.hex]
 chars = "0123456789abcdef"
 mode = "chunked"      # or "base_conversion" - same result
 ```

@@ -1,6 +1,6 @@
-# Alphabet Reference
+# Dictionary Reference
 
-Complete reference for all 33 built-in alphabets in base-d.
+Complete reference for all numerous built-in dictionaries in base-d.
 
 ## Quick Reference Table
 
@@ -9,7 +9,7 @@ Complete reference for all 33 built-in alphabets in base-d.
 | **base16** | 16 | chunk | Hex (uppercase) | RFC 4648 |
 | **hex** | 16 | chunk | Hex (lowercase) | - |
 | **base32** | 32 | chunk | Data encoding | RFC 4648 |
-| **base32hex** | 32 | chunk | Extended hex alphabet | RFC 4648 |
+| **base32hex** | 32 | chunk | Extended hex dictionary | RFC 4648 |
 | **base64** | 64 | chunk | Standard base64 | RFC 4648 |
 | **base64url** | 64 | chunk | URL-safe base64 | RFC 4648 |
 | **base58** | 58 | math | Bitcoin addresses | - |
@@ -33,7 +33,7 @@ Complete reference for all 33 built-in alphabets in base-d.
 
 #### base16
 ```
-Alphabet: 0123456789ABCDEF
+Dictionary: 0123456789ABCDEF
 Padding:  No
 Example:  "Hi" → "4869"
 ```
@@ -41,7 +41,7 @@ Standard hexadecimal encoding (uppercase). Power-of-2 base.
 
 #### base32
 ```
-Alphabet: ABCDEFGHIJKLMNOPQRSTUVWXYZ234567
+Dictionary: ABCDEFGHIJKLMNOPQRSTUVWXYZ234567
 Padding:  =
 Example:  "Hi" → "JBQWY==="
 ```
@@ -49,15 +49,15 @@ RFC 4648 standard base32. Good balance of efficiency and readability.
 
 #### base32hex
 ```
-Alphabet: 0123456789ABCDEFGHIJKLMNOPQRSTUV
+Dictionary: 0123456789ABCDEFGHIJKLMNOPQRSTUV
 Padding:  =
 Example:  "Hi" → "91GOR==="
 ```
-RFC 4648 extended hex alphabet variant. Preserves sort order.
+RFC 4648 extended hex dictionary variant. Preserves sort order.
 
 #### base64
 ```
-Alphabet: A-Z, a-z, 0-9, +, /
+Dictionary: A-Z, a-z, 0-9, +, /
 Padding:  =
 Example:  "Hi" → "SGk="
 ```
@@ -65,7 +65,7 @@ Standard base64. Most common encoding for binary-to-text.
 
 #### base64url
 ```
-Alphabet: A-Z, a-z, 0-9, -, _
+Dictionary: A-Z, a-z, 0-9, -, _
 Padding:  =
 Example:  "Hi" → "SGk="
 ```
@@ -75,14 +75,14 @@ URL and filename-safe variant. Uses - and _ instead of + and /.
 
 #### base58
 ```
-Alphabet: 123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz
+Dictionary: 123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz
 Example:  "Hi" → "JxF"
 ```
 Bitcoin addresses. Removes confusing characters: 0, O, I, l.
 
 #### base58flickr
 ```
-Alphabet: 123456789abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ
+Dictionary: 123456789abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ
 Example:  "Hi" → "jXf"
 ```
 Flickr's variant with different case ordering.
@@ -91,28 +91,28 @@ Flickr's variant with different case ordering.
 
 #### base62
 ```
-Alphabet: 0-9, A-Z, a-z
+Dictionary: 0-9, A-Z, a-z
 Example:  "Hi" → "5O"
 ```
 Alphanumeric only. Popular for URL shorteners.
 
 #### base85
 ```
-Alphabet: 0-9, A-Z, a-z, plus special chars
+Dictionary: 0-9, A-Z, a-z, plus special chars
 Example:  "Hi" → "BOq"
 ```
 Used by Git for pack files. More efficient than base64.
 
 #### ascii85
 ```
-Alphabet: ! through u (ASCII 33-117)
+Dictionary: ! through u (ASCII 33-117)
 Example:  "Hi" → "BOq"
 ```
 Adobe PDF and PostScript encoding. Also called "btoa".
 
 #### z85
 ```
-Alphabet: 0-9, a-z, A-Z, and selected punctuation
+Dictionary: 0-9, a-z, A-Z, and selected punctuation
 Example:  "Hi" → "xK#0"
 ```
 ZeroMQ's string-safe encoding.
@@ -121,14 +121,14 @@ ZeroMQ's string-safe encoding.
 
 #### base32_crockford
 ```
-Alphabet: 0-9, A-H, J-K, M-N, P-T, V-Z (no I, L, O, U)
+Dictionary: 0-9, A-H, J-K, M-N, P-T, V-Z (no I, L, O, U)
 Example:  "Hi" → "48B"
 ```
 Douglas Crockford's base32. Removes ambiguous characters.
 
 #### base32_zbase
 ```
-Alphabet: ybndrfg8ejkmcpqxot1uwisza345h769
+Dictionary: ybndrfg8ejkmcpqxot1uwisza345h769
 Example:  "Hi" → "nxny"
 ```
 Designed for human readability. No ambiguous pairs.
@@ -147,21 +147,21 @@ Direct byte-to-emoji encoding with zero overhead. Each byte maps to exactly one 
 
 #### cards
 ```
-Alphabet: 🂡🂢🂣...🃞 (52 playing cards)
+Dictionary: 🂡🂢🂣...🃞 (52 playing cards)
 Example:  "Hi" → "🃎🂾"
 ```
 Encode data as playing cards.
 
 #### dna
 ```
-Alphabet: ACGT
+Dictionary: ACGT
 Example:  "Hi" → "CAGACGGC"
 ```
 Represent data as DNA sequences.
 
 #### binary
 ```
-Alphabet: 01
+Dictionary: 01
 Example:  "Hi" → "100100001101001"
 ```
 Pure binary representation.

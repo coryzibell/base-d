@@ -2,7 +2,7 @@
 
 ## Overview
 
-The `--neo` flag transforms base-d into a Matrix-style terminal display, streaming random data encoded with the base256_matrix alphabet to create the iconic "falling code" effect.
+The `--neo` flag transforms base-d into a Matrix-style terminal display, streaming random data encoded with the base256_matrix dictionary to create the iconic "falling code" effect.
 
 ## Usage
 
@@ -15,7 +15,7 @@ Press `Ctrl+C` to exit.
 ## What It Does
 
 1. **Displays iconic messages** - Types "Wake up, Neo..." and other messages character by character
-2. **Loads base256_matrix alphabet** - The Matrix-style Japanese and geometric character set
+2. **Loads base256_matrix dictionary** - The Matrix-style Japanese and geometric character set
 3. **Generates random data** - Cross-platform random bytes using `rand` crate
 4. **Encodes in real-time** - Converts random bytes to Matrix characters
 5. **Streams to terminal** - Displays new line every 500ms
@@ -42,7 +42,7 @@ Press `Ctrl+C` to exit.
 ## Code Implementation
 
 ```rust
-fn matrix_mode(config: &AlphabetsConfig) -> Result<(), Box<dyn std::error::Error>> {
+fn matrix_mode(config: &DictionariesConfig) -> Result<(), Box<dyn std::error::Error>> {
     // Display iconic messages - typed character by character
     let messages = ["Wake up, Neo...", "The Matrix has you...", 
                     "Follow the white rabbit.", "Knock, knock, Neo."];
@@ -62,7 +62,7 @@ fn matrix_mode(config: &AlphabetsConfig) -> Result<(), Box<dyn std::error::Error
     loop {
         let mut random_bytes = vec![0u8; term_width / 2];
         rng.fill_bytes(&mut random_bytes);
-        let encoded = encode(&random_bytes, &alphabet);
+        let encoded = encode(&random_bytes, &dictionary);
         println!("{}", encoded);
         thread::sleep(Duration::from_millis(500));
     }
@@ -139,7 +139,7 @@ terminal_size = "0.3"  # Terminal dimension detection
 | Encoding | N/A | N/A | Real base256 encoding |
 | Random source | /dev/random | crypto | rand crate |
 | Speed | Fast | Medium | Fast |
-| Characters | Latin/Katakana | Various | base256_matrix alphabet |
+| Characters | Latin/Katakana | Various | base256_matrix dictionary |
 
 ## Use Cases
 
@@ -150,7 +150,7 @@ Use as a cool screensaver effect on your terminal.
 Show off base256_matrix encoding in action.
 
 ### 3. Testing
-Visual verification that base256_matrix alphabet displays correctly.
+Visual verification that base256_matrix dictionary displays correctly.
 
 ### 4. Entertainment
 Because regular terminals are boring.

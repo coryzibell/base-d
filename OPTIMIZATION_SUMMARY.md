@@ -14,9 +14,9 @@ Successfully implemented comprehensive performance optimizations for the base-d 
 ### 2. Core Performance Optimizations ✅
 
 #### Fast Lookup Tables (5x improvement for ASCII decoding)
-- Implemented `Box<[Option<usize>; 256]>` array-based lookup for ASCII alphabets
+- Implemented `Box<[Option<usize>; 256]>` array-based lookup for ASCII dictionaries
 - O(1) character decoding vs O(log n) HashMap lookups
-- Automatic detection and fallback for non-ASCII alphabets
+- Automatic detection and fallback for non-ASCII dictionaries
 - Applies to base64, base32, hex, and other ASCII-based encodings
 
 #### Memory Allocation Optimizations
@@ -63,7 +63,7 @@ Successfully implemented comprehensive performance optimizations for the base-d 
 ## Files Modified
 
 ### Core Library Files
-- `src/alphabet.rs` - Added fast lookup table
+- `src/dictionary.rs` - Added fast lookup table
 - `src/chunked.rs` - Optimized encode/decode with pre-allocation and chunking
 - `src/byte_range.rs` - Optimized with pre-allocation and chunking
 - `src/encoding.rs` - Optimized BigUint operations and memory allocation

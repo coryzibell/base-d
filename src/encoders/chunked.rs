@@ -1,9 +1,9 @@
-use crate::core::alphabet::Alphabet;
+use crate::core::dictionary::Dictionary;
 
 pub use crate::encoders::encoding::DecodeError;
 
-pub fn encode_chunked(data: &[u8], alphabet: &Alphabet) -> String {
-    let base = alphabet.base();
+pub fn encode_chunked(data: &[u8], dictionary: &Dictionary) -> String {
+    let base = dictionary.base();
     let bits_per_char = (base as f64).log2() as usize;
     
     if bits_per_char == 0 {
@@ -13,7 +13,7 @@ pub fn encode_chunked(data: &[u8], alphabet: &Alphabet) -> String {
     // Pre-calculate output size for better memory allocation
     let output_bits = data.len() * 8;
     let output_chars = (output_bits + bits_per_char - 1) / bits_per_char;
-    let capacity = if alphabet.padding().is_some() {
+    let capacity = if dictionary.padding().is_some() {
         ((output_chars + 3) / 4) * 4
     } else {
         output_chars
@@ -37,7 +37,7 @@ pub fn encode_chunked(data: &[u8], alphabet: &Alphabet) -> String {
             while bits_in_buffer >= bits_per_char {
                 bits_in_buffer -= bits_per_char;
                 let index = ((bit_buffer >> bits_in_buffer) & ((1 << bits_per_char) - 1)) as usize;
-                result.push(alphabet.encode_digit(index).unwrap());
+                result.push(dictionary.encode_digit(index).unwrap());
             }
         }
     }
@@ -50,18 +50,18 @@ pub fn encode_chunked(data: &[u8], alphabet: &Alphabet) -> String {
         while bits_in_buffer >= bits_per_char {
             bits_in_buffer -= bits_per_char;
             let index = ((bit_buffer >> bits_in_buffer) & ((1 << bits_per_char) - 1)) as usize;
-            result.push(alphabet.encode_digit(index).unwrap());
+            result.push(dictionary.encode_digit(index).unwrap());
         }
     }
     
     // Handle remaining bits
     if bits_in_buffer > 0 {
         let index = ((bit_buffer << (bits_per_char - bits_in_buffer)) & ((1 << bits_per_char) - 1)) as usize;
-        result.push(alphabet.encode_digit(index).unwrap());
+        result.push(dictionary.encode_digit(index).unwrap());
     }
     
     // Add padding if specified
-    if let Some(pad_char) = alphabet.padding() {
+    if let Some(pad_char) = dictionary.padding() {
         let input_bits = data.len() * 8;
         let output_chars = (input_bits + bits_per_char - 1) / bits_per_char;
         let padded_chars = ((output_chars + 3) / 4) * 4;
@@ -74,14 +74,14 @@ pub fn encode_chunked(data: &[u8], alphabet: &Alphabet) -> String {
     result
 }
 
-pub fn decode_chunked(encoded: &str, alphabet: &Alphabet) -> Result<Vec<u8>, DecodeError> {
+pub fn decode_chunked(encoded: &str, dictionary: &Dictionary) -> Result<Vec<u8>, DecodeError> {
     if encoded.is_empty() {
         return Err(DecodeError::EmptyInput);
     }
     
-    let base = alphabet.base();
+    let base = dictionary.base();
     let bits_per_char = (base as f64).log2() as usize;
-    let padding = alphabet.padding();
+    let padding = dictionary.padding();
     
     // Pre-allocate output buffer with estimated size
     let estimated_output = (encoded.len() * bits_per_char) / 8;
@@ -106,7 +106,7 @@ pub fn decode_chunked(encoded: &str, alphabet: &Alphabet) -> Result<Vec<u8>, Dec
                 return Ok(result);
             }
             
-            let digit = alphabet.decode_char(c)
+            let digit = dictionary.decode_char(c)
                 .ok_or(DecodeError::InvalidCharacter(c))?;
             
             bit_buffer = (bit_buffer << bits_per_char) | (digit as u32);
@@ -127,7 +127,7 @@ pub fn decode_chunked(encoded: &str, alphabet: &Alphabet) -> Result<Vec<u8>, Dec
             break;
         }
         
-        let digit = alphabet.decode_char(c)
+        let digit = dictionary.decode_char(c)
             .ok_or(DecodeError::InvalidCharacter(c))?;
         
         bit_buffer = (bit_buffer << bits_per_char) | (digit as u32);

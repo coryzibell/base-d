@@ -1,11 +1,11 @@
-use base_d::AlphabetsConfig;
+use base_d::DictionariesConfig;
 
 fn main() {
-    let config = AlphabetsConfig::load_default().unwrap();
+    let config = DictionariesConfig::load_default().unwrap();
     
-    println!("Available alphabets:\n");
+    println!("Available dictionaries:\n");
     
-    for (name, alphabet_config) in config.alphabets.iter() {
+    for (name, alphabet_config) in config.dictionaries.iter() {
         let (char_count, preview) = match alphabet_config.mode {
             base_d::EncodingMode::ByteRange => {
                 if let Some(start) = alphabet_config.start_codepoint {

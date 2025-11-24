@@ -1,11 +1,11 @@
-use crate::core::alphabet::Alphabet;
+use crate::core::dictionary::Dictionary;
 use num_traits::Zero;
 use num_integer::Integer;
 
 /// Errors that can occur during decoding.
 #[derive(Debug, PartialEq, Eq)]
 pub enum DecodeError {
-    /// The input contains a character not in the alphabet
+    /// The input contains a character not in the dictionary
     InvalidCharacter(char),
     /// The input string is empty
     EmptyInput,
@@ -25,7 +25,7 @@ impl std::fmt::Display for DecodeError {
 
 impl std::error::Error for DecodeError {}
 
-pub fn encode(data: &[u8], alphabet: &Alphabet) -> String {
+pub fn encode(data: &[u8], dictionary: &Dictionary) -> String {
     if data.is_empty() {
         return String::new();
     }
@@ -35,10 +35,10 @@ pub fn encode(data: &[u8], alphabet: &Alphabet) -> String {
     
     // If all zeros, return early
     if leading_zeros == data.len() {
-        return alphabet.encode_digit(0).unwrap().to_string().repeat(data.len());
+        return dictionary.encode_digit(0).unwrap().to_string().repeat(data.len());
     }
     
-    let base = alphabet.base();
+    let base = dictionary.base();
     let mut num = num_bigint::BigUint::from_bytes_be(&data[leading_zeros..]);
     
     // Pre-allocate result vector with estimated capacity
@@ -51,25 +51,25 @@ pub fn encode(data: &[u8], alphabet: &Alphabet) -> String {
         let (quotient, remainder) = num.div_rem(&base_big);
         let digit = remainder.to_u64_digits();
         let digit_val = if digit.is_empty() { 0 } else { digit[0] as usize };
-        result.push(alphabet.encode_digit(digit_val).unwrap());
+        result.push(dictionary.encode_digit(digit_val).unwrap());
         num = quotient;
     }
     
     // Add leading zeros
     for _ in 0..leading_zeros {
-        result.push(alphabet.encode_digit(0).unwrap());
+        result.push(dictionary.encode_digit(0).unwrap());
     }
     
     result.reverse();
     result.into_iter().collect()
 }
 
-pub fn decode(encoded: &str, alphabet: &Alphabet) -> Result<Vec<u8>, DecodeError> {
+pub fn decode(encoded: &str, dictionary: &Dictionary) -> Result<Vec<u8>, DecodeError> {
     if encoded.is_empty() {
         return Err(DecodeError::EmptyInput);
     }
     
-    let base = alphabet.base();
+    let base = dictionary.base();
     let mut num = num_bigint::BigUint::from(0u8);
     let base_big = num_bigint::BigUint::from(base);
     
@@ -79,7 +79,7 @@ pub fn decode(encoded: &str, alphabet: &Alphabet) -> Result<Vec<u8>, DecodeError
     
     // Process in chunks for better performance
     for &c in &chars {
-        let digit = alphabet.decode_char(c)
+        let digit = dictionary.decode_char(c)
             .ok_or(DecodeError::InvalidCharacter(c))?;
         
         if num.is_zero() && digit == 0 {

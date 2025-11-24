@@ -176,14 +176,14 @@ Errors are detected as soon as invalid data is encountered, not after reading th
 For library users, streaming is available programmatically:
 
 ```rust
-use base_d::{AlphabetsConfig, Alphabet, StreamingEncoder, StreamingDecoder};
+use base_d::{DictionariesConfig, Dictionary, StreamingEncoder, StreamingDecoder};
 use std::fs::File;
 
 // Encode
-let config = AlphabetsConfig::load_default()?;
-let alphabet_config = config.get_alphabet("base64").unwrap();
+let config = DictionariesConfig::load_default()?;
+let alphabet_config = config.get_dictionary("base64").unwrap();
 let chars: Vec<char> = alphabet_config.chars.chars().collect();
-let alphabet = Alphabet::new_with_mode(
+let dictionary = Dictionary::new_with_mode(
     chars,
     alphabet_config.mode.clone(),
     alphabet_config.padding.as_ref().and_then(|s| s.chars().next())
@@ -192,7 +192,7 @@ let alphabet = Alphabet::new_with_mode(
 let mut input = File::open("large_file.bin")?;
 let mut output = File::create("encoded.txt")?;
 
-let mut encoder = StreamingEncoder::new(&alphabet, output);
+let mut encoder = StreamingEncoder::new(&dictionary, output);
 encoder.encode(&mut input)?;
 ```
 
