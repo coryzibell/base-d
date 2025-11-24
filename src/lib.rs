@@ -137,12 +137,14 @@
 mod core;
 mod encoders;
 mod compression;
+mod detection;
 
 pub use core::dictionary::Dictionary;
 pub use core::config::{DictionariesConfig, DictionaryConfig, EncodingMode, CompressionConfig, Settings};
 pub use encoders::streaming::{StreamingEncoder, StreamingDecoder};
 pub use encoders::encoding::DecodeError;
 pub use compression::{CompressionAlgorithm, compress, decompress};
+pub use detection::{DictionaryDetector, DictionaryMatch, detect_dictionary};
 
 /// Encodes binary data using the specified dictionary.
 ///
