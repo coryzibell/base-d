@@ -1,8 +1,10 @@
 # Hashing Support
 
-base-d includes built-in support for multiple cryptographic hash algorithms using pure Rust implementations from the RustCrypto project. All algorithms are implemented without any C dependencies or OpenSSL linking requirements.
+base-d includes built-in support for multiple hash algorithms including cryptographic hashes (RustCrypto), CRC checksums, and xxHash for non-cryptographic use cases. All algorithms are implemented in pure Rust without any C dependencies or OpenSSL linking requirements.
 
 ## Supported Algorithms
+
+### Cryptographic Hashes
 
 | Algorithm | Flag | Output Size | Best For |
 |-----------|------|-------------|----------|
@@ -23,6 +25,22 @@ base-d includes built-in support for multiple cryptographic hash algorithms usin
 | **BLAKE2s** | `--hash blake2s` | 256 bits (32 bytes) | Fast, optimized for 32-bit |
 | **BLAKE3** | `--hash blake3` | 256 bits (32 bytes) | Fastest modern hash |
 
+### CRC Checksums (Non-Cryptographic)
+
+| Algorithm | Flag | Output Size | Best For |
+|-----------|------|-------------|----------|
+| **CRC-16** | `--hash crc16` | 16 bits (2 bytes) | Simple error detection |
+| **CRC-32** | `--hash crc32` | 32 bits (4 bytes) | ZIP, Ethernet, PNG files |
+| **CRC-32C** | `--hash crc32c` | 32 bits (4 bytes) | iSCSI, Btrfs (Castagnoli) |
+| **CRC-64** | `--hash crc64` | 64 bits (8 bytes) | Large data integrity |
+
+### xxHash (Ultra-Fast Non-Cryptographic)
+
+| Algorithm | Flag | Output Size | Best For |
+|-----------|------|-------------|----------|
+| **xxHash32** | `--hash xxhash32` | 32 bits (4 bytes) | Hash tables, cache keys |
+| **xxHash64** | `--hash xxhash64` | 64 bits (8 bytes) | Fast checksums, deduplication |
+
 ## Basic Usage
 
 ### Compute Hash (Hex Output)
@@ -39,6 +57,14 @@ echo "hello world" | base-d --hash md5
 # BLAKE3 hash (fastest)
 echo "hello world" | base-d --hash blake3
 # Output: dc5a4edb8240b018124052c330270696f96771a63b45250a5c17d3000e823355
+
+# CRC32 checksum
+echo "hello world" | base-d --hash crc32
+# Output: af083b2d
+
+# xxHash64 (ultra-fast non-cryptographic)
+echo "hello world" | base-d --hash xxhash64
+# Output: 5215e13b207d6d8c
 ```
 
 ### Hash with Custom Encoding
@@ -54,6 +80,10 @@ echo "hello world" | base-d --hash blake3 -e base85
 
 # SHA-512 encoded as emoji
 echo "hello world" | base-d --hash sha512 -e emoji_faces
+
+# CRC32C encoded as base64
+echo "hello world" | base-d --hash crc32c -e base64
+# Output: 8P9ykg==
 ```
 
 ### Hash Files
@@ -89,28 +119,47 @@ echo "data" | base-d --hash sha512 | base-d --compress gzip -e base64
 
 ### Performance Characteristics
 
-Relative speeds on modern hardware:
+**Cryptographic Hashes** (Relative speeds on modern hardware):
 
 1. **BLAKE3**: ~1000 MB/s (fastest, parallelized)
 2. **BLAKE2b**: ~800 MB/s
 3. **BLAKE2s**: ~700 MB/s
-4. **SHA-256**: ~300 MB/s
+4. **MD5**: ~600 MB/s (not secure)
 5. **SHA-512**: ~500 MB/s (faster than SHA-256 on 64-bit)
-6. **SHA3-256**: ~150 MB/s
-7. **Keccak-256**: ~150 MB/s
-8. **MD5**: ~600 MB/s
+6. **SHA-256**: ~300 MB/s
+7. **SHA3-256**: ~150 MB/s
+8. **Keccak-256**: ~150 MB/s
+
+**Non-Cryptographic** (Much faster):
+
+1. **xxHash64**: ~15 GB/s (ultra-fast)
+2. **xxHash32**: ~12 GB/s
+3. **CRC32C** (hardware): ~10 GB/s
+4. **CRC32**: ~1 GB/s
 
 ### Use Case Guide
 
 | Use Case | Recommended Algorithm |
 |----------|----------------------|
+| **Cryptographic** | |
 | General checksums | SHA-256, BLAKE3 |
 | High-speed checksums | BLAKE3, BLAKE2b |
 | Cryptographic signatures | SHA-256, SHA-512 |
-| Password hashing | Use dedicated KDF (not these) |
+| File integrity (secure) | SHA-256, BLAKE2b |
 | Ethereum/blockchain | Keccak-256 |
-| File integrity | SHA-256, BLAKE2b |
-| Legacy compatibility | MD5 (non-cryptographic only) |
+| **Non-Cryptographic** | |
+| File integrity (fast) | CRC32, CRC32C |
+| ZIP/PNG compatibility | CRC32 |
+| Hash tables | xxHash32, xxHash64 |
+| Data deduplication | xxHash64, CRC64 |
+| Cache keys | xxHash32, xxHash64 |
+| Legacy compatibility | MD5, CRC16 |
+
+### When to Use What
+
+- **Use cryptographic hashes** when you need security (tamper resistance, collision resistance)
+- **Use CRC** for error detection in files/networks (ZIP, Ethernet)
+- **Use xxHash** for maximum speed when security isn't needed (caching, deduplication)
 
 ## Pure Rust Implementation
 
@@ -120,14 +169,20 @@ All hash algorithms are implemented in **pure Rust** with:
 - ✅ No OpenSSL linking
 - ✅ Cross-platform compilation
 - ✅ Memory-safe by design
-- ✅ Constant-time operations where applicable
+- ✅ Constant-time operations where applicable (cryptographic)
 
-This is achieved using the RustCrypto project libraries:
+### Libraries Used
+
+**Cryptographic**:
 - `sha2` - SHA-224, SHA-256, SHA-384, SHA-512
 - `sha3` - SHA3 family and Keccak variants
 - `blake2` - BLAKE2b and BLAKE2s
 - `blake3` - BLAKE3 (Rust-first design)
 - `md-5` - MD5 (legacy)
+
+**Non-Cryptographic**:
+- `crc` - CRC16, CRC32, CRC32C, CRC64
+- `twox-hash` - xxHash32, xxHash64
 
 ## Library API
 
