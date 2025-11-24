@@ -10,6 +10,8 @@ base-d includes built-in support for multiple compression algorithms that can be
 | **zstd** | `--compress zstd` | 3 | Fast compression, excellent ratio |
 | **brotli** | `--compress brotli` | 6 | Web content, best compression ratio |
 | **lz4** | `--compress lz4` | 0 | Fastest speed, lower ratio |
+| **snappy** | `--compress snappy` | 0 | Very fast, moderate ratio, Google |
+| **lzma** | `--compress lzma` | 6 | Maximum compression, slower speed |
 
 ## Basic Usage
 
@@ -65,6 +67,12 @@ default_level = 6
 
 [compression.lz4]
 default_level = 0
+
+[compression.snappy]
+default_level = 0
+
+[compression.lzma]
+default_level = 6
 ```
 
 Override these in:
@@ -98,6 +106,17 @@ Each algorithm has different level ranges and characteristics:
 - **Level**: Ignored (always uses fast mode)
 - **Characteristics**: Extremely fast decompression
 
+### snappy
+- **Range**: N/A (single mode)
+- **Level**: Ignored (no compression levels)
+- **Characteristics**: Very fast, designed by Google for speed
+
+### lzma
+- **Range**: 0-9
+- **Level 0**: Fastest, lower ratio
+- **Level 6**: Default, excellent compression
+- **Level 9**: Maximum compression, very slow
+
 ## Pipeline Examples
 
 ### Simple Compress → Encode
@@ -129,15 +148,27 @@ cat document.txt | base-d --compress brotli --level 11 -e base64 > tiny.txt
 ```bash
 # Use lz4 for speed-critical applications
 echo "Fast compression" | base-d --compress lz4 -e base64
+
+# Use snappy for very fast compression
+echo "Fast compression" | base-d --compress snappy -e base64
+```
+
+### Maximum Compression
+
+```bash
+# Use lzma level 9 for ultimate compression
+cat document.txt | base-d --compress lzma --level 9 -e base64 > ultra-tiny.txt
 ```
 
 ## Performance Characteristics
 
 ### Compression Speed (Relative)
-1. **lz4**: ~500 MB/s (fastest)
-2. **zstd level 3**: ~300 MB/s
-3. **gzip level 6**: ~80 MB/s
-4. **brotli level 6**: ~30 MB/s (slowest)
+1. **snappy**: ~600 MB/s (fastest)
+2. **lz4**: ~500 MB/s 
+3. **zstd level 3**: ~300 MB/s
+4. **gzip level 6**: ~80 MB/s
+5. **brotli level 6**: ~30 MB/s
+6. **lzma level 6**: ~10 MB/s (slowest)
 
 ### Decompression Speed (Relative)
 1. **lz4**: ~2000 MB/s (fastest)

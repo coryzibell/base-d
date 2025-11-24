@@ -193,6 +193,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 base_d::CompressionAlgorithm::Zstd => 3,
                 base_d::CompressionAlgorithm::Brotli => 6,
                 base_d::CompressionAlgorithm::Lz4 => 0,
+                base_d::CompressionAlgorithm::Snappy => 0,
+                base_d::CompressionAlgorithm::Lzma => 6,
             }
         }
     };

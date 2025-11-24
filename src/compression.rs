@@ -7,6 +7,8 @@ pub enum CompressionAlgorithm {
     Zstd,
     Brotli,
     Lz4,
+    Snappy,
+    Lzma,
 }
 
 impl CompressionAlgorithm {
@@ -17,6 +19,8 @@ impl CompressionAlgorithm {
             "zstd" | "zst" => Ok(CompressionAlgorithm::Zstd),
             "brotli" | "br" => Ok(CompressionAlgorithm::Brotli),
             "lz4" => Ok(CompressionAlgorithm::Lz4),
+            "snappy" | "snap" => Ok(CompressionAlgorithm::Snappy),
+            "lzma" | "xz" => Ok(CompressionAlgorithm::Lzma),
             _ => Err(format!("Unknown compression algorithm: {}", s)),
         }
     }
@@ -27,6 +31,8 @@ impl CompressionAlgorithm {
             CompressionAlgorithm::Zstd => "zstd",
             CompressionAlgorithm::Brotli => "brotli",
             CompressionAlgorithm::Lz4 => "lz4",
+            CompressionAlgorithm::Snappy => "snappy",
+            CompressionAlgorithm::Lzma => "lzma",
         }
     }
 }
@@ -38,6 +44,8 @@ pub fn compress(data: &[u8], algorithm: CompressionAlgorithm, level: u32) -> Res
         CompressionAlgorithm::Zstd => compress_zstd(data, level),
         CompressionAlgorithm::Brotli => compress_brotli(data, level),
         CompressionAlgorithm::Lz4 => compress_lz4(data, level),
+        CompressionAlgorithm::Snappy => compress_snappy(data, level),
+        CompressionAlgorithm::Lzma => compress_lzma(data, level),
     }
 }
 
@@ -48,6 +56,8 @@ pub fn decompress(data: &[u8], algorithm: CompressionAlgorithm) -> Result<Vec<u8
         CompressionAlgorithm::Zstd => decompress_zstd(data),
         CompressionAlgorithm::Brotli => decompress_brotli(data),
         CompressionAlgorithm::Lz4 => decompress_lz4(data),
+        CompressionAlgorithm::Snappy => decompress_snappy(data),
+        CompressionAlgorithm::Lzma => decompress_lzma(data),
     }
 }
 
@@ -102,6 +112,34 @@ fn decompress_lz4(data: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     Ok(lz4::block::decompress(data, Some(100 * 1024 * 1024))?)
 }
 
+fn compress_snappy(data: &[u8], _level: u32) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    // Snappy doesn't support compression levels
+    let mut encoder = snap::raw::Encoder::new();
+    Ok(encoder.compress_vec(data)?)
+}
+
+fn decompress_snappy(data: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let mut decoder = snap::raw::Decoder::new();
+    Ok(decoder.decompress_vec(data)?)
+}
+
+fn compress_lzma(data: &[u8], level: u32) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    use xz2::write::XzEncoder;
+    
+    let mut encoder = XzEncoder::new(Vec::new(), level);
+    encoder.write_all(data)?;
+    Ok(encoder.finish()?)
+}
+
+fn decompress_lzma(data: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    use xz2::read::XzDecoder;
+    
+    let mut decoder = XzDecoder::new(data);
+    let mut result = Vec::new();
+    decoder.read_to_end(&mut result)?;
+    Ok(result)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -135,6 +173,22 @@ mod tests {
         let data = b"Hello, world! This is a test of lz4 compression.";
         let compressed = compress(data, CompressionAlgorithm::Lz4, 0).unwrap();
         let decompressed = decompress(&compressed, CompressionAlgorithm::Lz4).unwrap();
+        assert_eq!(data.as_ref(), decompressed.as_slice());
+    }
+    
+    #[test]
+    fn test_snappy_roundtrip() {
+        let data = b"Hello, world! This is a test of snappy compression.";
+        let compressed = compress(data, CompressionAlgorithm::Snappy, 0).unwrap();
+        let decompressed = decompress(&compressed, CompressionAlgorithm::Snappy).unwrap();
+        assert_eq!(data.as_ref(), decompressed.as_slice());
+    }
+    
+    #[test]
+    fn test_lzma_roundtrip() {
+        let data = b"Hello, world! This is a test of lzma compression.";
+        let compressed = compress(data, CompressionAlgorithm::Lzma, 6).unwrap();
+        let decompressed = decompress(&compressed, CompressionAlgorithm::Lzma).unwrap();
         assert_eq!(data.as_ref(), decompressed.as_slice());
     }
 }

@@ -23,6 +23,12 @@ default_level = 6
 [compression.lz4]
 default_level = 0
 
+[compression.snappy]
+default_level = 0
+
+[compression.lzma]
+default_level = 6
+
 [dictionaries.base100]
 mode = "byte_range"
 start_codepoint = 127991  # U+1F3F7 (🏷️) - base100 emoji range

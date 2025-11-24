@@ -26,6 +26,8 @@ flate2 = "1.0"
 brotli = "7.0"
 zstd = "0.13"
 lz4 = "1.28"
+snap = "1.1.1"
+xz2 = "0.1.7"
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }

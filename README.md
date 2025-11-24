@@ -14,7 +14,7 @@ base-d is a flexible encoding framework that goes far beyond traditional base64.
 - **Numerous built-in dictionaries** - From RFC 4648 standards to hieroglyphics, emoji, Matrix-style base256, and a 1024-character CJK dictionary
 - **3 encoding modes** - Mathematical, chunked (RFC-compliant), and byte-range
 - **Auto-detection** - Automatically identify which dictionary was used to encode data
-- **Compression support** - Built-in gzip, zstd, brotli, and lz4 compression with configurable levels
+- **Compression support** - Built-in gzip, zstd, brotli, lz4, snappy, and lzma compression with configurable levels
 - **Custom dictionaries** - Define your own via TOML configuration
 - **Streaming support** - Memory-efficient processing for large files
 - **Library + CLI** - Use programmatically or from the command line
@@ -92,9 +92,10 @@ base-d --detect --show-candidates 5 input.txt
 echo "SGVsbG8=" | base-d -d base64 -e hex
 echo "48656c6c6f" | base-d -d hex -e emoji_faces
 
-# Compress and encode (supported: gzip, zstd, brotli, lz4)
+# Compress and encode (supported: gzip, zstd, brotli, lz4, snappy, lzma)
 echo "Data to compress" | base-d --compress gzip -e base64
 echo "Large file" | base-d --compress zstd --level 9 -e base85
+echo "Fast compression" | base-d --compress snappy -e base64
 
 # Compress with default encoding (base64)
 echo "Quick compress" | base-d --compress gzip
