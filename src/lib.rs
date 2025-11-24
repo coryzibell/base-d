@@ -134,17 +134,13 @@
 //! # }
 //! ```
 
-mod alphabet;
-mod encoding;
-mod chunked;
-mod byte_range;
-mod config;
-mod streaming;
+mod core;
+mod encoders;
 
-pub use alphabet::Alphabet;
-pub use config::{AlphabetsConfig, AlphabetConfig, EncodingMode};
-pub use streaming::{StreamingEncoder, StreamingDecoder};
-pub use encoding::DecodeError;
+pub use core::alphabet::Alphabet;
+pub use core::config::{AlphabetsConfig, AlphabetConfig, EncodingMode};
+pub use encoders::streaming::{StreamingEncoder, StreamingDecoder};
+pub use encoders::encoding::DecodeError;
 
 /// Encodes binary data using the specified alphabet.
 ///
@@ -174,9 +170,9 @@ pub use encoding::DecodeError;
 /// ```
 pub fn encode(data: &[u8], alphabet: &Alphabet) -> String {
     match alphabet.mode() {
-        EncodingMode::BaseConversion => encoding::encode(data, alphabet),
-        EncodingMode::Chunked => chunked::encode_chunked(data, alphabet),
-        EncodingMode::ByteRange => byte_range::encode_byte_range(data, alphabet),
+        EncodingMode::BaseConversion => encoders::encoding::encode(data, alphabet),
+        EncodingMode::Chunked => encoders::chunked::encode_chunked(data, alphabet),
+        EncodingMode::ByteRange => encoders::byte_range::encode_byte_range(data, alphabet),
     }
 }
 
@@ -219,9 +215,9 @@ pub fn encode(data: &[u8], alphabet: &Alphabet) -> String {
 /// ```
 pub fn decode(encoded: &str, alphabet: &Alphabet) -> Result<Vec<u8>, DecodeError> {
     match alphabet.mode() {
-        EncodingMode::BaseConversion => encoding::decode(encoded, alphabet),
-        EncodingMode::Chunked => chunked::decode_chunked(encoded, alphabet),
-        EncodingMode::ByteRange => byte_range::decode_byte_range(encoded, alphabet),
+        EncodingMode::BaseConversion => encoders::encoding::decode(encoded, alphabet),
+        EncodingMode::Chunked => encoders::chunked::decode_chunked(encoded, alphabet),
+        EncodingMode::ByteRange => encoders::byte_range::decode_byte_range(encoded, alphabet),
     }
 }
 

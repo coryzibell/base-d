@@ -59,7 +59,7 @@ impl AlphabetsConfig {
     ///
     /// Returns the default alphabets bundled with the library.
     pub fn load_default() -> Result<Self, Box<dyn std::error::Error>> {
-        let content = include_str!("../alphabets.toml");
+        let content = include_str!("../../alphabets.toml");
         Ok(Self::from_toml(content)?)
     }
     

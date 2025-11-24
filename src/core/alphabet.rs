@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use crate::config::EncodingMode;
+use crate::core::config::EncodingMode;
 
 const MAX_LOOKUP_TABLE_SIZE: usize = 256;
 

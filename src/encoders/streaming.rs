@@ -1,5 +1,5 @@
-use crate::alphabet::Alphabet;
-use crate::encoding::DecodeError;
+use crate::core::alphabet::Alphabet;
+use crate::encoders::encoding::DecodeError;
 use std::io::{Read, Write};
 
 const CHUNK_SIZE: usize = 4096; // 4KB chunks
@@ -31,17 +31,17 @@ impl<'a, W: Write> StreamingEncoder<'a, W> {
     /// behavior, use Chunked or ByteRange modes.
     pub fn encode<R: Read>(&mut self, reader: &mut R) -> std::io::Result<()> {
         match self.alphabet.mode() {
-            crate::config::EncodingMode::Chunked => {
+            crate::core::config::EncodingMode::Chunked => {
                 self.encode_chunked(reader)
             }
-            crate::config::EncodingMode::ByteRange => {
+            crate::core::config::EncodingMode::ByteRange => {
                 self.encode_byte_range(reader)
             }
-            crate::config::EncodingMode::BaseConversion => {
+            crate::core::config::EncodingMode::BaseConversion => {
                 // Mathematical mode requires entire input - read all and encode
                 let mut buffer = Vec::new();
                 reader.read_to_end(&mut buffer)?;
-                let encoded = crate::encoding::encode(&buffer, self.alphabet);
+                let encoded = crate::encoders::encoding::encode(&buffer, self.alphabet);
                 self.writer.write_all(encoded.as_bytes())?;
                 Ok(())
             }
@@ -63,7 +63,7 @@ impl<'a, W: Write> StreamingEncoder<'a, W> {
                 break;
             }
             
-            let encoded = crate::chunked::encode_chunked(&buffer[..bytes_read], self.alphabet);
+            let encoded = crate::encoders::chunked::encode_chunked(&buffer[..bytes_read], self.alphabet);
             self.writer.write_all(encoded.as_bytes())?;
         }
         
@@ -79,7 +79,7 @@ impl<'a, W: Write> StreamingEncoder<'a, W> {
                 break;
             }
             
-            let encoded = crate::byte_range::encode_byte_range(&buffer[..bytes_read], self.alphabet);
+            let encoded = crate::encoders::byte_range::encode_byte_range(&buffer[..bytes_read], self.alphabet);
             self.writer.write_all(encoded.as_bytes())?;
         }
         
@@ -114,18 +114,18 @@ impl<'a, W: Write> StreamingDecoder<'a, W> {
     /// behavior, use Chunked or ByteRange modes.
     pub fn decode<R: Read>(&mut self, reader: &mut R) -> Result<(), DecodeError> {
         match self.alphabet.mode() {
-            crate::config::EncodingMode::Chunked => {
+            crate::core::config::EncodingMode::Chunked => {
                 self.decode_chunked(reader)
             }
-            crate::config::EncodingMode::ByteRange => {
+            crate::core::config::EncodingMode::ByteRange => {
                 self.decode_byte_range(reader)
             }
-            crate::config::EncodingMode::BaseConversion => {
+            crate::core::config::EncodingMode::BaseConversion => {
                 // Mathematical mode requires entire input
                 let mut buffer = String::new();
                 reader.read_to_string(&mut buffer)
                     .map_err(|_| DecodeError::InvalidCharacter('\0'))?;
-                let decoded = crate::encoding::decode(&buffer, self.alphabet)?;
+                let decoded = crate::encoders::encoding::decode(&buffer, self.alphabet)?;
                 self.writer.write_all(&decoded)
                     .map_err(|_| DecodeError::InvalidCharacter('\0'))?;
                 Ok(())
@@ -159,7 +159,7 @@ impl<'a, W: Write> StreamingDecoder<'a, W> {
             
             if complete_groups > 0 {
                 let to_decode: String = chars[..complete_groups].iter().collect();
-                let decoded = crate::chunked::decode_chunked(&to_decode, self.alphabet)?;
+                let decoded = crate::encoders::chunked::decode_chunked(&to_decode, self.alphabet)?;
                 self.writer.write_all(&decoded)
                     .map_err(|_| DecodeError::InvalidCharacter('\0'))?;
                 
@@ -170,7 +170,7 @@ impl<'a, W: Write> StreamingDecoder<'a, W> {
         
         // Process any remaining characters
         if !text_buffer.is_empty() {
-            let decoded = crate::chunked::decode_chunked(&text_buffer, self.alphabet)?;
+            let decoded = crate::encoders::chunked::decode_chunked(&text_buffer, self.alphabet)?;
             self.writer.write_all(&decoded)
                 .map_err(|_| DecodeError::InvalidCharacter('\0'))?;
         }
@@ -191,7 +191,7 @@ impl<'a, W: Write> StreamingDecoder<'a, W> {
             let chunk_str = std::str::from_utf8(&char_buffer[..bytes_read])
                 .map_err(|_| DecodeError::InvalidCharacter('\0'))?;
             
-            let decoded = crate::byte_range::decode_byte_range(chunk_str, self.alphabet)?;
+            let decoded = crate::encoders::byte_range::decode_byte_range(chunk_str, self.alphabet)?;
             self.writer.write_all(&decoded)
                 .map_err(|_| DecodeError::InvalidCharacter('\0'))?;
         }
@@ -211,7 +211,7 @@ mod tests {
         let alphabet_config = config.get_alphabet(name).unwrap();
         
         match alphabet_config.mode {
-            crate::config::EncodingMode::ByteRange => {
+            crate::core::config::EncodingMode::ByteRange => {
                 let start = alphabet_config.start_codepoint.unwrap();
                 Alphabet::new_with_mode_and_range(Vec::new(), alphabet_config.mode.clone(), None, Some(start)).unwrap()
             }

@@ -1,4 +1,4 @@
-use crate::alphabet::Alphabet;
+use crate::core::alphabet::Alphabet;
 use num_traits::Zero;
 use num_integer::Integer;
 

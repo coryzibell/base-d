@@ -1,5 +1,5 @@
-use crate::alphabet::Alphabet;
-use crate::encoding::DecodeError;
+use crate::core::alphabet::Alphabet;
+use crate::encoders::encoding::DecodeError;
 
 /// Encode data using byte range mode (direct byte-to-character mapping)
 /// Each byte maps to start_codepoint + byte_value
@@ -74,7 +74,7 @@ pub fn decode_byte_range(encoded: &str, alphabet: &Alphabet) -> Result<Vec<u8>, 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::EncodingMode;
+    use crate::core::config::EncodingMode;
     
     #[test]
     fn test_byte_range_encode_decode() {

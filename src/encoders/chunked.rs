@@ -1,6 +1,6 @@
-use crate::alphabet::Alphabet;
+use crate::core::alphabet::Alphabet;
 
-pub use crate::encoding::DecodeError;
+pub use crate::encoders::encoding::DecodeError;
 
 pub fn encode_chunked(data: &[u8], alphabet: &Alphabet) -> String {
     let base = alphabet.base();
