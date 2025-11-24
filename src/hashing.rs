@@ -4,6 +4,8 @@ use blake2::{Blake2b512, Blake2s256};
 use blake3::Hasher as Blake3Hasher;
 use md5::Md5;
 use twox_hash::{XxHash32, XxHash64};
+use twox_hash::xxhash3_64::Hasher as Xxh3Hash64;
+use twox_hash::xxhash3_128::Hasher as Xxh3Hash128;
 use std::hash::Hasher;
 
 /// Supported hash algorithms.
@@ -33,6 +35,8 @@ pub enum HashAlgorithm {
     // xxHash variants
     XxHash32,
     XxHash64,
+    XxHash3_64,
+    XxHash3_128,
 }
 
 impl HashAlgorithm {
@@ -61,6 +65,8 @@ impl HashAlgorithm {
             "crc64" => Ok(HashAlgorithm::Crc64),
             "xxhash32" | "xxh32" => Ok(HashAlgorithm::XxHash32),
             "xxhash64" | "xxh64" => Ok(HashAlgorithm::XxHash64),
+            "xxhash3" | "xxh3" | "xxhash3-64" | "xxh3-64" => Ok(HashAlgorithm::XxHash3_64),
+            "xxhash3-128" | "xxh3-128" => Ok(HashAlgorithm::XxHash3_128),
             _ => Err(format!("Unknown hash algorithm: {}", s)),
         }
     }
@@ -89,6 +95,8 @@ impl HashAlgorithm {
             HashAlgorithm::Crc64 => "crc64",
             HashAlgorithm::XxHash32 => "xxhash32",
             HashAlgorithm::XxHash64 => "xxhash64",
+            HashAlgorithm::XxHash3_64 => "xxhash3-64",
+            HashAlgorithm::XxHash3_128 => "xxhash3-128",
         }
     }
 
@@ -117,6 +125,8 @@ impl HashAlgorithm {
             HashAlgorithm::Crc64 => 8,
             HashAlgorithm::XxHash32 => 4,
             HashAlgorithm::XxHash64 => 8,
+            HashAlgorithm::XxHash3_64 => 8,
+            HashAlgorithm::XxHash3_128 => 16,
         }
     }
 }
@@ -234,6 +244,16 @@ pub fn hash(data: &[u8], algorithm: HashAlgorithm) -> Vec<u8> {
             hasher.write(data);
             hasher.finish().to_be_bytes().to_vec()
         }
+        HashAlgorithm::XxHash3_64 => {
+            let mut hasher = Xxh3Hash64::with_seed(0);
+            hasher.write(data);
+            hasher.finish().to_be_bytes().to_vec()
+        }
+        HashAlgorithm::XxHash3_128 => {
+            let mut hasher = Xxh3Hash128::with_seed(0);
+            hasher.write(data);
+            hasher.finish_128().to_be_bytes().to_vec()
+        }
     }
 }
 
@@ -320,6 +340,8 @@ mod tests {
         assert_eq!(HashAlgorithm::Crc64.output_size(), 8);
         assert_eq!(HashAlgorithm::XxHash32.output_size(), 4);
         assert_eq!(HashAlgorithm::XxHash64.output_size(), 8);
+        assert_eq!(HashAlgorithm::XxHash3_64.output_size(), 8);
+        assert_eq!(HashAlgorithm::XxHash3_128.output_size(), 16);
     }
     
     #[test]
@@ -368,5 +390,19 @@ mod tests {
         let data = b"hello world";
         let result = hash(data, HashAlgorithm::XxHash64);
         assert_eq!(result.len(), 8);
+    }
+    
+    #[test]
+    fn test_xxhash3_64() {
+        let data = b"hello world";
+        let result = hash(data, HashAlgorithm::XxHash3_64);
+        assert_eq!(result.len(), 8);
+    }
+    
+    #[test]
+    fn test_xxhash3_128() {
+        let data = b"hello world";
+        let result = hash(data, HashAlgorithm::XxHash3_128);
+        assert_eq!(result.len(), 16);
     }
 }

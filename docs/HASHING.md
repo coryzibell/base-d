@@ -40,6 +40,8 @@ base-d includes built-in support for multiple hash algorithms including cryptogr
 |-----------|------|-------------|----------|
 | **xxHash32** | `--hash xxhash32` | 32 bits (4 bytes) | Hash tables, cache keys |
 | **xxHash64** | `--hash xxhash64` | 64 bits (8 bytes) | Fast checksums, deduplication |
+| **xxHash3-64** | `--hash xxhash3` | 64 bits (8 bytes) | Newest, fastest 64-bit hash |
+| **xxHash3-128** | `--hash xxhash3-128` | 128 bits (16 bytes) | Newest, 128-bit output |
 
 ## Basic Usage
 
@@ -65,6 +67,10 @@ echo "hello world" | base-d --hash crc32
 # xxHash64 (ultra-fast non-cryptographic)
 echo "hello world" | base-d --hash xxhash64
 # Output: 5215e13b207d6d8c
+
+# xxHash3 (newest, fastest)
+echo "hello world" | base-d --hash xxhash3
+# Output: d42f7ed4b73c6bde
 ```
 
 ### Hash with Custom Encoding
@@ -84,6 +90,10 @@ echo "hello world" | base-d --hash sha512 -e emoji_faces
 # CRC32C encoded as base64
 echo "hello world" | base-d --hash crc32c -e base64
 # Output: 8P9ykg==
+
+# xxHash3-128 encoded as base64
+echo "hello world" | base-d --hash xxhash3-128 -e base64
+# Output: 7vrJ2HEAzRM2suczpUhEJQ==
 ```
 
 ### Hash Files
@@ -132,10 +142,11 @@ echo "data" | base-d --hash sha512 | base-d --compress gzip -e base64
 
 **Non-Cryptographic** (Much faster):
 
-1. **xxHash64**: ~15 GB/s (ultra-fast)
-2. **xxHash32**: ~12 GB/s
-3. **CRC32C** (hardware): ~10 GB/s
-4. **CRC32**: ~1 GB/s
+1. **xxHash3-64**: ~30 GB/s (newest, fastest)
+2. **xxHash64**: ~15 GB/s (ultra-fast)
+3. **xxHash32**: ~12 GB/s
+4. **CRC32C** (hardware): ~10 GB/s
+5. **CRC32**: ~1 GB/s
 
 ### Use Case Guide
 
@@ -150,9 +161,9 @@ echo "data" | base-d --hash sha512 | base-d --compress gzip -e base64
 | **Non-Cryptographic** | |
 | File integrity (fast) | CRC32, CRC32C |
 | ZIP/PNG compatibility | CRC32 |
-| Hash tables | xxHash32, xxHash64 |
-| Data deduplication | xxHash64, CRC64 |
-| Cache keys | xxHash32, xxHash64 |
+| Hash tables | xxHash3, xxHash32, xxHash64 |
+| Data deduplication | xxHash3, xxHash64, CRC64 |
+| Cache keys | xxHash3, xxHash32, xxHash64 |
 | Legacy compatibility | MD5, CRC16 |
 
 ### When to Use What
@@ -182,7 +193,7 @@ All hash algorithms are implemented in **pure Rust** with:
 
 **Non-Cryptographic**:
 - `crc` - CRC16, CRC32, CRC32C, CRC64
-- `twox-hash` - xxHash32, xxHash64
+- `twox-hash` - xxHash32, xxHash64, xxHash3-64, xxHash3-128
 
 ## Library API
 
