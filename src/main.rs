@@ -17,6 +17,22 @@ struct Cli {
     #[arg(short = 'd', long)]
     decode: Option<String>,
     
+    /// Compress data before encoding (gzip, zstd, brotli, lz4)
+    #[arg(short = 'c', long)]
+    compress: Option<String>,
+    
+    /// Decompress data after decoding (gzip, zstd, brotli, lz4)
+    #[arg(long)]
+    decompress: Option<String>,
+    
+    /// Compression level (algorithm-specific, typically 1-9)
+    #[arg(long)]
+    level: Option<u32>,
+    
+    /// Output raw binary data (no encoding after compression)
+    #[arg(short = 'r', long)]
+    raw: bool,
+    
     /// File to process (if not provided, reads from stdin)
     #[arg(value_name = "FILE")]
     file: Option<PathBuf>,
@@ -104,111 +120,130 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(dictionary)
     };
     
-    // Determine operation mode based on flags
-    match (&cli.decode, &cli.encode) {
-        (Some(decode_alphabet_name), Some(encode_alphabet_name)) => {
-            // Transcode mode: --decode X --encode Y
-            if cli.stream {
-                return Err("Streaming mode not yet supported for transcoding".into());
+    // Parse compression algorithms if provided
+    let compress_algo = cli.compress.as_ref()
+        .map(|s| base_d::CompressionAlgorithm::from_str(s))
+        .transpose()?;
+    
+    let decompress_algo = cli.decompress.as_ref()
+        .map(|s| base_d::CompressionAlgorithm::from_str(s))
+        .transpose()?;
+    
+    // Validate flags
+    if cli.stream && (compress_algo.is_some() || decompress_algo.is_some()) {
+        return Err("Streaming mode is not yet supported with compression".into());
+    }
+    
+    if cli.raw && cli.encode.is_some() {
+        return Err("Cannot use --raw with --encode (output would not be raw)".into());
+    }
+    
+    // Handle streaming mode separately (no compression support yet)
+    if cli.stream {
+        if let Some(decode_name) = &cli.decode {
+            use base_d::StreamingDecoder;
+            let decode_alphabet = create_alphabet(decode_name)?;
+            let mut decoder = StreamingDecoder::new(&decode_alphabet, io::stdout());
+            if let Some(file_path) = &cli.file {
+                let mut file = fs::File::open(file_path)?;
+                decoder.decode(&mut file)?;
+            } else {
+                decoder.decode(&mut io::stdin())?;
             }
-            
-            let decode_alphabet = create_alphabet(decode_alphabet_name)?;
-            let encode_alphabet = create_alphabet(encode_alphabet_name)?;
-            
-            // Read input
-            let input_data = if let Some(file_path) = cli.file {
-                fs::read_to_string(&file_path)?
+            return Ok(());
+        } else if let Some(encode_name) = &cli.encode {
+            use base_d::StreamingEncoder;
+            let encode_alphabet = create_alphabet(encode_name)?;
+            let mut encoder = StreamingEncoder::new(&encode_alphabet, io::stdout());
+            if let Some(file_path) = &cli.file {
+                let mut file = fs::File::open(file_path)?;
+                encoder.encode(&mut file)?;
             } else {
-                let mut buffer = String::new();
-                io::stdin().read_to_string(&mut buffer)?;
-                buffer
-            };
-            
-            // Transcode: decode from input dictionary, encode to output dictionary
-            let decoded = decode(input_data.trim(), &decode_alphabet)?;
-            let encoded = encode(&decoded, &encode_alphabet);
-            println!("{}", encoded);
-        }
-        
-        (Some(decode_alphabet_name), None) => {
-            // Decode mode: --decode X (decode to binary)
-            let decode_alphabet = create_alphabet(decode_alphabet_name)?;
-            
-            if cli.stream {
-                use base_d::StreamingDecoder;
-                let mut decoder = StreamingDecoder::new(&decode_alphabet, io::stdout());
-                if let Some(file_path) = cli.file {
-                    let mut file = fs::File::open(&file_path)?;
-                    decoder.decode(&mut file)?;
-                } else {
-                    decoder.decode(&mut io::stdin())?;
-                }
-            } else {
-                let input_data = if let Some(file_path) = cli.file {
-                    fs::read_to_string(&file_path)?
-                } else {
-                    let mut buffer = String::new();
-                    io::stdin().read_to_string(&mut buffer)?;
-                    buffer
-                };
-                
-                let decoded = decode(input_data.trim(), &decode_alphabet)?;
-                io::stdout().write_all(&decoded)?;
+                encoder.encode(&mut io::stdin())?;
             }
+            return Ok(());
+        } else {
+            return Err("Streaming mode requires either --encode or --decode".into());
         }
-        
-        (None, Some(encode_alphabet_name)) => {
-            // Encode mode: --encode X (encode from binary)
-            let encode_alphabet = create_alphabet(encode_alphabet_name)?;
-            
-            if cli.stream {
-                use base_d::StreamingEncoder;
-                let mut encoder = StreamingEncoder::new(&encode_alphabet, io::stdout());
-                if let Some(file_path) = cli.file {
-                    let mut file = fs::File::open(&file_path)?;
-                    encoder.encode(&mut file)?;
-                } else {
-                    encoder.encode(&mut io::stdin())?;
-                }
-            } else {
-                let input_data = if let Some(file_path) = cli.file {
-                    fs::read(&file_path)?
-                } else {
-                    let mut buffer = Vec::new();
-                    io::stdin().read_to_end(&mut buffer)?;
-                    buffer
-                };
-                
-                let encoded = encode(&input_data, &encode_alphabet);
-                println!("{}", encoded);
+    }
+    
+    // Determine compression level
+    let get_compression_level = |algo: base_d::CompressionAlgorithm| -> u32 {
+        if let Some(level) = cli.level {
+            level
+        } else if let Some(comp_config) = config.compression.get(algo.as_str()) {
+            comp_config.default_level
+        } else {
+            // Fallback defaults
+            match algo {
+                base_d::CompressionAlgorithm::Gzip => 6,
+                base_d::CompressionAlgorithm::Zstd => 3,
+                base_d::CompressionAlgorithm::Brotli => 6,
+                base_d::CompressionAlgorithm::Lz4 => 0,
             }
         }
-        
-        (None, None) => {
-            // No dictionary specified - use default (cards) for encoding
+    };
+    
+    // Read input data
+    let input_data = if let Some(file_path) = &cli.file {
+        if cli.decode.is_some() {
+            fs::read_to_string(file_path)?.into_bytes()
+        } else {
+            fs::read(file_path)?
+        }
+    } else {
+        let mut buffer = Vec::new();
+        io::stdin().read_to_end(&mut buffer)?;
+        buffer
+    };
+    
+    // Process data through pipeline
+    let mut data = input_data;
+    
+    // Step 1: Decode if requested
+    if let Some(decode_name) = &cli.decode {
+        let decode_alphabet = create_alphabet(decode_name)?;
+        let text = String::from_utf8(data)
+            .map_err(|_| "Input data is not valid UTF-8 text for decoding")?;
+        data = decode(text.trim(), &decode_alphabet)?;
+    }
+    
+    // Step 2: Decompress if requested
+    if let Some(algo) = decompress_algo {
+        data = base_d::decompress(&data, algo)?;
+    }
+    
+    // Step 3: Compress if requested
+    if let Some(algo) = compress_algo {
+        let level = get_compression_level(algo);
+        data = base_d::compress(&data, algo, level)?;
+    }
+    
+    // Step 4: Encode if requested, or output raw/default
+    if cli.raw {
+        // Raw binary output
+        io::stdout().write_all(&data)?;
+    } else if let Some(encode_name) = &cli.encode {
+        // Explicit encoding
+        let encode_alphabet = create_alphabet(encode_name)?;
+        let encoded = encode(&data, &encode_alphabet);
+        println!("{}", encoded);
+    } else if compress_algo.is_some() {
+        // Compressed but no explicit encoding - use default
+        let default_dict = &config.settings.default_dictionary;
+        let encode_alphabet = create_alphabet(default_dict)?;
+        let encoded = encode(&data, &encode_alphabet);
+        println!("{}", encoded);
+    } else {
+        // No compression, no encoding - output as-is (or use default encoding)
+        if cli.decode.is_none() {
+            // Encoding mode without explicit dictionary
             let encode_alphabet = create_alphabet("cards")?;
-            
-            if cli.stream {
-                use base_d::StreamingEncoder;
-                let mut encoder = StreamingEncoder::new(&encode_alphabet, io::stdout());
-                if let Some(file_path) = cli.file {
-                    let mut file = fs::File::open(&file_path)?;
-                    encoder.encode(&mut file)?;
-                } else {
-                    encoder.encode(&mut io::stdin())?;
-                }
-            } else {
-                let input_data = if let Some(file_path) = cli.file {
-                    fs::read(&file_path)?
-                } else {
-                    let mut buffer = Vec::new();
-                    io::stdin().read_to_end(&mut buffer)?;
-                    buffer
-                };
-                
-                let encoded = encode(&input_data, &encode_alphabet);
-                println!("{}", encoded);
-            }
+            let encoded = encode(&data, &encode_alphabet);
+            println!("{}", encoded);
+        } else {
+            // Decode-only mode
+            io::stdout().write_all(&data)?;
         }
     }
     

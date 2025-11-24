@@ -47,6 +47,31 @@ pub struct DictionaryConfig {
 pub struct DictionariesConfig {
     /// Map of dictionary names to their configurations
     pub dictionaries: HashMap<String, DictionaryConfig>,
+    /// Compression algorithm configurations
+    #[serde(default)]
+    pub compression: HashMap<String, CompressionConfig>,
+    /// Global settings
+    #[serde(default)]
+    pub settings: Settings,
+}
+
+/// Configuration for a compression algorithm.
+#[derive(Debug, Deserialize, Clone)]
+pub struct CompressionConfig {
+    /// Default compression level
+    pub default_level: u32,
+}
+
+/// Global settings for base-d.
+#[derive(Debug, Deserialize, Clone, Default)]
+pub struct Settings {
+    /// Default dictionary to use when compressing without explicit encoding
+    #[serde(default = "default_dictionary")]
+    pub default_dictionary: String,
+}
+
+fn default_dictionary() -> String {
+    "base64".to_string()
 }
 
 impl DictionariesConfig {
@@ -162,6 +187,8 @@ mod tests {
     fn test_merge_configs() {
         let mut config1 = DictionariesConfig {
             dictionaries: HashMap::new(),
+            compression: HashMap::new(),
+            settings: Settings::default(),
         };
         config1.dictionaries.insert("test1".to_string(), DictionaryConfig {
             chars: "ABC".to_string(),
@@ -172,6 +199,8 @@ mod tests {
         
         let mut config2 = DictionariesConfig {
             dictionaries: HashMap::new(),
+            compression: HashMap::new(),
+            settings: Settings::default(),
         };
         config2.dictionaries.insert("test2".to_string(), DictionaryConfig {
             chars: "XYZ".to_string(),

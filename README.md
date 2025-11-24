@@ -13,6 +13,7 @@ base-d is a flexible encoding framework that goes far beyond traditional base64.
 
 - **Numerous built-in dictionaries** - From RFC 4648 standards to hieroglyphics, emoji, Matrix-style base256, and a 1024-character CJK dictionary
 - **3 encoding modes** - Mathematical, chunked (RFC-compliant), and byte-range
+- **Compression support** - Built-in gzip, zstd, brotli, and lz4 compression with configurable levels
 - **Custom dictionaries** - Define your own via TOML configuration
 - **Streaming support** - Memory-efficient processing for large files
 - **Library + CLI** - Use programmatically or from the command line
@@ -39,6 +40,7 @@ base-d is a flexible encoding framework that goes far beyond traditional base64.
 ### Advanced Capabilities
 
 - **Streaming Mode** - Process multi-GB files with constant 4KB memory usage
+- **Compression Pipeline** - Compress before encoding with gzip, zstd, brotli, or lz4
 - **User Configuration** - Load custom dictionaries from `~/.config/base-d/dictionaries.toml`
 - **Project-Local Config** - Override dictionaries per-project with `./dictionaries.toml`
 - **Three Independent Algorithms** - Choose the right mode for your use case
@@ -82,9 +84,25 @@ base-d --neo
 echo "SGVsbG8=" | base-d -d base64 -e hex
 echo "48656c6c6f" | base-d -d hex -e emoji_faces
 
+# Compress and encode (supported: gzip, zstd, brotli, lz4)
+echo "Data to compress" | base-d --compress gzip -e base64
+echo "Large file" | base-d --compress zstd --level 9 -e base85
+
+# Compress with default encoding (base64)
+echo "Quick compress" | base-d --compress gzip
+
+# Decompress and decode
+echo "H4sIAAAAAAAA/..." | base-d -d base64 --decompress gzip
+
+# Output raw compressed binary
+echo "Data" | base-d --compress zstd --raw > output.zst
+
 # Process files
 base-d -e base64 input.txt > encoded.txt
 base-d -d base64 encoded.txt > output.txt
+
+# Compress large files efficiently
+base-d --compress brotli --level 11 -e base64 large_file.bin > compressed.txt
 ```
 
 ## Installation
