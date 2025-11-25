@@ -2,7 +2,7 @@
 //!
 //! Demonstrates runtime CPU feature detection and SIMD availability
 
-use base_d::{DictionariesConfig, Dictionary, encode};
+use base_d::{encode, DictionariesConfig, Dictionary};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== base-d SIMD Feature Detection ===\n");
@@ -11,7 +11,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(target_arch = "x86_64")]
     {
         println!("Platform: x86_64");
-        
+
         if is_x86_feature_detected!("avx2") {
             println!("✓ AVX2 available - Maximum SIMD performance");
         } else if is_x86_feature_detected!("ssse3") {
@@ -36,19 +36,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let base64_config = config.get_dictionary("base64").unwrap();
 
     let chars: Vec<char> = base64_config.chars.chars().collect();
-    let padding = base64_config.padding.as_ref().and_then(|s| s.chars().next());
-    let dictionary = Dictionary::new_with_mode(
-        chars,
-        base64_config.mode.clone(),
-        padding
-    )?;
+    let padding = base64_config
+        .padding
+        .as_ref()
+        .and_then(|s| s.chars().next());
+    let dictionary = Dictionary::new_with_mode(chars, base64_config.mode.clone(), padding)?;
 
     let test_data = b"Hello, SIMD World! This is a performance test.";
     let encoded = encode(test_data, &dictionary);
-    
+
     println!("Input:  {:?}", std::str::from_utf8(test_data)?);
     println!("Output: {}", encoded);
-    
+
     #[cfg(target_arch = "x86_64")]
     {
         if is_x86_feature_detected!("ssse3") {

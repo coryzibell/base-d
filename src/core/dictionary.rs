@@ -1,5 +1,6 @@
-use std::collections::HashMap;
 use crate::core::config::EncodingMode;
+use crate::simd::alphabets::AlphabetMetadata;
+use std::collections::HashMap;
 
 const MAX_LOOKUP_TABLE_SIZE: usize = 256;
 
@@ -32,7 +33,7 @@ impl Dictionary {
     pub fn new(chars: Vec<char>) -> Result<Self, String> {
         Self::new_with_mode(chars, EncodingMode::BaseConversion, None)
     }
-    
+
     /// Creates a new dictionary with specified encoding mode and optional padding.
     ///
     /// # Arguments
@@ -46,10 +47,14 @@ impl Dictionary {
     /// Returns an error if:
     /// - The dictionary is empty or contains duplicates
     /// - Chunked mode is used with a non-power-of-two dictionary size
-    pub fn new_with_mode(chars: Vec<char>, mode: EncodingMode, padding: Option<char>) -> Result<Self, String> {
+    pub fn new_with_mode(
+        chars: Vec<char>,
+        mode: EncodingMode,
+        padding: Option<char>,
+    ) -> Result<Self, String> {
         Self::new_with_mode_and_range(chars, mode, padding, None)
     }
-    
+
     /// Creates a new dictionary with full configuration including byte-range support.
     ///
     /// # Arguments
@@ -62,25 +67,36 @@ impl Dictionary {
     /// # Errors
     ///
     /// Returns an error if configuration is invalid for the specified mode.
-    pub fn new_with_mode_and_range(chars: Vec<char>, mode: EncodingMode, padding: Option<char>, start_codepoint: Option<u32>) -> Result<Self, String> {
+    pub fn new_with_mode_and_range(
+        chars: Vec<char>,
+        mode: EncodingMode,
+        padding: Option<char>,
+        start_codepoint: Option<u32>,
+    ) -> Result<Self, String> {
         // ByteRange mode doesn't need chars, just validates start_codepoint
         if mode == EncodingMode::ByteRange {
             if let Some(start) = start_codepoint {
                 // Validate that we can represent all 256 bytes
                 if let Some(end_codepoint) = start.checked_add(255) {
                     if std::char::from_u32(end_codepoint).is_none() {
-                        return Err(format!("Invalid Unicode range: {}-{}", start, end_codepoint));
+                        return Err(format!(
+                            "Invalid Unicode range: {}-{}",
+                            start, end_codepoint
+                        ));
                     }
                     // Validate all codepoints in range are valid Unicode
                     for offset in 0..=255 {
                         if std::char::from_u32(start + offset).is_none() {
-                            return Err(format!("Invalid Unicode codepoint in range: {}", start + offset));
+                            return Err(format!(
+                                "Invalid Unicode codepoint in range: {}",
+                                start + offset
+                            ));
                         }
                     }
                 } else {
                     return Err("Start codepoint too high for 256-byte range".to_string());
                 }
-                
+
                 return Ok(Dictionary {
                     chars: Vec::new(),
                     char_to_index: HashMap::new(),
@@ -93,54 +109,83 @@ impl Dictionary {
                 return Err("ByteRange mode requires start_codepoint".to_string());
             }
         }
-        
+
         if chars.is_empty() {
             return Err("Dictionary cannot be empty".to_string());
         }
-        
+
         // Validate dictionary size for chunked mode
         if mode == EncodingMode::Chunked {
             let base = chars.len();
             if !base.is_power_of_two() {
-                return Err(format!("Chunked mode requires power-of-two dictionary size, got {}", base));
+                return Err(format!(
+                    "Chunked mode requires power-of-two dictionary size, got {}",
+                    base
+                ));
             }
             // Additional check: ensure we have valid sizes for chunked mode
-            if base != 2 && base != 4 && base != 8 && base != 16 && base != 32 && base != 64 && base != 128 && base != 256 {
+            if base != 2
+                && base != 4
+                && base != 8
+                && base != 16
+                && base != 32
+                && base != 64
+                && base != 128
+                && base != 256
+            {
                 return Err(format!("Chunked mode requires dictionary size of 2, 4, 8, 16, 32, 64, 128, or 256, got {}", base));
             }
         }
-        
+
         // Validate character properties
         let mut char_to_index = HashMap::new();
         for (i, &c) in chars.iter().enumerate() {
             // Check for duplicate characters
             if char_to_index.insert(c, i).is_some() {
-                return Err(format!("Duplicate character in dictionary: '{}' (U+{:04X})", c, c as u32));
+                return Err(format!(
+                    "Duplicate character in dictionary: '{}' (U+{:04X})",
+                    c, c as u32
+                ));
             }
-            
+
             // Check for invalid Unicode characters
             if c.is_control() && c != '\t' && c != '\n' && c != '\r' {
-                return Err(format!("Control character not allowed in dictionary: U+{:04X}", c as u32));
+                return Err(format!(
+                    "Control character not allowed in dictionary: U+{:04X}",
+                    c as u32
+                ));
             }
-            
+
             // Check for whitespace (except in specific cases)
             if c.is_whitespace() {
-                return Err(format!("Whitespace character not allowed in dictionary: '{}' (U+{:04X})", c, c as u32));
+                return Err(format!(
+                    "Whitespace character not allowed in dictionary: '{}' (U+{:04X})",
+                    c, c as u32
+                ));
             }
         }
-        
+
         // Validate padding character if present
         if let Some(pad) = padding {
             if char_to_index.contains_key(&pad) {
-                return Err(format!("Padding character '{}' conflicts with dictionary characters", pad));
+                return Err(format!(
+                    "Padding character '{}' conflicts with dictionary characters",
+                    pad
+                ));
             }
             if pad.is_control() && pad != '\t' && pad != '\n' && pad != '\r' {
-                return Err(format!("Control character not allowed as padding: U+{:04X}", pad as u32));
+                return Err(format!(
+                    "Control character not allowed as padding: U+{:04X}",
+                    pad as u32
+                ));
             }
         }
-        
+
         // Build fast lookup table for ASCII characters
-        let lookup_table = if chars.iter().all(|&c| (c as u32) < MAX_LOOKUP_TABLE_SIZE as u32) {
+        let lookup_table = if chars
+            .iter()
+            .all(|&c| (c as u32) < MAX_LOOKUP_TABLE_SIZE as u32)
+        {
             let mut table = Box::new([None; 256]);
             for (i, &c) in chars.iter().enumerate() {
                 table[c as usize] = Some(i);
@@ -149,7 +194,7 @@ impl Dictionary {
         } else {
             None
         };
-        
+
         Ok(Dictionary {
             chars,
             char_to_index,
@@ -159,7 +204,7 @@ impl Dictionary {
             start_codepoint: None,
         })
     }
-    
+
     /// Creates an dictionary from a string of characters.
     ///
     /// # Arguments
@@ -169,7 +214,7 @@ impl Dictionary {
         let chars: Vec<char> = s.chars().collect();
         Self::new(chars)
     }
-    
+
     /// Returns the base (radix) of the dictionary.
     ///
     /// For ByteRange mode, always returns 256. Otherwise returns the number of characters.
@@ -179,22 +224,22 @@ impl Dictionary {
             _ => self.chars.len(),
         }
     }
-    
+
     /// Returns the encoding mode of this dictionary.
     pub fn mode(&self) -> &EncodingMode {
         &self.mode
     }
-    
+
     /// Returns the padding character, if any.
     pub fn padding(&self) -> Option<char> {
         self.padding
     }
-    
+
     /// Returns the starting Unicode codepoint for ByteRange mode.
     pub fn start_codepoint(&self) -> Option<u32> {
         self.start_codepoint
     }
-    
+
     /// Encodes a digit (0 to base-1) as a character.
     ///
     /// Returns `None` if the digit is out of range.
@@ -211,7 +256,7 @@ impl Dictionary {
             _ => self.chars.get(digit).copied(),
         }
     }
-    
+
     /// Decodes a character back to its digit value.
     ///
     /// Returns `None` if the character is not in the dictionary.
@@ -239,12 +284,28 @@ impl Dictionary {
             }
         }
     }
+
+    /// Returns SIMD metadata for this dictionary.
+    ///
+    /// This provides information about whether SIMD acceleration is available
+    /// for this dictionary and which implementation to use.
+    pub fn simd_metadata(&self) -> AlphabetMetadata {
+        AlphabetMetadata::from_dictionary(self)
+    }
+
+    /// Returns whether SIMD acceleration is available for this dictionary.
+    ///
+    /// This is a convenience method that checks if SIMD can be used with
+    /// the current CPU features and dictionary configuration.
+    pub fn simd_available(&self) -> bool {
+        self.simd_metadata().simd_available()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_duplicate_character_detection() {
         let chars = vec!['a', 'b', 'c', 'a'];
@@ -252,7 +313,7 @@ mod tests {
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Duplicate character"));
     }
-    
+
     #[test]
     fn test_empty_alphabet() {
         let chars = vec![];
@@ -260,36 +321,38 @@ mod tests {
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("cannot be empty"));
     }
-    
+
     #[test]
     fn test_chunked_mode_power_of_two() {
-        let chars = vec!['a', 'b', 'c'];  // 3 is not power of 2
+        let chars = vec!['a', 'b', 'c']; // 3 is not power of 2
         let result = Dictionary::new_with_mode(chars, EncodingMode::Chunked, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("power-of-two"));
     }
-    
+
     #[test]
     fn test_chunked_mode_valid_sizes() {
         // Test all valid chunked sizes
         for &size in &[2, 4, 8, 16, 32, 64] {
-            let chars: Vec<char> = (0..size).map(|i| {
-                // Use a wider range of Unicode characters
-                char::from_u32('A' as u32 + (i % 26) + ((i / 26) * 100)).unwrap()
-            }).collect();
+            let chars: Vec<char> = (0..size)
+                .map(|i| {
+                    // Use a wider range of Unicode characters
+                    char::from_u32('A' as u32 + (i % 26) + ((i / 26) * 100)).unwrap()
+                })
+                .collect();
             let result = Dictionary::new_with_mode(chars, EncodingMode::Chunked, None);
             assert!(result.is_ok(), "Size {} should be valid", size);
         }
     }
-    
+
     #[test]
     fn test_control_character_rejection() {
-        let chars = vec!['a', 'b', '\x00', 'c'];  // null character
+        let chars = vec!['a', 'b', '\x00', 'c']; // null character
         let result = Dictionary::new(chars);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Control character"));
     }
-    
+
     #[test]
     fn test_whitespace_rejection() {
         let chars = vec!['a', 'b', ' ', 'c'];
@@ -297,7 +360,7 @@ mod tests {
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Whitespace"));
     }
-    
+
     #[test]
     fn test_padding_conflict_with_alphabet() {
         let chars = vec!['a', 'b', 'c', 'd'];
@@ -307,14 +370,14 @@ mod tests {
         assert!(err.contains("Padding character"));
         assert!(err.contains("conflicts"));
     }
-    
+
     #[test]
     fn test_valid_padding() {
         let chars = vec!['a', 'b', 'c', 'd'];
         let result = Dictionary::new_with_mode(chars, EncodingMode::BaseConversion, Some('='));
         assert!(result.is_ok());
     }
-    
+
     #[test]
     fn test_byte_range_exceeds_unicode() {
         // Test with a start codepoint so high that start + 255 exceeds max valid Unicode (0x10FFFF)
@@ -322,34 +385,30 @@ mod tests {
             Vec::new(),
             EncodingMode::ByteRange,
             None,
-            Some(0x10FF80)  // 0x10FF80 + 255 = 0x110078, exceeds 0x10FFFF
+            Some(0x10FF80), // 0x10FF80 + 255 = 0x110078, exceeds 0x10FFFF
         );
         assert!(result.is_err());
     }
-    
+
     #[test]
     fn test_byte_range_valid_start() {
         let result = Dictionary::new_with_mode_and_range(
             Vec::new(),
             EncodingMode::ByteRange,
             None,
-            Some(0x1F300)  // Valid start in emoji range
+            Some(0x1F300), // Valid start in emoji range
         );
         assert!(result.is_ok());
     }
-    
+
     #[test]
     fn test_byte_range_no_start_codepoint() {
-        let result = Dictionary::new_with_mode_and_range(
-            Vec::new(),
-            EncodingMode::ByteRange,
-            None,
-            None
-        );
+        let result =
+            Dictionary::new_with_mode_and_range(Vec::new(), EncodingMode::ByteRange, None, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("requires start_codepoint"));
     }
-    
+
     #[test]
     fn test_detailed_error_messages() {
         // Test that error messages include useful information

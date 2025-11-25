@@ -1,12 +1,12 @@
-use sha2::{Sha224, Sha256, Sha384, Sha512, Digest};
-use sha3::{Sha3_224, Sha3_256, Sha3_384, Sha3_512, Keccak224, Keccak256, Keccak384, Keccak512};
 use blake2::{Blake2b512, Blake2s256};
 use blake3::Hasher as Blake3Hasher;
 use md5::Md5;
-use twox_hash::{XxHash32, XxHash64};
-use twox_hash::xxhash3_64::Hasher as Xxh3Hash64;
-use twox_hash::xxhash3_128::Hasher as Xxh3Hash128;
+use sha2::{Digest, Sha224, Sha256, Sha384, Sha512};
+use sha3::{Keccak224, Keccak256, Keccak384, Keccak512, Sha3_224, Sha3_256, Sha3_384, Sha3_512};
 use std::hash::Hasher;
+use twox_hash::xxhash3_128::Hasher as Xxh3Hash128;
+use twox_hash::xxhash3_64::Hasher as Xxh3Hash64;
+use twox_hash::{XxHash32, XxHash64};
 
 /// Configuration for xxHash algorithms.
 #[derive(Debug, Clone, Default)]
@@ -101,7 +101,7 @@ impl HashAlgorithm {
             _ => Err(format!("Unknown hash algorithm: {}", s)),
         }
     }
-    
+
     pub fn as_str(&self) -> &str {
         match self {
             HashAlgorithm::Md5 => "md5",
@@ -283,8 +283,9 @@ pub fn hash_with_config(data: &[u8], algorithm: HashAlgorithm, config: &XxHashCo
         }
         HashAlgorithm::XxHash3_64 => {
             let mut hasher = if let Some(ref secret) = config.secret {
-                Xxh3Hash64::with_seed_and_secret(config.seed, secret.as_slice())
-                    .expect("XXH3 secret validation should have been done in XxHashConfig::with_secret")
+                Xxh3Hash64::with_seed_and_secret(config.seed, secret.as_slice()).expect(
+                    "XXH3 secret validation should have been done in XxHashConfig::with_secret",
+                )
             } else {
                 Xxh3Hash64::with_seed(config.seed)
             };
@@ -293,8 +294,9 @@ pub fn hash_with_config(data: &[u8], algorithm: HashAlgorithm, config: &XxHashCo
         }
         HashAlgorithm::XxHash3_128 => {
             let mut hasher = if let Some(ref secret) = config.secret {
-                Xxh3Hash128::with_seed_and_secret(config.seed, secret.as_slice())
-                    .expect("XXH3 secret validation should have been done in XxHashConfig::with_secret")
+                Xxh3Hash128::with_seed_and_secret(config.seed, secret.as_slice()).expect(
+                    "XXH3 secret validation should have been done in XxHashConfig::with_secret",
+                )
             } else {
                 Xxh3Hash128::with_seed(config.seed)
             };
@@ -307,7 +309,7 @@ pub fn hash_with_config(data: &[u8], algorithm: HashAlgorithm, config: &XxHashCo
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_md5() {
         let data = b"hello world";
@@ -316,7 +318,7 @@ mod tests {
         // MD5 of "hello world" is 5eb63bbbe01eeed093cb22bb8f5acdc3
         assert_eq!(hex::encode(&hash), "5eb63bbbe01eeed093cb22bb8f5acdc3");
     }
-    
+
     #[test]
     fn test_sha256() {
         let data = b"hello world";
@@ -328,42 +330,42 @@ mod tests {
             "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
         );
     }
-    
+
     #[test]
     fn test_sha512() {
         let data = b"hello world";
         let hash = hash(data, HashAlgorithm::Sha512);
         assert_eq!(hash.len(), 64);
     }
-    
+
     #[test]
     fn test_sha3_256() {
         let data = b"hello world";
         let hash = hash(data, HashAlgorithm::Sha3_256);
         assert_eq!(hash.len(), 32);
     }
-    
+
     #[test]
     fn test_blake2b() {
         let data = b"hello world";
         let hash = hash(data, HashAlgorithm::Blake2b);
         assert_eq!(hash.len(), 64);
     }
-    
+
     #[test]
     fn test_blake2s() {
         let data = b"hello world";
         let hash = hash(data, HashAlgorithm::Blake2s);
         assert_eq!(hash.len(), 32);
     }
-    
+
     #[test]
     fn test_blake3() {
         let data = b"hello world";
         let hash = hash(data, HashAlgorithm::Blake3);
         assert_eq!(hash.len(), 32);
     }
-    
+
     #[test]
     fn test_empty_input() {
         let data = b"";
@@ -375,7 +377,7 @@ mod tests {
             "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
         );
     }
-    
+
     #[test]
     fn test_output_sizes() {
         assert_eq!(HashAlgorithm::Md5.output_size(), 16);
@@ -390,7 +392,7 @@ mod tests {
         assert_eq!(HashAlgorithm::XxHash3_64.output_size(), 8);
         assert_eq!(HashAlgorithm::XxHash3_128.output_size(), 16);
     }
-    
+
     #[test]
     fn test_crc32() {
         let data = b"hello world";
@@ -400,28 +402,28 @@ mod tests {
         let result2 = hash(data, HashAlgorithm::Crc32);
         assert_eq!(result, result2);
     }
-    
+
     #[test]
     fn test_crc32c() {
         let data = b"hello world";
         let result = hash(data, HashAlgorithm::Crc32c);
         assert_eq!(result.len(), 4);
     }
-    
+
     #[test]
     fn test_crc16() {
         let data = b"hello world";
         let result = hash(data, HashAlgorithm::Crc16);
         assert_eq!(result.len(), 2);
     }
-    
+
     #[test]
     fn test_crc64() {
         let data = b"hello world";
         let result = hash(data, HashAlgorithm::Crc64);
         assert_eq!(result.len(), 8);
     }
-    
+
     #[test]
     fn test_xxhash32() {
         let data = b"hello world";
@@ -431,21 +433,21 @@ mod tests {
         let result2 = hash(data, HashAlgorithm::XxHash32);
         assert_eq!(result, result2);
     }
-    
+
     #[test]
     fn test_xxhash64() {
         let data = b"hello world";
         let result = hash(data, HashAlgorithm::XxHash64);
         assert_eq!(result.len(), 8);
     }
-    
+
     #[test]
     fn test_xxhash3_64() {
         let data = b"hello world";
         let result = hash(data, HashAlgorithm::XxHash3_64);
         assert_eq!(result.len(), 8);
     }
-    
+
     #[test]
     fn test_xxhash3_128() {
         let data = b"hello world";
@@ -498,11 +500,19 @@ mod tests {
 
         // Test that different seeds produce different hashes
         let h1 = hash_with_config(data, HashAlgorithm::XxHash3_64, &XxHashConfig::with_seed(0));
-        let h2 = hash_with_config(data, HashAlgorithm::XxHash3_64, &XxHashConfig::with_seed(123));
+        let h2 = hash_with_config(
+            data,
+            HashAlgorithm::XxHash3_64,
+            &XxHashConfig::with_seed(123),
+        );
         assert_ne!(h1, h2, "Different seeds should produce different hashes");
 
         // Test that same seed produces same hash
-        let h3 = hash_with_config(data, HashAlgorithm::XxHash3_64, &XxHashConfig::with_seed(123));
+        let h3 = hash_with_config(
+            data,
+            HashAlgorithm::XxHash3_64,
+            &XxHashConfig::with_seed(123),
+        );
         assert_eq!(h2, h3, "Same seed should produce same hash");
     }
 
