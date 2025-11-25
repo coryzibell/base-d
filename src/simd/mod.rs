@@ -24,14 +24,15 @@ mod aarch64;
 
 #[cfg(target_arch = "x86_64")]
 pub use x86_64::{
-    decode_base16_simd, decode_base256_simd, decode_base64_simd, encode_base16_simd,
-    encode_base256_simd, encode_base64_simd,
+    decode_base16_simd, decode_base256_simd, decode_base32_simd, decode_base64_simd,
+    encode_base16_simd, encode_base256_simd, encode_base32_simd, encode_base64_simd,
 };
 
 #[cfg(target_arch = "aarch64")]
 pub use aarch64::{
-    decode_base16_simd, decode_base256_simd, decode_base64_simd, encode_base16_simd,
-    encode_base256_simd, encode_base64_simd, GenericSimdCodec,
+    decode_base16_simd, decode_base256_simd, decode_base32_simd, decode_base64_simd,
+    encode_base16_simd, encode_base256_simd, encode_base32_simd, encode_base64_simd,
+    GenericSimdCodec,
 };
 
 #[cfg(target_arch = "x86_64")]
@@ -104,7 +105,14 @@ pub fn encode_with_simd(data: &[u8], dict: &Dictionary) -> Option<String> {
         }
     }
 
-    // 2. Try specialized base16 for known hex variants
+    // 2. Try specialized base32 for known variants
+    if base == 32 {
+        if let Some(_variant) = alphabets::identify_base32_variant(dict) {
+            return encode_base32_simd(data, dict);
+        }
+    }
+
+    // 3. Try specialized base16 for known hex variants
     if base == 16 {
         // Check if this matches uppercase or lowercase hex
         if is_standard_hex(dict) {
@@ -112,17 +120,17 @@ pub fn encode_with_simd(data: &[u8], dict: &Dictionary) -> Option<String> {
         }
     }
 
-    // 3. Try specialized base256 for ByteRange mode
+    // 4. Try specialized base256 for ByteRange mode
     if base == 256 && *dict.mode() == EncodingMode::ByteRange {
         return encode_base256_simd(data, dict);
     }
 
-    // 4. Try GenericSimdCodec for sequential power-of-2 alphabets
+    // 5. Try GenericSimdCodec for sequential power-of-2 alphabets
     if let Some(codec) = GenericSimdCodec::from_dictionary(dict) {
         return codec.encode(data, dict);
     }
 
-    // 5. No SIMD optimization available
+    // 6. No SIMD optimization available
     None
 }
 
@@ -143,24 +151,31 @@ pub fn encode_with_simd(data: &[u8], dict: &Dictionary) -> Option<String> {
         }
     }
 
-    // 2. Try specialized base16 for known hex variants
+    // 2. Try specialized base32 for known variants
+    if base == 32 {
+        if let Some(_variant) = alphabets::identify_base32_variant(dict) {
+            return encode_base32_simd(data, dict);
+        }
+    }
+
+    // 3. Try specialized base16 for known hex variants
     if base == 16 {
         if is_standard_hex(dict) {
             return encode_base16_simd(data, dict);
         }
     }
 
-    // 3. Try specialized base256 for ByteRange mode
+    // 4. Try specialized base256 for ByteRange mode
     if base == 256 && *dict.mode() == EncodingMode::ByteRange {
         return encode_base256_simd(data, dict);
     }
 
-    // 4. Try GenericSimdCodec for sequential power-of-2 alphabets
+    // 5. Try GenericSimdCodec for sequential power-of-2 alphabets
     if let Some(codec) = GenericSimdCodec::from_dictionary(dict) {
         return codec.encode(data, dict);
     }
 
-    // 5. No SIMD optimization available
+    // 6. No SIMD optimization available
     None
 }
 
@@ -198,7 +213,14 @@ pub fn decode_with_simd(encoded: &str, dict: &Dictionary) -> Option<Vec<u8>> {
         }
     }
 
-    // 2. Try specialized base16 for known hex variants
+    // 2. Try specialized base32 for known variants
+    if base == 32 {
+        if alphabets::identify_base32_variant(dict).is_some() {
+            return decode_base32_simd(encoded, dict);
+        }
+    }
+
+    // 3. Try specialized base16 for known hex variants
     if base == 16 {
         // Check if this matches uppercase or lowercase hex
         if is_standard_hex(dict) {
@@ -206,17 +228,17 @@ pub fn decode_with_simd(encoded: &str, dict: &Dictionary) -> Option<Vec<u8>> {
         }
     }
 
-    // 3. Try specialized base256 for ByteRange mode
+    // 4. Try specialized base256 for ByteRange mode
     if base == 256 && *dict.mode() == EncodingMode::ByteRange {
         return decode_base256_simd(encoded, dict);
     }
 
-    // 4. Try GenericSimdCodec for sequential power-of-2 alphabets
+    // 5. Try GenericSimdCodec for sequential power-of-2 alphabets
     if let Some(codec) = GenericSimdCodec::from_dictionary(dict) {
         return codec.decode(encoded, dict);
     }
 
-    // 5. No SIMD optimization available
+    // 6. No SIMD optimization available
     None
 }
 
@@ -238,24 +260,31 @@ pub fn decode_with_simd(encoded: &str, dict: &Dictionary) -> Option<Vec<u8>> {
         }
     }
 
-    // 2. Try specialized base16 for known hex variants
+    // 2. Try specialized base32 for known variants
+    if base == 32 {
+        if alphabets::identify_base32_variant(dict).is_some() {
+            return decode_base32_simd(encoded, dict);
+        }
+    }
+
+    // 3. Try specialized base16 for known hex variants
     if base == 16 {
         if is_standard_hex(dict) {
             return decode_base16_simd(encoded, dict);
         }
     }
 
-    // 3. Try specialized base256 for ByteRange mode
+    // 4. Try specialized base256 for ByteRange mode
     if base == 256 && *dict.mode() == EncodingMode::ByteRange {
         return decode_base256_simd(encoded, dict);
     }
 
-    // 4. Try GenericSimdCodec for sequential power-of-2 alphabets
+    // 5. Try GenericSimdCodec for sequential power-of-2 alphabets
     if let Some(codec) = GenericSimdCodec::from_dictionary(dict) {
         return codec.decode(encoded, dict);
     }
 
-    // 5. No SIMD optimization available
+    // 6. No SIMD optimization available
     None
 }
 

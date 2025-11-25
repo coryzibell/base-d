@@ -76,6 +76,26 @@ pub trait SimdTranslate {
     /// Caller must verify NEON support before calling
     #[cfg(target_arch = "aarch64")]
     unsafe fn validate(&self, chars: uint8x16_t) -> bool;
+
+    /// Translate indices to characters (encoding) - AVX2 version
+    ///
+    /// Takes a 256-bit vector of alphabet indices and converts them
+    /// to their corresponding character codepoints.
+    ///
+    /// # Safety
+    /// Caller must verify AVX2 support before calling
+    #[cfg(target_arch = "x86_64")]
+    unsafe fn translate_encode_256(&self, indices: __m256i) -> __m256i;
+
+    /// Translate characters to indices (decoding) - AVX2 version
+    ///
+    /// Takes a 256-bit vector of character bytes and converts them to
+    /// alphabet indices. Returns None if invalid characters detected.
+    ///
+    /// # Safety
+    /// Caller must verify AVX2 support before calling
+    #[cfg(target_arch = "x86_64")]
+    unsafe fn translate_decode_256(&self, chars: __m256i) -> Option<__m256i>;
 }
 
 /// SIMD translation for sequential alphabets (zero-cost)
@@ -202,6 +222,38 @@ impl SimdTranslate for SequentialTranslate {
         let invalid_mask = _mm_movemask_epi8(too_large);
 
         invalid_mask == 0
+    }
+
+    #[target_feature(enable = "avx2")]
+    unsafe fn translate_encode_256(&self, indices: __m256i) -> __m256i {
+        // Zero-cost translation: single vector add (AVX2 version)
+        let offset = _mm256_set1_epi8(self.start_codepoint as i8);
+        _mm256_add_epi8(indices, offset)
+    }
+
+    #[target_feature(enable = "avx2")]
+    unsafe fn translate_decode_256(&self, chars: __m256i) -> Option<__m256i> {
+        // Reverse translation: subtract start_codepoint
+        let offset = _mm256_set1_epi8(self.start_codepoint as i8);
+        let indices = _mm256_sub_epi8(chars, offset);
+
+        // Validate range: all indices must be < (1 << bits_per_symbol)
+        let max_valid = _mm256_set1_epi8(self.max_index() as i8);
+
+        // For unsigned comparison: indices > max_valid means invalid
+        let bias = _mm256_set1_epi8(-128_i8);
+        let indices_biased = _mm256_add_epi8(indices, bias);
+        let max_biased = _mm256_add_epi8(max_valid, bias);
+
+        // Check indices_biased <= max_biased (unsigned)
+        let too_large = _mm256_cmpgt_epi8(indices_biased, max_biased);
+        let invalid_mask = _mm256_movemask_epi8(too_large);
+
+        if invalid_mask == 0 {
+            Some(indices)
+        } else {
+            None
+        }
     }
 }
 

@@ -9,7 +9,7 @@ pub mod generic;
 mod specialized;
 
 use crate::core::dictionary::Dictionary;
-use crate::simd::alphabets::identify_base64_variant;
+use crate::simd::alphabets::{identify_base32_variant, identify_base64_variant};
 use specialized::base16::identify_hex_variant;
 
 pub use generic::GenericSimdCodec;
@@ -149,4 +149,45 @@ pub fn decode_base256_simd(encoded: &str, dictionary: &Dictionary) -> Option<Vec
     }
 
     specialized::base256::decode(encoded, dictionary)
+}
+
+/// Public API for SIMD base32 encoding on aarch64
+///
+/// Dispatches to NEON implementation for base32 encoding.
+#[cfg(target_arch = "aarch64")]
+pub fn encode_base32_simd(data: &[u8], dictionary: &Dictionary) -> Option<String> {
+    // Only optimize base32 (5-bit encoding)
+    if dictionary.base() != 32 {
+        return None;
+    }
+
+    // Identify which base32 variant this is
+    let variant = identify_base32_variant(dictionary)?;
+
+    // NEON is always available on aarch64
+    if !has_neon() {
+        return None;
+    }
+
+    specialized::base32::encode(data, dictionary, variant)
+}
+
+/// Public API for SIMD base32 decoding on aarch64
+///
+/// Dispatches to NEON implementation for base32 decoding.
+#[cfg(target_arch = "aarch64")]
+pub fn decode_base32_simd(encoded: &str, dictionary: &Dictionary) -> Option<Vec<u8>> {
+    // Only optimize base32 with known variants
+    if dictionary.base() != 32 {
+        return None;
+    }
+
+    let variant = identify_base32_variant(dictionary)?;
+
+    // NEON is always available on aarch64
+    if !has_neon() {
+        return None;
+    }
+
+    specialized::base32::decode(encoded, variant)
 }

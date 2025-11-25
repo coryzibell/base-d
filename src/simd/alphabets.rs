@@ -18,6 +18,19 @@ pub enum AlphabetVariant {
     Base64Url,
 }
 
+/// Base32 alphabet variants
+///
+/// Different base32 standards use different character sets:
+/// - RFC 4648 Standard: A-Z and 2-7
+/// - RFC 4648 Extended Hex: 0-9 and A-V
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Base32Variant {
+    /// RFC 4648 standard: A-Z, 2-7 with padding
+    Rfc4648,
+    /// RFC 4648 Extended Hex: 0-9, A-V
+    Rfc4648Hex,
+}
+
 /// Identify which base64 alphabet variant a Dictionary uses
 ///
 /// Returns `None` if the dictionary is not base64 (base != 64) or
@@ -83,6 +96,84 @@ pub fn verify_base64_alphabet(dict: &Dictionary, variant: AlphabetVariant) -> bo
         AlphabetVariant::Base64Url => {
             "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
         }
+    };
+
+    for (i, expected_char) in expected.chars().enumerate() {
+        if dict.encode_digit(i) != Some(expected_char) {
+            return false;
+        }
+    }
+
+    true
+}
+
+/// Identify which base32 alphabet variant a Dictionary uses
+///
+/// Returns `None` if the dictionary is not base32 (base != 32) or
+/// if it doesn't match a known variant exactly.
+///
+/// # Arguments
+///
+/// * `dict` - The Dictionary to identify
+///
+/// # Returns
+///
+/// - `Some(Base32Variant::Rfc4648)` if all positions match RFC 4648 standard
+/// - `Some(Base32Variant::Rfc4648Hex)` if all positions match RFC 4648 extended hex
+/// - `None` if not base32 or doesn't match a known variant exactly
+#[allow(dead_code)]
+pub fn identify_base32_variant(dict: &Dictionary) -> Option<Base32Variant> {
+    // Only works for base32
+    if dict.base() != 32 {
+        return None;
+    }
+
+    // Check character patterns
+    let chars: Vec<char> = (0..32).filter_map(|i| dict.encode_digit(i)).collect();
+    if chars.len() != 32 {
+        return None;
+    }
+
+    // RFC 4648: A-Z, 2-7 (positions 0-25 = A-Z, 26-31 = 2-7)
+    if chars[0] == 'A' && chars[25] == 'Z' && chars[26] == '2' && chars[31] == '7' {
+        let candidate = Base32Variant::Rfc4648;
+        if verify_base32_alphabet(dict, candidate) {
+            return Some(candidate);
+        }
+    }
+
+    // RFC 4648 Hex: 0-9, A-V (positions 0-9 = 0-9, 10-31 = A-V)
+    if chars[0] == '0' && chars[9] == '9' && chars[10] == 'A' && chars[31] == 'V' {
+        let candidate = Base32Variant::Rfc4648Hex;
+        if verify_base32_alphabet(dict, candidate) {
+            return Some(candidate);
+        }
+    }
+
+    None
+}
+
+/// Verify that a dictionary matches the expected base32 alphabet variant
+///
+/// Checks all 32 positions to ensure they match the expected alphabet.
+///
+/// # Arguments
+///
+/// * `dict` - The Dictionary to verify
+/// * `variant` - The expected alphabet variant
+///
+/// # Returns
+///
+/// `true` if all positions match, `false` otherwise
+#[allow(dead_code)]
+pub fn verify_base32_alphabet(dict: &Dictionary, variant: Base32Variant) -> bool {
+    if dict.base() != 32 {
+        return false;
+    }
+
+    let expected = match variant {
+        Base32Variant::Rfc4648 => "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567",
+        Base32Variant::Rfc4648Hex => "0123456789ABCDEFGHIJKLMNOPQRSTUV",
     };
 
     for (i, expected_char) in expected.chars().enumerate() {

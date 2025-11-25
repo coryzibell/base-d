@@ -12,9 +12,11 @@
 use super::super::common;
 use crate::core::dictionary::Dictionary;
 
-/// SIMD-accelerated base256 encoding
+/// SIMD-accelerated base256 encoding with runtime dispatch
 ///
-/// Processes 16 bytes at a time using SIMD loads/stores with scalar LUT.
+/// Automatically selects the best available SIMD implementation:
+/// - AVX2 (256-bit): Processes 32 bytes per iteration
+/// - SSSE3 (128-bit): Processes 16 bytes per iteration
 /// Falls back to scalar for remainder.
 pub fn encode(data: &[u8], dictionary: &Dictionary) -> Option<String> {
     // Build 256-entry LUT from dictionary
@@ -27,7 +29,17 @@ pub fn encode(data: &[u8], dictionary: &Dictionary) -> Option<String> {
     let output_len = data.len();
     let mut result = String::with_capacity(output_len);
 
-    // SAFETY: Caller verified SSSE3 support
+    // SAFETY: Runtime detection verifies CPU feature support
+    #[cfg(target_arch = "x86_64")]
+    unsafe {
+        if is_x86_feature_detected!("avx2") {
+            encode_avx2_impl(data, &lut, &mut result);
+        } else {
+            encode_ssse3_impl(data, &lut, &mut result);
+        }
+    }
+
+    #[cfg(not(target_arch = "x86_64"))]
     unsafe {
         encode_ssse3_impl(data, &lut, &mut result);
     }
@@ -35,7 +47,12 @@ pub fn encode(data: &[u8], dictionary: &Dictionary) -> Option<String> {
     Some(result)
 }
 
-/// SIMD-accelerated base256 decoding
+/// SIMD-accelerated base256 decoding with runtime dispatch
+///
+/// Automatically selects the best available SIMD implementation:
+/// - AVX2 (256-bit): Processes 32 chars per iteration
+/// - SSSE3 (128-bit): Processes 16 chars per iteration
+/// Falls back to scalar for remainder.
 pub fn decode(encoded: &str, dictionary: &Dictionary) -> Option<Vec<u8>> {
     // Build reverse LUT (char → byte) using HashMap for Unicode support
     use std::collections::HashMap;
@@ -50,7 +67,21 @@ pub fn decode(encoded: &str, dictionary: &Dictionary) -> Option<Vec<u8>> {
     let chars: Vec<char> = encoded.chars().collect();
     let mut result = Vec::with_capacity(chars.len());
 
-    // SAFETY: Caller verified SSSE3 support
+    // SAFETY: Runtime detection verifies CPU feature support
+    #[cfg(target_arch = "x86_64")]
+    unsafe {
+        if is_x86_feature_detected!("avx2") {
+            if !decode_avx2_impl_unicode(&chars, &reverse_map, &mut result) {
+                return None;
+            }
+        } else {
+            if !decode_ssse3_impl_unicode(&chars, &reverse_map, &mut result) {
+                return None;
+            }
+        }
+    }
+
+    #[cfg(not(target_arch = "x86_64"))]
     unsafe {
         if !decode_ssse3_impl_unicode(&chars, &reverse_map, &mut result) {
             return None;
@@ -58,6 +89,55 @@ pub fn decode(encoded: &str, dictionary: &Dictionary) -> Option<Vec<u8>> {
     }
 
     Some(result)
+}
+
+/// AVX2 base256 encoding implementation
+///
+/// Processes 32 bytes at a time using AVX2 256-bit registers.
+///
+/// Algorithm:
+/// 1. Load 32 bytes with AVX2
+/// 2. Lookup each byte in 256-char LUT (scalar)
+/// 3. Store results
+///
+/// The LUT lookup dominates, but AVX2 loads enable better throughput
+/// by processing 2x the data per iteration compared to SSSE3.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2")]
+unsafe fn encode_avx2_impl(data: &[u8], lut: &[char; 256], result: &mut String) {
+    use std::arch::x86_64::*;
+
+    const BLOCK_SIZE: usize = 32;
+
+    // For small inputs, scalar is faster due to setup cost
+    if data.len() < BLOCK_SIZE {
+        encode_scalar_remainder(data, lut, result);
+        return;
+    }
+
+    let (num_rounds, simd_bytes) = common::calculate_blocks(data.len(), BLOCK_SIZE);
+
+    let mut offset = 0;
+    for _ in 0..num_rounds {
+        // Load 32 bytes with AVX2
+        let input_vec = _mm256_loadu_si256(data.as_ptr().add(offset) as *const __m256i);
+
+        // Store to buffer
+        let mut input_buf = [0u8; 32];
+        _mm256_storeu_si256(input_buf.as_mut_ptr() as *mut __m256i, input_vec);
+
+        // Translate using LUT (scalar - fastest for 256-entry table)
+        for &byte in &input_buf {
+            result.push(lut[byte as usize]);
+        }
+
+        offset += BLOCK_SIZE;
+    }
+
+    // Handle remainder with scalar code
+    if simd_bytes < data.len() {
+        encode_scalar_remainder(&data[simd_bytes..], lut, result);
+    }
 }
 
 /// SSSE3 base256 encoding implementation
@@ -112,6 +192,51 @@ fn encode_scalar_remainder(data: &[u8], lut: &[char; 256], result: &mut String) 
     for &byte in data {
         result.push(lut[byte as usize]);
     }
+}
+
+/// AVX2 base256 decoding implementation (Unicode version)
+///
+/// Processes 32 chars at a time using AVX2 for better throughput.
+///
+/// Algorithm:
+/// 1. Process chars in chunks of 32
+/// 2. Reverse lookup each char in HashMap (scalar)
+/// 3. Validate (return false on invalid chars)
+/// 4. Store bytes
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2")]
+unsafe fn decode_avx2_impl_unicode(
+    chars: &[char],
+    reverse_map: &std::collections::HashMap<char, u8>,
+    result: &mut Vec<u8>,
+) -> bool {
+    const BLOCK_SIZE: usize = 32;
+
+    let (num_rounds, simd_bytes) = common::calculate_blocks(chars.len(), BLOCK_SIZE);
+
+    // Process full blocks
+    for round in 0..num_rounds {
+        let offset = round * BLOCK_SIZE;
+
+        // Process 32 chars
+        for i in 0..BLOCK_SIZE {
+            let ch = chars[offset + i];
+            match reverse_map.get(&ch) {
+                Some(&byte_val) => result.push(byte_val),
+                None => return false, // Invalid character
+            }
+        }
+    }
+
+    // Handle remainder with scalar fallback
+    for &ch in &chars[simd_bytes..] {
+        match reverse_map.get(&ch) {
+            Some(&byte_val) => result.push(byte_val),
+            None => return false,
+        }
+    }
+
+    true
 }
 
 /// SSSE3 base256 decoding implementation (Unicode version)

@@ -5,4 +5,5 @@
 
 pub mod base16;
 pub mod base256;
+pub mod base32;
 pub mod base64;

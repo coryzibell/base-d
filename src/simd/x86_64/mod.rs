@@ -7,7 +7,7 @@ pub(crate) mod common;
 mod specialized;
 
 use crate::core::dictionary::Dictionary;
-use crate::simd::alphabets::identify_base64_variant;
+use crate::simd::alphabets::{identify_base32_variant, identify_base64_variant};
 use specialized::base16::identify_hex_variant;
 use std::sync::OnceLock;
 
@@ -205,4 +205,50 @@ pub fn decode_base256_simd(encoded: &str, dictionary: &Dictionary) -> Option<Vec
 
     // Dispatch to specialized implementation
     specialized::base256::decode(encoded, dictionary)
+}
+
+/// Public API for SIMD base32 encoding
+#[cfg(target_arch = "x86_64")]
+#[allow(dead_code)]
+pub fn encode_base32_simd(data: &[u8], dictionary: &Dictionary) -> Option<String> {
+    // Only optimize base32 (5-bit encoding)
+    if dictionary.base() != 32 {
+        return None;
+    }
+
+    // Identify which base32 variant this is
+    let variant = identify_base32_variant(dictionary)?;
+
+    // Need SSSE3 for pshufb
+    if !is_x86_feature_detected!("ssse3") {
+        return None;
+    }
+
+    // Dispatch to specialized implementation
+    specialized::base32::encode(data, dictionary, variant)
+}
+
+/// Public API for SIMD base32 decoding
+#[cfg(target_arch = "x86_64")]
+#[allow(dead_code)]
+pub fn decode_base32_simd(encoded: &str, dictionary: &Dictionary) -> Option<Vec<u8>> {
+    // Only optimize base32 with known variants
+    if dictionary.base() != 32 {
+        return None;
+    }
+
+    let variant = identify_base32_variant(dictionary)?;
+
+    // Need SSSE3 for pshufb
+    if !is_x86_feature_detected!("ssse3") {
+        return None;
+    }
+
+    // Minimum 16 bytes for SIMD processing
+    if encoded.len() < 16 {
+        return None;
+    }
+
+    // Dispatch to specialized implementation
+    specialized::base32::decode(encoded, variant)
 }
