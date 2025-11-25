@@ -155,11 +155,7 @@ pub fn encode_with_simd(data: &[u8], dict: &Dictionary) -> Option<String> {
         return encode_base256_simd(data, dict);
     }
 
-    // 4. Try GenericSimdCodec for sequential power-of-2 alphabets
-    if let Some(codec) = GenericSimdCodec::from_dictionary(dict) {
-        return codec.encode(data, dict);
-    }
-
+    // 4. No GenericSimdCodec on aarch64 yet
     // 5. No SIMD optimization available
     None
 }
@@ -250,11 +246,7 @@ pub fn decode_with_simd(encoded: &str, dict: &Dictionary) -> Option<Vec<u8>> {
         return decode_base256_simd(encoded, dict);
     }
 
-    // 4. Try GenericSimdCodec for sequential power-of-2 alphabets
-    if let Some(codec) = GenericSimdCodec::from_dictionary(dict) {
-        return codec.decode(encoded, dict);
-    }
-
+    // 4. No GenericSimdCodec on aarch64 yet
     // 5. No SIMD optimization available
     None
 }
