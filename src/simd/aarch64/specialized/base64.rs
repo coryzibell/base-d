@@ -364,17 +364,66 @@ unsafe fn reshuffle_decode_neon(indices: uint8x16_t) -> uint8x16_t {
 }
 
 /// Encode remaining bytes using scalar algorithm
+#[allow(dead_code)]
 fn encode_scalar_remainder(data: &[u8], dictionary: &Dictionary, result: &mut String) {
-    use crate::simd::x86_64::common;
-    common::encode_scalar_chunked(data, dictionary, result);
+    // Inline the scalar encoding to avoid cross-platform module dependency
+    let base = dictionary.base();
+    let bits_per_char = (base as f64).log2() as usize;
+
+    if bits_per_char == 0 || bits_per_char > 8 {
+        return;
+    }
+
+    let mut bit_buffer = 0u32;
+    let mut bits_in_buffer = 0;
+
+    for &byte in data {
+        bit_buffer = (bit_buffer << 8) | (byte as u32);
+        bits_in_buffer += 8;
+
+        while bits_in_buffer >= bits_per_char {
+            bits_in_buffer -= bits_per_char;
+            let index = ((bit_buffer >> bits_in_buffer) & ((1 << bits_per_char) - 1)) as usize;
+            if let Some(ch) = dictionary.encode_digit(index) {
+                result.push(ch);
+            }
+        }
+    }
+
+    if bits_in_buffer > 0 {
+        let index = ((bit_buffer << (bits_per_char - bits_in_buffer)) & ((1 << bits_per_char) - 1)) as usize;
+        if let Some(ch) = dictionary.encode_digit(index) {
+            result.push(ch);
+        }
+    }
 }
 
 /// Decode remaining bytes using scalar algorithm
+#[allow(dead_code)]
 fn decode_scalar_remainder(
     data: &[u8],
     char_to_index: &mut dyn FnMut(u8) -> Option<u8>,
     result: &mut Vec<u8>,
 ) -> bool {
-    use crate::simd::x86_64::common;
-    common::decode_scalar_chunked(data, char_to_index, result, 6)
+    // Inline the scalar decoding to avoid cross-platform module dependency
+    let bits_per_char = 6; // base64
+    let mut bit_buffer = 0u32;
+    let mut bits_in_buffer = 0;
+
+    for &byte in data {
+        let Some(value) = char_to_index(byte) else {
+            return false;
+        };
+
+        bit_buffer = (bit_buffer << bits_per_char) | (value as u32);
+        bits_in_buffer += bits_per_char;
+
+        while bits_in_buffer >= 8 {
+            bits_in_buffer -= 8;
+            let output_byte = ((bit_buffer >> bits_in_buffer) & 0xFF) as u8;
+            result.push(output_byte);
+        }
+    }
+
+    true
 }
