@@ -645,9 +645,10 @@ mod tests {
             return;
         }
 
-        // Create sequential base64 starting at '@' (U+0040) - ASCII range
+        // Create sequential base64 starting at ' ' (U+0020) - ASCII range
         // This avoids multi-byte UTF-8 encoding issues in the test
-        let chars: Vec<char> = (0x40..0x80).map(|cp| char::from_u32(cp).unwrap()).collect();
+        // Uses 64 printable ASCII chars: space through '_' (0x20..0x60)
+        let chars: Vec<char> = (0x20..0x60).map(|cp| char::from_u32(cp).unwrap()).collect();
         let dict = Dictionary::new_with_mode(chars, EncodingMode::Chunked, None).unwrap();
 
         let codec = GenericSimdCodec::from_dictionary(&dict).unwrap();
