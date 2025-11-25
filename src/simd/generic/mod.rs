@@ -653,8 +653,8 @@ mod tests {
 
         let codec = GenericSimdCodec::from_dictionary(&dict).unwrap();
 
-        // Test data: 16 bytes (will process 12 bytes)
-        let data = b"Hello, World!!!!\x00";
+        // Test data: 16 bytes (will process 12 bytes in SIMD, ignore remainder)
+        let data = b"Hello, World!!!!";
         let result = codec.encode_6bit(data, &dict);
 
         assert!(result.is_some());
