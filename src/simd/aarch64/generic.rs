@@ -654,6 +654,12 @@ mod tests {
         assert!(result.is_some());
         let encoded = result.unwrap();
 
+        // Debug
+        eprintln!("Length: {}", encoded.len());
+        eprintln!("Bytes: {:?}", encoded.as_bytes());
+        eprintln!("Chars: {:?}", encoded.chars().collect::<Vec<_>>());
+        eprintln!("Char count: {}", encoded.chars().count());
+
         // Verify length: 12 bytes processed -> 16 base64 chars
         assert_eq!(encoded.len(), 16);
     }
