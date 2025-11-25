@@ -140,6 +140,9 @@ mod compression;
 mod detection;
 mod hashing;
 
+#[cfg(target_arch = "x86_64")]
+mod simd;
+
 pub use core::dictionary::Dictionary;
 pub use core::config::{DictionariesConfig, DictionaryConfig, EncodingMode, CompressionConfig, Settings};
 pub use encoders::streaming::{StreamingEncoder, StreamingDecoder};
