@@ -27,7 +27,7 @@ pub use x86_64::{
 #[cfg(target_arch = "aarch64")]
 pub use aarch64::{
     decode_base16_simd, decode_base256_simd, decode_base64_simd, encode_base16_simd,
-    encode_base256_simd, encode_base64_simd, has_neon,
+    encode_base256_simd, encode_base64_simd,
 };
 
 pub use generic::GenericSimdCodec;
