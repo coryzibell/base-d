@@ -218,11 +218,7 @@ unsafe fn translate_avx2(
 /// independent 16-char chunks as separate lanes.
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
-unsafe fn decode_avx2_impl(
-    encoded: &[u8],
-    variant: AlphabetVariant,
-    result: &mut Vec<u8>,
-) -> bool {
+unsafe fn decode_avx2_impl(encoded: &[u8], variant: AlphabetVariant, result: &mut Vec<u8>) -> bool {
     use std::arch::x86_64::*;
 
     const INPUT_BLOCK_SIZE: usize = 32;
@@ -828,7 +824,8 @@ mod tests {
         // 48 bytes = 2 AVX2 blocks (24 bytes each)
         let test_data: Vec<u8> = (0..48).map(|i| i).collect();
 
-        if let Some(simd_result) = encode(&test_data, &dictionary, AlphabetVariant::Base64Standard) {
+        if let Some(simd_result) = encode(&test_data, &dictionary, AlphabetVariant::Base64Standard)
+        {
             let scalar_result = crate::encoders::chunked::encode_chunked(&test_data, &dictionary);
             assert_eq!(
                 simd_result, scalar_result,
@@ -847,7 +844,7 @@ mod tests {
         // Test URL-safe variant with characters that differ from standard
         let test_cases = [
             // Standard uses + and /, URL-safe uses - and _
-            ("AQID-A__", vec![1, 2, 3, 248, 15, 255]),  // Contains - and _
+            ("AQID-A__", vec![1, 2, 3, 248, 15, 255]), // Contains - and _
             ("SGVsbG8tV29ybGQ", b"Hello-World".to_vec()),
         ];
 

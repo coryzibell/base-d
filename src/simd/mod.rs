@@ -452,7 +452,11 @@ mod tests {
         let decoded = decode_with_simd(&encoded, &dict).expect("Decode failed");
 
         // Verify round-trip
-        assert_eq!(&decoded[..], &data[..], "Round-trip decode failed for base64");
+        assert_eq!(
+            &decoded[..],
+            &data[..],
+            "Round-trip decode failed for base64"
+        );
     }
 
     // NOTE: Standard base16 decode has a known issue and is temporarily disabled
@@ -480,7 +484,11 @@ mod tests {
         let decoded = decode_with_simd(&encoded, &dict).expect("Decode failed");
 
         // Verify round-trip
-        assert_eq!(&decoded[..], &data[..], "Round-trip decode failed for base16");
+        assert_eq!(
+            &decoded[..],
+            &data[..],
+            "Round-trip decode failed for base16"
+        );
     }
 
     #[test]

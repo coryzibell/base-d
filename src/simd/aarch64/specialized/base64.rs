@@ -106,12 +106,15 @@ unsafe fn reshuffle_neon(input: uint8x16_t) -> uint8x16_t {
 
     // Shuffle mask: Duplicate bytes to prepare for 6-bit extraction
     // Each group of 3 input bytes becomes 4 output bytes with duplicates
-    let shuffle_indices = vld1q_u8([
-        0, 0, 1, 2,    // bytes 0-2 -> positions 0-3
-        3, 3, 4, 5,    // bytes 3-5 -> positions 4-7
-        6, 6, 7, 8,    // bytes 6-8 -> positions 8-11
-        9, 9, 10, 11,  // bytes 9-11 -> positions 12-15
-    ].as_ptr());
+    let shuffle_indices = vld1q_u8(
+        [
+            0, 0, 1, 2, // bytes 0-2 -> positions 0-3
+            3, 3, 4, 5, // bytes 3-5 -> positions 4-7
+            6, 6, 7, 8, // bytes 6-8 -> positions 8-11
+            9, 9, 10, 11, // bytes 9-11 -> positions 12-15
+        ]
+        .as_ptr(),
+    );
 
     let shuffled = vqtbl1q_u8(input, shuffle_indices);
 
@@ -153,12 +156,18 @@ unsafe fn translate_neon(indices: uint8x16_t, variant: AlphabetVariant) -> uint8
 
     // Offset-based approach (same as x86_64)
     let lut = match variant {
-        AlphabetVariant::Base64Standard => vld1q_u8([
-            65, 71, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 237, 240, 0, 0,
-        ].as_ptr()),
-        AlphabetVariant::Base64Url => vld1q_u8([
-            65, 71, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 239, 32, 0, 0,
-        ].as_ptr()),
+        AlphabetVariant::Base64Standard => vld1q_u8(
+            [
+                65, 71, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 237, 240, 0, 0,
+            ]
+            .as_ptr(),
+        ),
+        AlphabetVariant::Base64Url => vld1q_u8(
+            [
+                65, 71, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 239, 32, 0, 0,
+            ]
+            .as_ptr(),
+        ),
     };
 
     let mut lut_indices = vqsubq_u8(indices, vdupq_n_u8(51));
@@ -174,11 +183,7 @@ unsafe fn translate_neon(indices: uint8x16_t, variant: AlphabetVariant) -> uint8
 /// Processes 16 input characters -> 12 output bytes per iteration.
 #[cfg(target_arch = "aarch64")]
 #[target_feature(enable = "neon")]
-unsafe fn decode_neon_impl(
-    encoded: &[u8],
-    variant: AlphabetVariant,
-    result: &mut Vec<u8>,
-) -> bool {
+unsafe fn decode_neon_impl(encoded: &[u8], variant: AlphabetVariant, result: &mut Vec<u8>) -> bool {
     use std::arch::aarch64::*;
 
     const INPUT_BLOCK_SIZE: usize = 16;
@@ -237,28 +242,32 @@ unsafe fn decode_neon_impl(
 /// Get decode lookup tables for NEON
 #[cfg(target_arch = "aarch64")]
 #[target_feature(enable = "neon")]
-unsafe fn get_decode_luts_neon(
-    variant: AlphabetVariant,
-) -> (uint8x16_t, uint8x16_t, uint8x16_t) {
+unsafe fn get_decode_luts_neon(variant: AlphabetVariant) -> (uint8x16_t, uint8x16_t, uint8x16_t) {
     use std::arch::aarch64::*;
 
-    let lut_lo = vld1q_u8([
-        0x15, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11,
-        0x11, 0x11, 0x13, 0x1A, 0x1B, 0x1B, 0x1B, 0x1A,
-    ].as_ptr());
+    let lut_lo = vld1q_u8(
+        [
+            0x15, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x13, 0x1A, 0x1B, 0x1B,
+            0x1B, 0x1A,
+        ]
+        .as_ptr(),
+    );
 
-    let lut_hi = vld1q_u8([
-        0x10, 0x10, 0x01, 0x02, 0x04, 0x08, 0x04, 0x08,
-        0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10,
-    ].as_ptr());
+    let lut_hi = vld1q_u8(
+        [
+            0x10, 0x10, 0x01, 0x02, 0x04, 0x08, 0x04, 0x08, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10,
+            0x10, 0x10,
+        ]
+        .as_ptr(),
+    );
 
     let lut_roll = match variant {
-        AlphabetVariant::Base64Standard => vld1q_u8([
-            0, 16, 19, 4, 191, 191, 185, 185, 0, 0, 0, 0, 0, 0, 0, 0,
-        ].as_ptr()),
-        AlphabetVariant::Base64Url => vld1q_u8([
-            0, 17, 224, 4, 191, 191, 185, 185, 0, 0, 0, 0, 0, 0, 0, 0,
-        ].as_ptr()),
+        AlphabetVariant::Base64Standard => {
+            vld1q_u8([0, 16, 19, 4, 191, 191, 185, 185, 0, 0, 0, 0, 0, 0, 0, 0].as_ptr())
+        }
+        AlphabetVariant::Base64Url => {
+            vld1q_u8([0, 17, 224, 4, 191, 191, 185, 185, 0, 0, 0, 0, 0, 0, 0, 0].as_ptr())
+        }
     };
 
     (lut_lo, lut_hi, lut_roll)
@@ -267,11 +276,7 @@ unsafe fn get_decode_luts_neon(
 /// Validate input characters (NEON)
 #[cfg(target_arch = "aarch64")]
 #[target_feature(enable = "neon")]
-unsafe fn validate_neon(
-    input: uint8x16_t,
-    lut_lo: uint8x16_t,
-    lut_hi: uint8x16_t,
-) -> bool {
+unsafe fn validate_neon(input: uint8x16_t, lut_lo: uint8x16_t, lut_hi: uint8x16_t) -> bool {
     use std::arch::aarch64::*;
 
     let lo_nibbles = vandq_u8(input, vdupq_n_u8(0x0F));
@@ -321,8 +326,8 @@ unsafe fn reshuffle_decode_neon(indices: uint8x16_t) -> uint8x16_t {
     let pairs = vreinterpretq_u16_u8(indices);
 
     // Extract even bytes (a0, a1, a2, ...) and odd bytes (b0, b1, b2, ...)
-    let even = vandq_u16(pairs, vdupq_n_u16(0xFF));  // Low byte of each pair
-    let odd = vshrq_n_u16(pairs, 8);                // High byte of each pair
+    let even = vandq_u16(pairs, vdupq_n_u16(0xFF)); // Low byte of each pair
+    let odd = vshrq_n_u16(pairs, 8); // High byte of each pair
 
     // Stage 1: merge_ab_and_bc = a + (b << 6)
     let merge_result = vaddq_u16(even, vshlq_n_u16(odd, 6));
@@ -342,13 +347,16 @@ unsafe fn reshuffle_decode_neon(indices: uint8x16_t) -> uint8x16_t {
     let final_32bit = vorrq_u32(vshlq_n_u32(lo, 12), hi);
 
     // Stage 3: Extract valid bytes (3 bytes per 32-bit group)
-    let shuffle_mask = vld1q_u8([
-        2, 1, 0,      // first group (reversed byte order)
-        6, 5, 4,      // second group
-        10, 9, 8,     // third group
-        14, 13, 12,   // fourth group
-        255, 255, 255, 255,
-    ].as_ptr());
+    let shuffle_mask = vld1q_u8(
+        [
+            2, 1, 0, // first group (reversed byte order)
+            6, 5, 4, // second group
+            10, 9, 8, // third group
+            14, 13, 12, // fourth group
+            255, 255, 255, 255,
+        ]
+        .as_ptr(),
+    );
 
     let result_bytes = vreinterpretq_u8_u32(final_32bit);
     vqtbl1q_u8(result_bytes, shuffle_mask)

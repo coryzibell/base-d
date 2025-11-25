@@ -269,7 +269,9 @@ unsafe fn decode_avx2_impl(encoded: &[u8], result: &mut Vec<u8>) -> bool {
 /// Returns -1 for invalid characters
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
-unsafe fn decode_nibble_chars_avx2(chars: std::arch::x86_64::__m256i) -> std::arch::x86_64::__m256i {
+unsafe fn decode_nibble_chars_avx2(
+    chars: std::arch::x86_64::__m256i,
+) -> std::arch::x86_64::__m256i {
     use std::arch::x86_64::*;
 
     // Strategy: Use character ranges to select appropriate lookup

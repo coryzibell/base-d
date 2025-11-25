@@ -274,22 +274,26 @@ impl GenericSimdCodec {
             let mut offset = 0;
             for _ in 0..num_blocks {
                 // Load 32 ASCII characters (16 high nibbles, 16 low nibbles interleaved)
-                let input_lo = _mm_loadu_si128(encoded_bytes.as_ptr().add(offset) as *const __m128i);
-                let input_hi = _mm_loadu_si128(encoded_bytes.as_ptr().add(offset + 16) as *const __m128i);
+                let input_lo =
+                    _mm_loadu_si128(encoded_bytes.as_ptr().add(offset) as *const __m128i);
+                let input_hi =
+                    _mm_loadu_si128(encoded_bytes.as_ptr().add(offset + 16) as *const __m128i);
 
                 // Deinterleave using shuffle: extract bytes at even/odd positions
                 // Shuffle mask to extract even bytes (0, 2, 4, 6, 8, 10, 12, 14) into first 8 positions
-                let even_mask = _mm_setr_epi8(0, 2, 4, 6, 8, 10, 12, 14, -1, -1, -1, -1, -1, -1, -1, -1);
+                let even_mask =
+                    _mm_setr_epi8(0, 2, 4, 6, 8, 10, 12, 14, -1, -1, -1, -1, -1, -1, -1, -1);
                 // Shuffle mask to extract odd bytes (1, 3, 5, 7, 9, 11, 13, 15) into first 8 positions
-                let odd_mask = _mm_setr_epi8(1, 3, 5, 7, 9, 11, 13, 15, -1, -1, -1, -1, -1, -1, -1, -1);
+                let odd_mask =
+                    _mm_setr_epi8(1, 3, 5, 7, 9, 11, 13, 15, -1, -1, -1, -1, -1, -1, -1, -1);
 
                 // Extract even positions (HIGH nibble chars) from both input vectors
-                let hi_chars_lo = _mm_shuffle_epi8(input_lo, even_mask);  // 8 bytes in positions 0-7
-                let hi_chars_hi = _mm_shuffle_epi8(input_hi, even_mask);  // 8 bytes in positions 0-7
+                let hi_chars_lo = _mm_shuffle_epi8(input_lo, even_mask); // 8 bytes in positions 0-7
+                let hi_chars_hi = _mm_shuffle_epi8(input_hi, even_mask); // 8 bytes in positions 0-7
 
                 // Extract odd positions (LOW nibble chars) from both input vectors
-                let lo_chars_lo = _mm_shuffle_epi8(input_lo, odd_mask);  // 8 bytes in positions 0-7
-                let lo_chars_hi = _mm_shuffle_epi8(input_hi, odd_mask);  // 8 bytes in positions 0-7
+                let lo_chars_lo = _mm_shuffle_epi8(input_lo, odd_mask); // 8 bytes in positions 0-7
+                let lo_chars_hi = _mm_shuffle_epi8(input_hi, odd_mask); // 8 bytes in positions 0-7
 
                 // Combine into full 16-byte vectors by placing hi_chars_hi into upper 8 bytes
                 let hi_chars = _mm_or_si128(hi_chars_lo, _mm_slli_si128(hi_chars_hi, 8));
@@ -468,9 +472,9 @@ impl GenericSimdCodec {
         _mm_shuffle_epi8(
             final_32bit,
             _mm_setr_epi8(
-                2, 1, 0,    // first group of 3 bytes (reversed for little endian)
-                6, 5, 4,    // second group of 3 bytes
-                10, 9, 8,   // third group of 3 bytes
+                2, 1, 0, // first group of 3 bytes (reversed for little endian)
+                6, 5, 4, // second group of 3 bytes
+                10, 9, 8, // third group of 3 bytes
                 14, 13, 12, // fourth group of 3 bytes
                 -1, -1, -1, -1, // unused bytes (will be zero)
             ),
@@ -522,10 +526,7 @@ mod tests {
         let dict = Dictionary::new_with_mode(chars, EncodingMode::Chunked, None).unwrap();
 
         let codec = GenericSimdCodec::from_dictionary(&dict);
-        assert!(
-            codec.is_some(),
-            "Should create codec for sequential base64"
-        );
+        assert!(codec.is_some(), "Should create codec for sequential base64");
 
         let codec = codec.unwrap();
         assert_eq!(codec.metadata.bits_per_symbol, 6);
@@ -544,10 +545,7 @@ mod tests {
         let dict = Dictionary::new(chars).unwrap();
 
         let codec = GenericSimdCodec::from_dictionary(&dict);
-        assert!(
-            codec.is_some(),
-            "Should create codec for sequential hex"
-        );
+        assert!(codec.is_some(), "Should create codec for sequential hex");
 
         let codec = codec.unwrap();
         assert_eq!(codec.metadata.bits_per_symbol, 4);

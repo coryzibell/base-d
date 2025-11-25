@@ -112,12 +112,12 @@ unsafe fn encode_neon_impl(data: &[u8], variant: HexVariant, result: &mut String
     // Lookup table for hex digits (16 bytes)
     let lut = match variant {
         HexVariant::Uppercase => [
-            b'0', b'1', b'2', b'3', b'4', b'5', b'6', b'7',
-            b'8', b'9', b'A', b'B', b'C', b'D', b'E', b'F',
+            b'0', b'1', b'2', b'3', b'4', b'5', b'6', b'7', b'8', b'9', b'A', b'B', b'C', b'D',
+            b'E', b'F',
         ],
         HexVariant::Lowercase => [
-            b'0', b'1', b'2', b'3', b'4', b'5', b'6', b'7',
-            b'8', b'9', b'a', b'b', b'c', b'd', b'e', b'f',
+            b'0', b'1', b'2', b'3', b'4', b'5', b'6', b'7', b'8', b'9', b'a', b'b', b'c', b'd',
+            b'e', b'f',
         ],
     };
     let lut_vec = vld1q_u8(lut.as_ptr());
@@ -232,7 +232,9 @@ unsafe fn decode_neon_impl(encoded: &[u8], result: &mut Vec<u8>) -> bool {
 /// Returns 255 for invalid characters
 #[cfg(target_arch = "aarch64")]
 #[target_feature(enable = "neon")]
-unsafe fn decode_nibble_chars_neon(chars: std::arch::aarch64::uint8x16_t) -> std::arch::aarch64::uint8x16_t {
+unsafe fn decode_nibble_chars_neon(
+    chars: std::arch::aarch64::uint8x16_t,
+) -> std::arch::aarch64::uint8x16_t {
     use std::arch::aarch64::*;
 
     // Strategy: Use character ranges to select appropriate offset
@@ -248,22 +250,13 @@ unsafe fn decode_nibble_chars_neon(chars: std::arch::aarch64::uint8x16_t) -> std
     let f_66 = vdupq_n_u8(0x66);
 
     // Check if char is a digit ('0'-'9')
-    let is_digit = vandq_u8(
-        vcgeq_u8(chars, zero_30),
-        vcleq_u8(chars, nine_39),
-    );
+    let is_digit = vandq_u8(vcgeq_u8(chars, zero_30), vcleq_u8(chars, nine_39));
 
     // Check if char is uppercase hex ('A'-'F')
-    let is_upper = vandq_u8(
-        vcgeq_u8(chars, A_41),
-        vcleq_u8(chars, F_46),
-    );
+    let is_upper = vandq_u8(vcgeq_u8(chars, A_41), vcleq_u8(chars, F_46));
 
     // Check if char is lowercase hex ('a'-'f')
-    let is_lower = vandq_u8(
-        vcgeq_u8(chars, a_61),
-        vcleq_u8(chars, f_66),
-    );
+    let is_lower = vandq_u8(vcgeq_u8(chars, a_61), vcleq_u8(chars, f_66));
 
     // Decode using appropriate offset
     let digit_vals = vandq_u8(is_digit, vsubq_u8(chars, vdupq_n_u8(0x30)));
