@@ -30,6 +30,13 @@ base-d is a flexible encoding framework that goes far beyond traditional base64.
 2. **Chunked Mode** - RFC 4648 compatible (base64, base32, base16)
 3. **Byte Range Mode** - Direct 1:1 byte-to-emoji mapping (base100)
 
+### Performance
+
+- **SIMD-Accelerated** - Runtime AVX2/SSSE3 detection for automatic performance boost on x86_64
+- **Highly Optimized** - Fast lookup tables, memory pre-allocation, CPU cache-friendly chunking
+- **~370 MiB/s** base64 encoding (scalar), **1.5-2 GiB/s projected** (full SIMD)
+- **Streaming Mode** - Process multi-GB files with constant 4KB memory usage
+
 ### Extensive Dictionary Collection
 
 - **Standards**: base64, base32, base16, base58 (Bitcoin), base85 (Git)
@@ -319,6 +326,7 @@ MIT OR Apache-2.0
 - [Dictionary Reference](docs/DICTIONARIES.md) - Complete guide to all numerous built-in dictionaries
 - [Custom Dictionaries](docs/CUSTOM_DICTIONARIES.md) - Create and load your own dictionaries
 - [Encoding Modes](docs/ENCODING_MODES.md) - Detailed explanation of mathematical vs chunked vs byte range encoding
+- [SIMD Optimizations](docs/SIMD.md) - Performance enhancements with AVX2/SSSE3 (x86_64)
 - [Streaming](docs/STREAMING.md) - Memory-efficient processing for large files
 - [Hexadecimal Explained](docs/HEX_EXPLANATION.md) - Special case where both modes produce identical output
 - [Roadmap](docs/ROADMAP.md) - Planned features and development phases

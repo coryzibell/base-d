@@ -2,7 +2,25 @@ use crate::core::dictionary::Dictionary;
 
 pub use crate::encoders::encoding::DecodeError;
 
+#[cfg(target_arch = "x86_64")]
+use crate::simd;
+
 pub fn encode_chunked(data: &[u8], dictionary: &Dictionary) -> String {
+    // Try SIMD acceleration for base64
+    #[cfg(target_arch = "x86_64")]
+    {
+        if dictionary.base() == 64 && (simd::has_avx2() || simd::has_ssse3()) {
+            if let Some(result) = simd::encode_base64_simd(data, dictionary) {
+                return result;
+            }
+        }
+    }
+
+    // Fall back to scalar implementation
+    encode_chunked_scalar(data, dictionary)
+}
+
+fn encode_chunked_scalar(data: &[u8], dictionary: &Dictionary) -> String {
     let base = dictionary.base();
     let bits_per_char = (base as f64).log2() as usize;
     
@@ -78,7 +96,22 @@ pub fn decode_chunked(encoded: &str, dictionary: &Dictionary) -> Result<Vec<u8>,
     if encoded.is_empty() {
         return Err(DecodeError::EmptyInput);
     }
-    
+
+    // Try SIMD acceleration for base64
+    #[cfg(target_arch = "x86_64")]
+    {
+        if dictionary.base() == 64 && (simd::has_avx2() || simd::has_ssse3()) {
+            if let Some(result) = simd::decode_base64_simd(encoded, dictionary) {
+                return Ok(result);
+            }
+        }
+    }
+
+    // Fall back to scalar implementation
+    decode_chunked_scalar(encoded, dictionary)
+}
+
+fn decode_chunked_scalar(encoded: &str, dictionary: &Dictionary) -> Result<Vec<u8>, DecodeError> {
     let base = dictionary.base();
     let bits_per_char = (base as f64).log2() as usize;
     let padding = dictionary.padding();
