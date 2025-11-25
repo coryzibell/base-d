@@ -2,7 +2,7 @@
 
 ## Overview
 
-As of v0.1.17, base-d includes **SIMD (Single Instruction, Multiple Data) optimizations** for base64 encoding on x86_64 platforms with AVX2 or SSSE3 support. These optimizations provide automatic performance improvements with **zero configuration required**.
+base-d includes **SIMD (Single Instruction, Multiple Data) optimizations** for base64 encoding on x86_64 platforms with SSSE3 support. These optimizations provide automatic performance improvements with **zero configuration required**.
 
 ## How It Works
 
@@ -44,27 +44,26 @@ If SIMD is not available or not applicable, base-d automatically falls back to t
 
 ## Performance
 
-### Current Status (v0.1.17)
+### Current Status
 
-**SIMD Infrastructure:** ✅ Complete
-- Runtime CPU detection with caching
+**SIMD Encoding:** ✅ Complete
+- Runtime SSSE3 CPU detection with caching
 - Automatic fallback to scalar code
 - Zero-overhead abstraction
+- Based on [aklomp/base64](https://github.com/aklomp/base64) algorithm
 
-**SIMD Implementation:** 🚧 In Progress
-- Basic AVX2 encoding scaffolding
-- Optimized scalar fallback
-- Framework ready for full implementation
+**SIMD Decoding:** 🚧 Planned
+- Currently uses optimized scalar implementation
+- SIMD decoding planned for future release
 
-### Projected Performance (Full SIMD)
+### Expected Performance
 
-| Operation | Current (Scalar) | SIMD (AVX2) | SIMD (AVX-512) |
-|-----------|------------------|-------------|----------------|
-| Base64 Encode | 370 MiB/s | **1.5-2 GiB/s** | **3-4 GiB/s** |
-| Base64 Decode | 220 MiB/s | **1-1.5 GiB/s** | **2-3 GiB/s** |
-| Hex Encode | ~400 MiB/s | **5-10 GiB/s** | **15-20 GiB/s** |
+| Operation | Scalar | SIMD (SSSE3) | Notes |
+|-----------|--------|--------------|-------|
+| Base64 Encode | ~370 MiB/s | **~1.5 GiB/s** | 4x improvement |
+| Base64 Decode | ~220 MiB/s | Scalar | SIMD pending |
 
-*Benchmarks on Intel i7-10700K @ 3.8GHz*
+*Run `cargo bench` to measure on your hardware*
 
 ## Supported Platforms
 
@@ -72,9 +71,9 @@ If SIMD is not available or not applicable, base-d automatically falls back to t
 
 | Feature Level | Status | Performance Gain |
 |---------------|--------|------------------|
-| **AVX2** | ✅ Supported | 4-8x (projected) |
-| **SSSE3** | ✅ Supported | 2-4x (projected) |
-| **SSE2** | ⏳ Planned | 1.5-2x |
+| **SSSE3** | ✅ Complete | ~4x |
+| **AVX2** | ⏳ Planned | ~6-8x expected |
+| **AVX-512** | 📋 Future | ~10x+ expected |
 | Scalar fallback | ✅ Always available | Baseline |
 
 ### Other Architectures
@@ -87,18 +86,31 @@ If SIMD is not available or not applicable, base-d automatically falls back to t
 
 ## Technical Details
 
-### AVX2 Implementation
+### SSSE3 Implementation
 
 **Processing Model:**
-- Input: 24 bytes → Output: 32 base64 characters
-- Processes data in 24-byte blocks
-- Remainder handled by scalar code
+- Input: 12 bytes → Output: 16 base64 characters per iteration
+- Uses 128-bit XMM registers
+- Remainder handled by optimized scalar code
 
 **Key Techniques:**
-1. **Byte shuffling** - Reorder input bytes for 6-bit extraction
-2. **Bit manipulation** - Extract 6-bit indices with shifts and masks
-3. **Parallel lookup** - Use `PSHUFB` for table lookups
-4. **Efficient packing** - Store 32 characters at once
+1. **Byte shuffling (`PSHUFB`)** - Rearrange bytes to prepare for 6-bit extraction
+2. **Multiply tricks** - Use `PMULHUW`/`PMULLW` to shift bits into place (avoids slow variable shifts)
+3. **Offset-based lookup** - Convert 6-bit indices to ASCII with a single shuffle + add
+
+**Algorithm (from aklomp/base64):**
+```
+enc_reshuffle:
+1. Shuffle: Duplicate bytes for each 3→4 expansion
+2. AND + MULHI: Extract bits for positions 0,2
+3. AND + MULLO: Extract bits for positions 1,3
+4. OR: Combine results → 16 x 6-bit indices
+
+enc_translate:
+1. Compute lookup index from 6-bit value
+2. Shuffle to get ASCII offset
+3. Add offset to value → ASCII character
+```
 
 **Reference Implementation:**
 Based on techniques from:
@@ -174,36 +186,39 @@ if is_x86_feature_detected!("avx2") {
 
 ## Development Roadmap
 
-### Phase 1: Infrastructure ✅ (v0.1.17)
+### Phase 1: Infrastructure ✅
 - [x] Runtime CPU detection with caching
 - [x] SIMD module structure
 - [x] Automatic fallback mechanism
 - [x] Integration with chunked encoding
 - [x] Test framework
 
-### Phase 2: Full AVX2 Base64 ⏳ (v0.2.0)
-- [ ] Complete 6-bit extraction logic
-- [ ] Parallel table lookup implementation
-- [ ] Proper byte shuffling masks
-- [ ] Base64 decoding with SIMD
-- [ ] Comprehensive benchmarks
+### Phase 2: SSSE3 Base64 Encoding ✅
+- [x] Byte shuffling (enc_reshuffle)
+- [x] 6-bit extraction via multiply
+- [x] Offset-based ASCII lookup (enc_translate)
+- [x] Remainder handling with scalar
+- [x] Comprehensive tests
 
-### Phase 3: Additional Encodings (v0.2.x)
+### Phase 3: Decoding & More Encodings ⏳
+- [ ] Base64 decoding with SIMD
+- [ ] Base64url support (different +/ chars)
 - [ ] Hex SIMD optimization (4-bit)
 - [ ] Base32 SIMD optimization (5-bit)
-- [ ] Base64url support
-- [ ] Optimized padding handling
 
-### Phase 4: ARM Support (v0.3.0)
+### Phase 4: AVX2 Optimization ⏳
+- [ ] 24-byte blocks (256-bit registers)
+- [ ] Further performance gains
+
+### Phase 5: ARM Support (v0.3.0)
 - [ ] NEON intrinsics for ARM64
 - [ ] Runtime feature detection for ARM
 - [ ] Cross-platform testing
 
-### Phase 5: Advanced Features (v0.4.0)
+### Phase 6: Advanced Features (v0.4.0)
 - [ ] AVX-512 support
 - [ ] WASM SIMD128
 - [ ] Parallel processing for large files (rayon)
-- [ ] SIMD for byte range mode
 
 ## Debugging
 
@@ -233,28 +248,28 @@ perf report
 vtune -collect hotspots -- cargo bench
 ```
 
-### Known Issues
+### Known Limitations
 
-1. **Placeholder Implementation**: The current AVX2 code contains placeholder logic that needs completion
-2. **Decoding**: SIMD decoding is stubbed out (returns `None`)
-3. **Only Standard Base64**: Custom alphabets don't use SIMD yet
+1. **Decoding**: SIMD decoding is not yet implemented (returns `None`, uses scalar)
+2. **Only Standard Base64**: Custom alphabets and base64url don't use SIMD yet
+3. **Minimum input size**: Inputs < 16 bytes use scalar code
 
 ## Contributing
 
-Want to help implement full SIMD support? Check out:
+Want to help extend SIMD support? Check out:
 
 1. **Reference implementations:**
    - https://github.com/aklomp/base64
    - http://0x80.pl/notesen/2016-01-12-sse-base64-encoding.html
 
-2. **Start here:**
-   - `src/simd/x86_64.rs` - AVX2 implementation
-   - `reshuffle_bytes_avx2()` - Byte shuffling
-   - `extract_6bit_indices_avx2()` - Bit extraction
-   - `lookup_base64_chars_avx2()` - Character lookup
+2. **Key files:**
+   - `src/simd/mod.rs` - CPU feature detection
+   - `src/simd/x86_64.rs` - SSSE3 encoding implementation
+   - `enc_reshuffle()` - Byte shuffling and bit extraction
+   - `enc_translate()` - Index to ASCII conversion
 
 3. **Testing:**
-   - `cargo test --lib simd` - Run SIMD tests
+   - `cargo test simd` - Run SIMD tests
    - `cargo bench` - Benchmark against scalar
 
 ## References
