@@ -15,10 +15,19 @@ pub mod translate;
 #[cfg(target_arch = "x86_64")]
 mod x86_64;
 
+#[cfg(target_arch = "aarch64")]
+mod aarch64;
+
 #[cfg(target_arch = "x86_64")]
 pub use x86_64::{
     decode_base16_simd, decode_base256_simd, decode_base64_simd, encode_base16_simd,
     encode_base256_simd, encode_base64_simd,
+};
+
+#[cfg(target_arch = "aarch64")]
+pub use aarch64::{
+    decode_base16_simd, decode_base256_simd, decode_base64_simd, encode_base16_simd,
+    encode_base256_simd, encode_base64_simd, has_neon,
 };
 
 pub use generic::GenericSimdCodec;
@@ -41,13 +50,24 @@ pub fn has_ssse3() -> bool {
     *HAS_SSSE3.get_or_init(|| is_x86_feature_detected!("ssse3"))
 }
 
-#[cfg(not(target_arch = "x86_64"))]
+#[cfg(all(not(target_arch = "x86_64"), not(target_arch = "aarch64")))]
 pub fn has_avx2() -> bool {
     false
 }
 
-#[cfg(not(target_arch = "x86_64"))]
+#[cfg(all(not(target_arch = "x86_64"), not(target_arch = "aarch64")))]
 pub fn has_ssse3() -> bool {
+    false
+}
+
+/// Check if NEON is available (aarch64 only)
+#[cfg(target_arch = "aarch64")]
+pub fn has_neon() -> bool {
+    true // NEON is mandatory on aarch64
+}
+
+#[cfg(not(target_arch = "aarch64"))]
+pub fn has_neon() -> bool {
     false
 }
 
@@ -100,8 +120,46 @@ pub fn encode_with_simd(data: &[u8], dict: &Dictionary) -> Option<String> {
     None
 }
 
-/// Fallback for non-x86_64 platforms
-#[cfg(not(target_arch = "x86_64"))]
+/// SIMD encoding for aarch64 platforms
+#[cfg(target_arch = "aarch64")]
+pub fn encode_with_simd(data: &[u8], dict: &Dictionary) -> Option<String> {
+    // NEON is always available on aarch64
+    if !has_neon() {
+        return None;
+    }
+
+    let base = dict.base();
+
+    // 1. Try specialized base64 for known variants
+    if base == 64 {
+        if let Some(_variant) = alphabets::identify_base64_variant(dict) {
+            return encode_base64_simd(data, dict);
+        }
+    }
+
+    // 2. Try specialized base16 for known hex variants
+    if base == 16 {
+        if is_standard_hex(dict) {
+            return encode_base16_simd(data, dict);
+        }
+    }
+
+    // 3. Try specialized base256 for ByteRange mode
+    if base == 256 && *dict.mode() == EncodingMode::ByteRange {
+        return encode_base256_simd(data, dict);
+    }
+
+    // 4. Try GenericSimdCodec for sequential power-of-2 alphabets
+    if let Some(codec) = GenericSimdCodec::from_dictionary(dict) {
+        return codec.encode(data, dict);
+    }
+
+    // 5. No SIMD optimization available
+    None
+}
+
+/// Fallback for other platforms
+#[cfg(all(not(target_arch = "x86_64"), not(target_arch = "aarch64")))]
 pub fn encode_with_simd(_data: &[u8], _dict: &Dictionary) -> Option<String> {
     None
 }
@@ -155,8 +213,46 @@ pub fn decode_with_simd(encoded: &str, dict: &Dictionary) -> Option<Vec<u8>> {
     None
 }
 
-/// Fallback for non-x86_64 platforms
-#[cfg(not(target_arch = "x86_64"))]
+/// SIMD decoding for aarch64 platforms
+#[cfg(target_arch = "aarch64")]
+pub fn decode_with_simd(encoded: &str, dict: &Dictionary) -> Option<Vec<u8>> {
+    // NEON is always available on aarch64
+    if !has_neon() {
+        return None;
+    }
+
+    let base = dict.base();
+
+    // 1. Try specialized base64 for known variants
+    if base == 64 {
+        if alphabets::identify_base64_variant(dict).is_some() {
+            return decode_base64_simd(encoded, dict);
+        }
+    }
+
+    // 2. Try specialized base16 for known hex variants
+    if base == 16 {
+        if is_standard_hex(dict) {
+            return decode_base16_simd(encoded, dict);
+        }
+    }
+
+    // 3. Try specialized base256 for ByteRange mode
+    if base == 256 && *dict.mode() == EncodingMode::ByteRange {
+        return decode_base256_simd(encoded, dict);
+    }
+
+    // 4. Try GenericSimdCodec for sequential power-of-2 alphabets
+    if let Some(codec) = GenericSimdCodec::from_dictionary(dict) {
+        return codec.decode(encoded, dict);
+    }
+
+    // 5. No SIMD optimization available
+    None
+}
+
+/// Fallback for other platforms
+#[cfg(all(not(target_arch = "x86_64"), not(target_arch = "aarch64")))]
 pub fn decode_with_simd(_encoded: &str, _dict: &Dictionary) -> Option<Vec<u8>> {
     None
 }
