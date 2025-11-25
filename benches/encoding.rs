@@ -1,4 +1,4 @@
-use base_d::{decode, encode, Dictionary, DictionariesConfig, EncodingMode};
+use base_d::{decode, encode, DictionariesConfig, Dictionary, EncodingMode};
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 
 fn get_alphabet(name: &str) -> Dictionary {
