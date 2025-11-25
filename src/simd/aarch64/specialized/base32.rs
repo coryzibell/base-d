@@ -10,7 +10,7 @@
 //! - NEON: 10 bytes → 16 chars (vs 12 bytes → 16 chars)
 //! - 5-bit extraction requires different masks and multiplies
 
-use super::super::common;
+use super::common;
 use crate::core::dictionary::Dictionary;
 use crate::simd::alphabets::Base32Variant;
 
