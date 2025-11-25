@@ -411,12 +411,13 @@ impl GenericSimdCodec {
 
         // Shuffle indices to duplicate bytes for 6-bit extraction
         // Each group of 3 input bytes becomes 4 output bytes with duplicates
+        // Matches x86_64 base64.rs pattern: [1,0,2,1, 4,3,5,4, 7,6,8,7, 10,9,11,10]
         let shuffle_indices = vld1q_u8(
             [
-                0, 0, 1, 2, // bytes 0-2 -> positions 0-3
-                3, 3, 4, 5, // bytes 3-5 -> positions 4-7
-                6, 6, 7, 8, // bytes 6-8 -> positions 8-11
-                9, 9, 10, 11, // bytes 9-11 -> positions 12-15
+                1, 0, 2, 1, // bytes 0-2 -> positions 0-3
+                4, 3, 5, 4, // bytes 3-5 -> positions 4-7
+                7, 6, 8, 7, // bytes 6-8 -> positions 8-11
+                10, 9, 11, 10, // bytes 9-11 -> positions 12-15
             ]
             .as_ptr(),
         );
@@ -638,7 +639,6 @@ mod tests {
 
     #[test]
     #[cfg(target_arch = "aarch64")]
-    #[ignore = "FIXME: aarch64 NEON GenericSimdCodec produces invalid output (issue with reshuffle or translator)"]
     fn test_encode_6bit_sequential() {
         // Create sequential base64 starting at '!' (U+0021) - ASCII range
         // This avoids multi-byte UTF-8 encoding issues in the test
