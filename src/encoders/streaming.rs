@@ -17,6 +17,7 @@ pub struct StreamingEncoder<'a, W: Write> {
     compress_algo: Option<CompressionAlgorithm>,
     compress_level: u32,
     hash_algo: Option<HashAlgorithm>,
+    xxhash_config: crate::hashing::XxHashConfig,
 }
 
 impl<'a, W: Write> StreamingEncoder<'a, W> {
@@ -27,12 +28,13 @@ impl<'a, W: Write> StreamingEncoder<'a, W> {
     /// * `dictionary` - The dictionary to use for encoding
     /// * `writer` - The destination for encoded output
     pub fn new(dictionary: &'a Dictionary, writer: W) -> Self {
-        StreamingEncoder { 
-            dictionary, 
+        StreamingEncoder {
+            dictionary,
             writer,
             compress_algo: None,
             compress_level: 6,
             hash_algo: None,
+            xxhash_config: crate::hashing::XxHashConfig::default(),
         }
     }
     
@@ -46,6 +48,12 @@ impl<'a, W: Write> StreamingEncoder<'a, W> {
     /// Sets hash algorithm for computing hash during encoding.
     pub fn with_hashing(mut self, algo: HashAlgorithm) -> Self {
         self.hash_algo = Some(algo);
+        self
+    }
+
+    /// Sets xxHash configuration (seed and secret).
+    pub fn with_xxhash_config(mut self, config: crate::hashing::XxHashConfig) -> Self {
+        self.xxhash_config = config;
         self
     }
     
@@ -117,8 +125,8 @@ impl<'a, W: Write> StreamingEncoder<'a, W> {
     fn compress_stream<R: Read>(&mut self, reader: &mut R, output: &mut Vec<u8>, algo: CompressionAlgorithm) -> std::io::Result<Option<Vec<u8>>> {
         use flate2::write::GzEncoder;
         use xz2::write::XzEncoder;
-        
-        let hasher = self.hash_algo.map(|algo| create_hasher_writer(algo));
+
+        let hasher = self.hash_algo.map(|algo| create_hasher_writer(algo, &self.xxhash_config));
         
         match algo {
             CompressionAlgorithm::Gzip => {
@@ -194,12 +202,12 @@ impl<'a, W: Write> StreamingEncoder<'a, W> {
         let base = self.dictionary.base();
         let bits_per_char = (base as f64).log2() as usize;
         let bytes_per_group = bits_per_char;
-        
+
         // Adjust chunk size to align with encoding groups
         let aligned_chunk_size = (CHUNK_SIZE / bytes_per_group) * bytes_per_group;
         let mut buffer = vec![0u8; aligned_chunk_size];
-        
-        let mut hasher = self.hash_algo.map(|algo| create_hasher_writer(algo));
+
+        let mut hasher = self.hash_algo.map(|algo| create_hasher_writer(algo, &self.xxhash_config));
         
         loop {
             let bytes_read = reader.read(&mut buffer)?;
@@ -242,7 +250,7 @@ impl<'a, W: Write> StreamingEncoder<'a, W> {
     
     fn encode_byte_range<R: Read>(&mut self, reader: &mut R) -> std::io::Result<Option<Vec<u8>>> {
         let mut buffer = vec![0u8; CHUNK_SIZE];
-        let mut hasher = self.hash_algo.map(|algo| create_hasher_writer(algo));
+        let mut hasher = self.hash_algo.map(|algo| create_hasher_writer(algo, &self.xxhash_config));
         
         loop {
             let bytes_read = reader.read(&mut buffer)?;
@@ -289,6 +297,7 @@ pub struct StreamingDecoder<'a, W: Write> {
     writer: W,
     decompress_algo: Option<CompressionAlgorithm>,
     hash_algo: Option<HashAlgorithm>,
+    xxhash_config: crate::hashing::XxHashConfig,
 }
 
 impl<'a, W: Write> StreamingDecoder<'a, W> {
@@ -299,11 +308,12 @@ impl<'a, W: Write> StreamingDecoder<'a, W> {
     /// * `dictionary` - The dictionary used for encoding
     /// * `writer` - The destination for decoded output
     pub fn new(dictionary: &'a Dictionary, writer: W) -> Self {
-        StreamingDecoder { 
-            dictionary, 
+        StreamingDecoder {
+            dictionary,
             writer,
             decompress_algo: None,
             hash_algo: None,
+            xxhash_config: crate::hashing::XxHashConfig::default(),
         }
     }
     
@@ -316,6 +326,12 @@ impl<'a, W: Write> StreamingDecoder<'a, W> {
     /// Sets hash algorithm for computing hash during decoding.
     pub fn with_hashing(mut self, algo: HashAlgorithm) -> Self {
         self.hash_algo = Some(algo);
+        self
+    }
+
+    /// Sets xxHash configuration (seed and secret).
+    pub fn with_xxhash_config(mut self, config: crate::hashing::XxHashConfig) -> Self {
+        self.xxhash_config = config;
         self
     }
     
@@ -379,8 +395,8 @@ impl<'a, W: Write> StreamingDecoder<'a, W> {
     fn decompress_stream<R: Read>(&mut self, reader: &mut R, algo: CompressionAlgorithm) -> std::io::Result<Option<Vec<u8>>> {
         use flate2::read::GzDecoder;
         use xz2::read::XzDecoder;
-        
-        let mut hasher = self.hash_algo.map(|algo| create_hasher_writer(algo));
+
+        let mut hasher = self.hash_algo.map(|algo| create_hasher_writer(algo, &self.xxhash_config));
         
         match algo {
             CompressionAlgorithm::Gzip => {
@@ -450,11 +466,11 @@ impl<'a, W: Write> StreamingDecoder<'a, W> {
         let base = self.dictionary.base();
         let bits_per_char = (base as f64).log2() as usize;
         let chars_per_group = 8 / bits_per_char;
-        
+
         // Read text in chunks
         let mut text_buffer = String::new();
         let mut char_buffer = vec![0u8; CHUNK_SIZE];
-        let mut hasher = self.hash_algo.map(|algo| create_hasher_writer(algo));
+        let mut hasher = self.hash_algo.map(|algo| create_hasher_writer(algo, &self.xxhash_config));
         
         loop {
             let bytes_read = reader.read(&mut char_buffer)
@@ -504,7 +520,7 @@ impl<'a, W: Write> StreamingDecoder<'a, W> {
     
     fn decode_byte_range<R: Read>(&mut self, reader: &mut R) -> Result<Option<Vec<u8>>, DecodeError> {
         let mut char_buffer = vec![0u8; CHUNK_SIZE];
-        let mut hasher = self.hash_algo.map(|algo| create_hasher_writer(algo));
+        let mut hasher = self.hash_algo.map(|algo| create_hasher_writer(algo, &self.xxhash_config));
         
         loop {
             let bytes_read = reader.read(&mut char_buffer)
@@ -629,10 +645,9 @@ impl HasherWriter {
     }
 }
 
-fn create_hasher_writer(algo: HashAlgorithm) -> HasherWriter {
+fn create_hasher_writer(algo: HashAlgorithm, config: &crate::hashing::XxHashConfig) -> HasherWriter {
     use sha2::Digest;
-    
-    
+
     match algo {
         HashAlgorithm::Md5 => HasherWriter::Md5(md5::Md5::new()),
         HashAlgorithm::Sha224 => HasherWriter::Sha224(sha2::Sha224::new()),
@@ -666,10 +681,28 @@ fn create_hasher_writer(algo: HashAlgorithm) -> HasherWriter {
             static CRC: crc::Crc<u64> = crc::Crc::<u64>::new(&crc::CRC_64_ECMA_182);
             HasherWriter::Crc64(Box::new(CRC.digest()))
         }
-        HashAlgorithm::XxHash32 => HasherWriter::XxHash32(twox_hash::XxHash32::with_seed(0)),
-        HashAlgorithm::XxHash64 => HasherWriter::XxHash64(twox_hash::XxHash64::with_seed(0)),
-        HashAlgorithm::XxHash3_64 => HasherWriter::XxHash3_64(twox_hash::xxhash3_64::Hasher::with_seed(0)),
-        HashAlgorithm::XxHash3_128 => HasherWriter::XxHash3_128(twox_hash::xxhash3_128::Hasher::with_seed(0)),
+        HashAlgorithm::XxHash32 => HasherWriter::XxHash32(twox_hash::XxHash32::with_seed(config.seed as u32)),
+        HashAlgorithm::XxHash64 => HasherWriter::XxHash64(twox_hash::XxHash64::with_seed(config.seed)),
+        HashAlgorithm::XxHash3_64 => {
+            if let Some(ref secret) = config.secret {
+                HasherWriter::XxHash3_64(
+                    twox_hash::xxhash3_64::Hasher::with_seed_and_secret(config.seed, secret.as_slice())
+                        .expect("XXH3 secret validation should have been done in XxHashConfig::with_secret")
+                )
+            } else {
+                HasherWriter::XxHash3_64(twox_hash::xxhash3_64::Hasher::with_seed(config.seed))
+            }
+        }
+        HashAlgorithm::XxHash3_128 => {
+            if let Some(ref secret) = config.secret {
+                HasherWriter::XxHash3_128(
+                    twox_hash::xxhash3_128::Hasher::with_seed_and_secret(config.seed, secret.as_slice())
+                        .expect("XXH3 secret validation should have been done in XxHashConfig::with_secret")
+                )
+            } else {
+                HasherWriter::XxHash3_128(twox_hash::xxhash3_128::Hasher::with_seed(config.seed))
+            }
+        }
     }
 }
 

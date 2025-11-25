@@ -127,6 +127,12 @@ echo "hello world" | base-d --hash blake3 -e base64
 echo "hello world" | base-d --hash crc32
 echo "hello world" | base-d --hash xxhash3
 base-d --hash sha256 document.pdf
+
+# Hash with custom seed
+echo "hello world" | base-d --hash xxhash64 --hash-seed 42
+
+# Hash with secret (XXH3 only)
+cat secret.bin | base-d --hash xxhash3 --hash-secret-stdin data.bin
 ```
 
 ## Installation

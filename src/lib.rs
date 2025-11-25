@@ -149,7 +149,7 @@ pub use encoders::streaming::{StreamingEncoder, StreamingDecoder};
 pub use encoders::encoding::DecodeError;
 pub use compression::{CompressionAlgorithm, compress, decompress};
 pub use detection::{DictionaryDetector, DictionaryMatch, detect_dictionary};
-pub use hashing::{HashAlgorithm, hash};
+pub use hashing::{HashAlgorithm, hash, hash_with_config, XxHashConfig};
 
 /// Encodes binary data using the specified dictionary.
 ///

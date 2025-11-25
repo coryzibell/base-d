@@ -8,6 +8,37 @@ use twox_hash::xxhash3_64::Hasher as Xxh3Hash64;
 use twox_hash::xxhash3_128::Hasher as Xxh3Hash128;
 use std::hash::Hasher;
 
+/// Configuration for xxHash algorithms.
+#[derive(Debug, Clone, Default)]
+pub struct XxHashConfig {
+    /// Seed value (0-u64::MAX)
+    pub seed: u64,
+    /// Secret for XXH3 variants (must be >= 136 bytes)
+    pub secret: Option<Vec<u8>>,
+}
+
+impl XxHashConfig {
+    /// Create config with a custom seed.
+    pub fn with_seed(seed: u64) -> Self {
+        Self { seed, secret: None }
+    }
+
+    /// Create config with seed and secret for XXH3 variants.
+    /// Secret must be at least 136 bytes.
+    pub fn with_secret(seed: u64, secret: Vec<u8>) -> Result<Self, String> {
+        if secret.len() < 136 {
+            return Err(format!(
+                "XXH3 secret must be >= 136 bytes, got {}",
+                secret.len()
+            ));
+        }
+        Ok(Self {
+            seed,
+            secret: Some(secret),
+        })
+    }
+}
+
 /// Supported hash algorithms.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HashAlgorithm {
@@ -132,7 +163,13 @@ impl HashAlgorithm {
 }
 
 /// Compute hash of data using the specified algorithm.
+/// Uses default configuration (seed = 0, no secret).
 pub fn hash(data: &[u8], algorithm: HashAlgorithm) -> Vec<u8> {
+    hash_with_config(data, algorithm, &XxHashConfig::default())
+}
+
+/// Compute hash of data using the specified algorithm with custom configuration.
+pub fn hash_with_config(data: &[u8], algorithm: HashAlgorithm, config: &XxHashConfig) -> Vec<u8> {
     match algorithm {
         HashAlgorithm::Md5 => {
             let mut hasher = Md5::new();
@@ -235,22 +272,32 @@ pub fn hash(data: &[u8], algorithm: HashAlgorithm) -> Vec<u8> {
             result.to_be_bytes().to_vec()
         }
         HashAlgorithm::XxHash32 => {
-            let mut hasher = XxHash32::with_seed(0);
+            let mut hasher = XxHash32::with_seed(config.seed as u32);
             hasher.write(data);
             (hasher.finish() as u32).to_be_bytes().to_vec()
         }
         HashAlgorithm::XxHash64 => {
-            let mut hasher = XxHash64::with_seed(0);
+            let mut hasher = XxHash64::with_seed(config.seed);
             hasher.write(data);
             hasher.finish().to_be_bytes().to_vec()
         }
         HashAlgorithm::XxHash3_64 => {
-            let mut hasher = Xxh3Hash64::with_seed(0);
+            let mut hasher = if let Some(ref secret) = config.secret {
+                Xxh3Hash64::with_seed_and_secret(config.seed, secret.as_slice())
+                    .expect("XXH3 secret validation should have been done in XxHashConfig::with_secret")
+            } else {
+                Xxh3Hash64::with_seed(config.seed)
+            };
             hasher.write(data);
             hasher.finish().to_be_bytes().to_vec()
         }
         HashAlgorithm::XxHash3_128 => {
-            let mut hasher = Xxh3Hash128::with_seed(0);
+            let mut hasher = if let Some(ref secret) = config.secret {
+                Xxh3Hash128::with_seed_and_secret(config.seed, secret.as_slice())
+                    .expect("XXH3 secret validation should have been done in XxHashConfig::with_secret")
+            } else {
+                Xxh3Hash128::with_seed(config.seed)
+            };
             hasher.write(data);
             hasher.finish_128().to_be_bytes().to_vec()
         }
@@ -404,5 +451,66 @@ mod tests {
         let data = b"hello world";
         let result = hash(data, HashAlgorithm::XxHash3_128);
         assert_eq!(result.len(), 16);
+    }
+
+    #[test]
+    fn test_xxhash_config_default() {
+        let config = XxHashConfig::default();
+        assert_eq!(config.seed, 0);
+        assert!(config.secret.is_none());
+    }
+
+    #[test]
+    fn test_xxhash_config_secret_too_short() {
+        let result = XxHashConfig::with_secret(0, vec![0u8; 100]);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("136 bytes"));
+    }
+
+    #[test]
+    fn test_xxhash_config_secret_valid() {
+        let result = XxHashConfig::with_secret(42, vec![0u8; 136]);
+        assert!(result.is_ok());
+        let config = result.unwrap();
+        assert_eq!(config.seed, 42);
+        assert_eq!(config.secret.as_ref().unwrap().len(), 136);
+    }
+
+    #[test]
+    fn test_hash_seed_changes_output() {
+        let data = b"test";
+        let h1 = hash_with_config(data, HashAlgorithm::XxHash64, &XxHashConfig::with_seed(0));
+        let h2 = hash_with_config(data, HashAlgorithm::XxHash64, &XxHashConfig::with_seed(42));
+        assert_ne!(h1, h2);
+    }
+
+    #[test]
+    fn test_backward_compatibility() {
+        let data = b"test";
+        let old = hash(data, HashAlgorithm::XxHash64);
+        let new = hash_with_config(data, HashAlgorithm::XxHash64, &XxHashConfig::default());
+        assert_eq!(old, new);
+    }
+
+    #[test]
+    fn test_xxhash3_with_seed() {
+        let data = b"test data for secret hashing";
+
+        // Test that different seeds produce different hashes
+        let h1 = hash_with_config(data, HashAlgorithm::XxHash3_64, &XxHashConfig::with_seed(0));
+        let h2 = hash_with_config(data, HashAlgorithm::XxHash3_64, &XxHashConfig::with_seed(123));
+        assert_ne!(h1, h2, "Different seeds should produce different hashes");
+
+        // Test that same seed produces same hash
+        let h3 = hash_with_config(data, HashAlgorithm::XxHash3_64, &XxHashConfig::with_seed(123));
+        assert_eq!(h2, h3, "Same seed should produce same hash");
+    }
+
+    #[test]
+    fn test_xxhash32_with_seed() {
+        let data = b"test";
+        let h1 = hash_with_config(data, HashAlgorithm::XxHash32, &XxHashConfig::with_seed(0));
+        let h2 = hash_with_config(data, HashAlgorithm::XxHash32, &XxHashConfig::with_seed(999));
+        assert_ne!(h1, h2);
     }
 }

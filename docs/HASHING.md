@@ -73,6 +73,83 @@ echo "hello world" | base-d --hash xxhash3
 # Output: d42f7ed4b73c6bde
 ```
 
+### xxHash Configuration
+
+xxHash algorithms support customization through seed values and secrets (for XXH3 variants). These options allow you to generate different hash outputs from the same input, which is useful for hash tables, distributed systems, and avoiding hash flooding attacks.
+
+#### Seed Configuration
+
+All xxHash algorithms (xxHash32, xxHash64, XXH3-64, XXH3-128) support a seed parameter - a 64-bit unsigned integer that changes the hash output. The seed allows you to:
+
+- Generate different hash values for the same data
+- Avoid hash collisions in distributed systems
+- Protect against hash flooding attacks
+- Create domain-specific hash functions
+
+**CLI Usage:**
+
+```bash
+# Default seed (0) - backward compatible
+echo "hello world" | base-d --hash xxhash64
+# Output: 5215e13b207d6d8c
+
+# Custom seed via CLI flag
+echo "hello world" | base-d --hash xxhash64 --hash-seed 42
+# Output: different hash value
+
+# Works with all xxHash variants
+echo "data" | base-d --hash xxhash32 --hash-seed 12345
+echo "data" | base-d --hash xxhash3 --hash-seed 999
+echo "data" | base-d --hash xxhash3-128 --hash-seed 999
+```
+
+**Config File:**
+
+You can set a default seed in your `dictionaries.toml`:
+
+```toml
+[settings.xxhash]
+default_seed = 42
+```
+
+CLI flags always override config file settings.
+
+#### XXH3 Secret Configuration
+
+XXH3-64 and XXH3-128 support an additional secret - a buffer of at least 136 bytes that acts as a key for the hash function. This provides an extra layer of customization beyond the seed.
+
+**Why use secrets?**
+- Stronger protection against hash flooding attacks
+- Create cryptographically-separated hash spaces
+- Domain-specific hashing with large key space
+
+**CLI Usage:**
+
+```bash
+# Generate a secret file (must be >= 136 bytes)
+head -c 200 /dev/urandom > ~/.config/base-d/xxh3-secret.bin
+
+# Hash with secret from stdin
+cat ~/.config/base-d/xxh3-secret.bin | base-d --hash xxhash3 --hash-secret-stdin data.bin
+
+# Combine seed and secret
+cat secret.bin | base-d --hash xxhash3-128 --hash-seed 42 --hash-secret-stdin input.txt
+```
+
+**Config File:**
+
+```toml
+[settings.xxhash]
+default_seed = 0
+default_secret_file = "~/.config/base-d/xxh3-secret.bin"
+```
+
+**Important Notes:**
+- Secrets only work with XXH3-64 and XXH3-128
+- Secret must be at least 136 bytes
+- Using `--hash-secret-stdin` with xxHash32/xxHash64 will show a warning and ignore the secret
+- Tilde expansion (`~`) is supported in config file paths
+
 ### Hash with Custom Encoding
 
 ```bash
