@@ -14,22 +14,22 @@ use crate::simd::translate::{SequentialTranslate, SimdTranslate};
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::*;
 
-/// SIMD-accelerated encoder that works with any compatible alphabet
+/// SIMD-accelerated codec that works with any compatible alphabet
 ///
-/// This encoder uses pluggable translation to enable SIMD for sequential
+/// This codec uses pluggable translation to enable SIMD for sequential
 /// alphabets (contiguous Unicode ranges) and known ranged patterns.
 ///
 /// # Architecture
 /// - Metadata: Analyzed alphabet structure
 /// - Translator: Converts indices ↔ characters
-/// - Encoder: Reuses reshuffle logic from specialized implementations
-pub struct GenericSimdEncoder {
+/// - Codec: Reuses reshuffle logic from specialized implementations
+pub struct GenericSimdCodec {
     metadata: AlphabetMetadata,
     translator: Box<dyn SimdTranslate>,
 }
 
-impl GenericSimdEncoder {
-    /// Create encoder from dictionary analysis
+impl GenericSimdCodec {
+    /// Create codec from dictionary analysis
     ///
     /// Returns None if the dictionary is not SIMD-compatible.
     pub fn from_dictionary(dict: &Dictionary) -> Option<Self> {
@@ -68,6 +68,19 @@ impl GenericSimdEncoder {
             4 => self.encode_4bit(data, dict),
             6 => self.encode_6bit(data, dict),
             8 => self.encode_8bit(data, dict),
+            _ => None, // Unsupported bit width
+        }
+    }
+
+    /// Decode string using SIMD acceleration
+    ///
+    /// Returns None if decoding fails or alphabet is incompatible.
+    pub fn decode(&self, encoded: &str, dict: &Dictionary) -> Option<Vec<u8>> {
+        // Dispatch to appropriate bit-width decoder
+        match self.metadata.bits_per_symbol {
+            4 => self.decode_4bit(encoded, dict),
+            6 => self.decode_6bit(encoded, dict),
+            8 => self.decode_8bit(encoded, dict),
             _ => None, // Unsupported bit width
         }
     }
@@ -239,6 +252,163 @@ impl GenericSimdEncoder {
         Some(result)
     }
 
+    /// Decode 4-bit alphabet (hex-like)
+    ///
+    /// Reverses the nibble extraction from encode_4bit.
+    #[cfg(target_arch = "x86_64")]
+    fn decode_4bit(&self, encoded: &str, _dict: &Dictionary) -> Option<Vec<u8>> {
+        const BLOCK_SIZE: usize = 32; // 32 chars → 16 bytes
+
+        let encoded_bytes = encoded.as_bytes();
+        let mut result = Vec::with_capacity(encoded_bytes.len() / 2);
+
+        unsafe {
+            if encoded_bytes.len() < BLOCK_SIZE {
+                // TODO: Fall back to scalar for small inputs
+                return None;
+            }
+
+            let num_blocks = encoded_bytes.len() / BLOCK_SIZE;
+            let simd_bytes = num_blocks * BLOCK_SIZE;
+
+            let mut offset = 0;
+            for _ in 0..num_blocks {
+                // Load 32 ASCII characters (16 high nibbles, 16 low nibbles interleaved)
+                let input_lo = _mm_loadu_si128(encoded_bytes.as_ptr().add(offset) as *const __m128i);
+                let input_hi = _mm_loadu_si128(encoded_bytes.as_ptr().add(offset + 16) as *const __m128i);
+
+                // Deinterleave using shuffle: extract bytes at even/odd positions
+                // Shuffle mask to extract even bytes (0, 2, 4, 6, 8, 10, 12, 14) into first 8 positions
+                let even_mask = _mm_setr_epi8(0, 2, 4, 6, 8, 10, 12, 14, -1, -1, -1, -1, -1, -1, -1, -1);
+                // Shuffle mask to extract odd bytes (1, 3, 5, 7, 9, 11, 13, 15) into first 8 positions
+                let odd_mask = _mm_setr_epi8(1, 3, 5, 7, 9, 11, 13, 15, -1, -1, -1, -1, -1, -1, -1, -1);
+
+                // Extract even positions (HIGH nibble chars) from both input vectors
+                let hi_chars_lo = _mm_shuffle_epi8(input_lo, even_mask);  // 8 bytes in positions 0-7
+                let hi_chars_hi = _mm_shuffle_epi8(input_hi, even_mask);  // 8 bytes in positions 0-7
+
+                // Extract odd positions (LOW nibble chars) from both input vectors
+                let lo_chars_lo = _mm_shuffle_epi8(input_lo, odd_mask);  // 8 bytes in positions 0-7
+                let lo_chars_hi = _mm_shuffle_epi8(input_hi, odd_mask);  // 8 bytes in positions 0-7
+
+                // Combine into full 16-byte vectors by placing hi_chars_hi into upper 8 bytes
+                let hi_chars = _mm_or_si128(hi_chars_lo, _mm_slli_si128(hi_chars_hi, 8));
+                let lo_chars = _mm_or_si128(lo_chars_lo, _mm_slli_si128(lo_chars_hi, 8));
+
+                // Translate chars to nibble values
+                let hi_vals = self.translator.translate_decode(hi_chars)?;
+                let lo_vals = self.translator.translate_decode(lo_chars)?;
+
+                // Pack nibbles into bytes: (high << 4) | low
+                let bytes = _mm_or_si128(_mm_slli_epi32(hi_vals, 4), lo_vals);
+
+                // Store 16 output bytes
+                let mut output_buf = [0u8; 16];
+                _mm_storeu_si128(output_buf.as_mut_ptr() as *mut __m128i, bytes);
+                result.extend_from_slice(&output_buf);
+
+                offset += BLOCK_SIZE;
+            }
+
+            // TODO: Handle remainder with scalar
+            if simd_bytes < encoded_bytes.len() {
+                // For now, we don't handle remainder
+            }
+        }
+
+        Some(result)
+    }
+
+    /// Decode 6-bit alphabet (base64-like)
+    ///
+    /// Uses the same maddubs/madd trick as specialized base64 decode.
+    #[cfg(target_arch = "x86_64")]
+    fn decode_6bit(&self, encoded: &str, _dict: &Dictionary) -> Option<Vec<u8>> {
+        const BLOCK_SIZE: usize = 16; // 16 chars → 12 bytes
+
+        let encoded_bytes = encoded.as_bytes();
+        let mut result = Vec::with_capacity(encoded_bytes.len() * 3 / 4);
+
+        unsafe {
+            if encoded_bytes.len() < BLOCK_SIZE {
+                // TODO: Fall back to scalar for small inputs
+                return None;
+            }
+
+            let num_blocks = encoded_bytes.len() / BLOCK_SIZE;
+            let simd_bytes = num_blocks * BLOCK_SIZE;
+
+            for round in 0..num_blocks {
+                let offset = round * BLOCK_SIZE;
+
+                // Load 16 ASCII chars
+                let chars = _mm_loadu_si128(encoded_bytes.as_ptr().add(offset) as *const __m128i);
+
+                // Translate to 6-bit indices (validation included)
+                let indices = self.translator.translate_decode(chars)?;
+
+                // Unpack 6-bit indices back to bytes (inverse of reshuffle_6bit)
+                let bytes = self.unshuffle_6bit(indices);
+
+                // Store 12 output bytes
+                let mut output_buf = [0u8; 16];
+                _mm_storeu_si128(output_buf.as_mut_ptr() as *mut __m128i, bytes);
+                result.extend_from_slice(&output_buf[..12]);
+            }
+
+            // TODO: Handle remainder with scalar
+            if simd_bytes < encoded_bytes.len() {
+                // For now, we don't handle remainder
+            }
+        }
+
+        Some(result)
+    }
+
+    /// Decode 8-bit alphabet (base256-like)
+    ///
+    /// Direct translation, no bit unpacking needed.
+    #[cfg(target_arch = "x86_64")]
+    fn decode_8bit(&self, encoded: &str, _dict: &Dictionary) -> Option<Vec<u8>> {
+        const BLOCK_SIZE: usize = 16; // 16 chars → 16 bytes
+
+        let encoded_bytes = encoded.as_bytes();
+        let mut result = Vec::with_capacity(encoded_bytes.len());
+
+        unsafe {
+            if encoded_bytes.len() < BLOCK_SIZE {
+                // TODO: Fall back to scalar for small inputs
+                return None;
+            }
+
+            let num_blocks = encoded_bytes.len() / BLOCK_SIZE;
+            let simd_bytes = num_blocks * BLOCK_SIZE;
+
+            let mut offset = 0;
+            for _ in 0..num_blocks {
+                // Load 16 ASCII chars
+                let chars = _mm_loadu_si128(encoded_bytes.as_ptr().add(offset) as *const __m128i);
+
+                // Translate to bytes (validation included)
+                let bytes = self.translator.translate_decode(chars)?;
+
+                // No unpacking needed - direct 1:1 mapping
+                let mut output_buf = [0u8; 16];
+                _mm_storeu_si128(output_buf.as_mut_ptr() as *mut __m128i, bytes);
+                result.extend_from_slice(&output_buf);
+
+                offset += BLOCK_SIZE;
+            }
+
+            // TODO: Handle remainder with scalar
+            if simd_bytes < encoded_bytes.len() {
+                // For now, we don't handle remainder
+            }
+        }
+
+        Some(result)
+    }
+
     /// Reshuffle bytes and extract 6-bit indices from 12 input bytes
     ///
     /// This is the same algorithm as base64.rs::reshuffle()
@@ -275,6 +445,38 @@ impl GenericSimdEncoder {
         _mm_or_si128(t1, t3)
     }
 
+    /// Unshuffle 6-bit indices back to 8-bit bytes
+    ///
+    /// Inverse of reshuffle_6bit - converts 16 bytes of 6-bit indices to 12 bytes of data
+    #[cfg(target_arch = "x86_64")]
+    #[target_feature(enable = "ssse3")]
+    unsafe fn unshuffle_6bit(&self, indices: __m128i) -> __m128i {
+        // This is the same algorithm as base64.rs::reshuffle_decode
+        // Uses maddubs and madd to efficiently pack 6-bit values back to 8-bit
+
+        // Stage 1: Merge adjacent pairs using multiply-add
+        // maddubs: multiply unsigned bytes and add adjacent pairs
+        let merge_ab_and_bc = _mm_maddubs_epi16(indices, _mm_set1_epi32(0x01400140u32 as i32));
+
+        // Stage 2: Combine 16-bit pairs into 32-bit values
+        // madd: multiply 16-bit values and add adjacent pairs
+        let final_32bit = _mm_madd_epi16(merge_ab_and_bc, _mm_set1_epi32(0x00011000u32 as i32));
+
+        // Stage 3: Extract the valid bytes from each 32-bit group
+        // Each group of 4 indices (24 bits) became 1 32-bit value
+        // We extract the 3 meaningful bytes from each 32-bit group
+        _mm_shuffle_epi8(
+            final_32bit,
+            _mm_setr_epi8(
+                2, 1, 0,    // first group of 3 bytes (reversed for little endian)
+                6, 5, 4,    // second group of 3 bytes
+                10, 9, 8,   // third group of 3 bytes
+                14, 13, 12, // fourth group of 3 bytes
+                -1, -1, -1, -1, // unused bytes (will be zero)
+            ),
+        )
+    }
+
     #[cfg(not(target_arch = "x86_64"))]
     fn encode_6bit(&self, _data: &[u8], _dict: &Dictionary) -> Option<String> {
         None
@@ -287,6 +489,21 @@ impl GenericSimdEncoder {
 
     #[cfg(not(target_arch = "x86_64"))]
     fn encode_8bit(&self, _data: &[u8], _dict: &Dictionary) -> Option<String> {
+        None
+    }
+
+    #[cfg(not(target_arch = "x86_64"))]
+    fn decode_6bit(&self, _encoded: &str, _dict: &Dictionary) -> Option<Vec<u8>> {
+        None
+    }
+
+    #[cfg(not(target_arch = "x86_64"))]
+    fn decode_4bit(&self, _encoded: &str, _dict: &Dictionary) -> Option<Vec<u8>> {
+        None
+    }
+
+    #[cfg(not(target_arch = "x86_64"))]
+    fn decode_8bit(&self, _encoded: &str, _dict: &Dictionary) -> Option<Vec<u8>> {
         None
     }
 }
@@ -304,16 +521,16 @@ mod tests {
             .collect();
         let dict = Dictionary::new_with_mode(chars, EncodingMode::Chunked, None).unwrap();
 
-        let encoder = GenericSimdEncoder::from_dictionary(&dict);
+        let codec = GenericSimdCodec::from_dictionary(&dict);
         assert!(
-            encoder.is_some(),
-            "Should create encoder for sequential base64"
+            codec.is_some(),
+            "Should create codec for sequential base64"
         );
 
-        let encoder = encoder.unwrap();
-        assert_eq!(encoder.metadata.bits_per_symbol, 6);
+        let codec = codec.unwrap();
+        assert_eq!(codec.metadata.bits_per_symbol, 6);
         assert!(matches!(
-            encoder.metadata.strategy,
+            codec.metadata.strategy,
             TranslationStrategy::Sequential {
                 start_codepoint: 0x100
             }
@@ -326,16 +543,16 @@ mod tests {
         let chars: Vec<char> = (0x21..0x31).map(|cp| char::from_u32(cp).unwrap()).collect();
         let dict = Dictionary::new(chars).unwrap();
 
-        let encoder = GenericSimdEncoder::from_dictionary(&dict);
+        let codec = GenericSimdCodec::from_dictionary(&dict);
         assert!(
-            encoder.is_some(),
-            "Should create encoder for sequential hex"
+            codec.is_some(),
+            "Should create codec for sequential hex"
         );
 
-        let encoder = encoder.unwrap();
-        assert_eq!(encoder.metadata.bits_per_symbol, 4);
+        let codec = codec.unwrap();
+        assert_eq!(codec.metadata.bits_per_symbol, 4);
         assert!(matches!(
-            encoder.metadata.strategy,
+            codec.metadata.strategy,
             TranslationStrategy::Sequential {
                 start_codepoint: 0x21
             }
@@ -350,16 +567,16 @@ mod tests {
             .collect();
         let dict = Dictionary::new(chars).unwrap();
 
-        let encoder = GenericSimdEncoder::from_dictionary(&dict);
+        let codec = GenericSimdCodec::from_dictionary(&dict);
         assert!(
-            encoder.is_some(),
-            "Should create encoder for sequential base256"
+            codec.is_some(),
+            "Should create codec for sequential base256"
         );
 
-        let encoder = encoder.unwrap();
-        assert_eq!(encoder.metadata.bits_per_symbol, 8);
+        let codec = codec.unwrap();
+        assert_eq!(codec.metadata.bits_per_symbol, 8);
         assert!(matches!(
-            encoder.metadata.strategy,
+            codec.metadata.strategy,
             TranslationStrategy::Sequential {
                 start_codepoint: 0x100
             }
@@ -374,8 +591,8 @@ mod tests {
             .collect();
         let dict = Dictionary::new_with_mode(chars, EncodingMode::Chunked, None).unwrap();
 
-        let encoder = GenericSimdEncoder::from_dictionary(&dict);
-        assert!(encoder.is_none(), "Should reject arbitrary alphabet");
+        let codec = GenericSimdCodec::from_dictionary(&dict);
+        assert!(codec.is_none(), "Should reject arbitrary alphabet");
     }
 
     #[test]
@@ -384,8 +601,8 @@ mod tests {
         let chars: Vec<char> = "0123456789".chars().collect();
         let dict = Dictionary::new(chars).unwrap();
 
-        let encoder = GenericSimdEncoder::from_dictionary(&dict);
-        assert!(encoder.is_none(), "Should reject non-power-of-2 base");
+        let codec = GenericSimdCodec::from_dictionary(&dict);
+        assert!(codec.is_none(), "Should reject non-power-of-2 base");
     }
 
     #[test]
@@ -400,11 +617,11 @@ mod tests {
         let chars: Vec<char> = (0x30..0x40).map(|cp| char::from_u32(cp).unwrap()).collect();
         let dict = Dictionary::new(chars).unwrap();
 
-        let encoder = GenericSimdEncoder::from_dictionary(&dict).unwrap();
+        let codec = GenericSimdCodec::from_dictionary(&dict).unwrap();
 
         // Test data: 16 bytes
         let data = b"\x01\x23\x45\x67\x89\xAB\xCD\xEF\xFE\xDC\xBA\x98\x76\x54\x32\x10";
-        let result = encoder.encode_4bit(data, &dict);
+        let result = codec.encode_4bit(data, &dict);
 
         assert!(result.is_some());
         let encoded = result.unwrap();
@@ -432,11 +649,11 @@ mod tests {
             .collect();
         let dict = Dictionary::new_with_mode(chars, EncodingMode::Chunked, None).unwrap();
 
-        let encoder = GenericSimdEncoder::from_dictionary(&dict).unwrap();
+        let codec = GenericSimdCodec::from_dictionary(&dict).unwrap();
 
         // Test data: 16 bytes (will process 12 bytes)
         let data = b"Hello, World!!!!\x00";
-        let result = encoder.encode_6bit(data, &dict);
+        let result = codec.encode_6bit(data, &dict);
 
         assert!(result.is_some());
         let encoded = result.unwrap();
@@ -496,13 +713,13 @@ mod tests {
             }
         ));
 
-        // Create encoder
-        let encoder = GenericSimdEncoder::from_dictionary(&dict)
-            .expect("Should create encoder for custom alphabet");
+        // Create codec
+        let codec = GenericSimdCodec::from_dictionary(&dict)
+            .expect("Should create codec for custom alphabet");
 
         // Encode data: 16 bytes
         let data = b"\x01\x23\x45\x67\x89\xAB\xCD\xEF\xFE\xDC\xBA\x98\x76\x54\x32\x10";
-        let result = encoder.encode_4bit(data, &dict);
+        let result = codec.encode_4bit(data, &dict);
 
         assert!(result.is_some(), "Should encode with custom alphabet");
         let encoded = result.unwrap();
@@ -525,5 +742,32 @@ mod tests {
         // 0x01 -> nibbles 0x0, 0x1 -> chars 0x21 (0 + 0x21), 0x22 (1 + 0x21)
         assert_eq!(encoded.chars().nth(0).unwrap(), '\x21'); // 0 + 0x21 = '!'
         assert_eq!(encoded.chars().nth(1).unwrap(), '\x22'); // 1 + 0x21 = '"'
+    }
+
+    #[test]
+    #[cfg(target_arch = "x86_64")]
+    fn test_decode_4bit_round_trip() {
+        if !crate::simd::has_ssse3() {
+            eprintln!("SSSE3 not available, skipping test");
+            return;
+        }
+
+        // Create sequential hex starting at '0' (U+0030)
+        let chars: Vec<char> = (0x30..0x40).map(|cp| char::from_u32(cp).unwrap()).collect();
+        let dict = Dictionary::new(chars).unwrap();
+
+        let codec = GenericSimdCodec::from_dictionary(&dict).unwrap();
+
+        // Test data: 16 bytes
+        let data = b"\x01\x23\x45\x67\x89\xAB\xCD\xEF\xFE\xDC\xBA\x98\x76\x54\x32\x10";
+
+        // Encode
+        let encoded = codec.encode(data, &dict).expect("Encode failed");
+
+        // Decode
+        let decoded = codec.decode(&encoded, &dict).expect("Decode failed");
+
+        // Verify
+        assert_eq!(&decoded[..], &data[..], "Round-trip failed");
     }
 }

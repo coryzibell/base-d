@@ -24,20 +24,20 @@ fn main() {
     println!("Standard hex (specialized SIMD):");
     println!("  {}\n", encoded);
 
-    // 3. Custom sequential base16 - uses GenericSimdEncoder
+    // 3. Custom sequential base16 - uses GenericSimdCodec
     let custom_hex: Vec<char> = (0x21..0x31).map(|cp| char::from_u32(cp).unwrap()).collect();
     let dict = Dictionary::new(custom_hex).unwrap();
     let encoded = encode(data, &dict);
-    println!("Custom base16 starting at '!' (GenericSimdEncoder):");
+    println!("Custom base16 starting at '!' (GenericSimdCodec):");
     println!("  {}\n", encoded);
 
-    // 4. Custom sequential base64 - uses GenericSimdEncoder
+    // 4. Custom sequential base64 - uses GenericSimdCodec
     let custom_b64: Vec<char> = (0x100..0x140)
         .map(|cp| char::from_u32(cp).unwrap())
         .collect();
     let dict = Dictionary::new(custom_b64).unwrap();
     let encoded = encode(data, &dict);
-    println!("Custom base64 at U+0100 (GenericSimdEncoder):");
+    println!("Custom base64 at U+0100 (GenericSimdCodec):");
     println!("  {}\n", encoded);
 
     // 5. Arbitrary alphabet - falls back to scalar
@@ -51,6 +51,6 @@ fn main() {
     println!("1. Known base64 variants (standard/url) → specialized base64 SIMD");
     println!("2. Known hex variants → specialized base16 SIMD");
     println!("3. Base256 ByteRange → specialized base256 SIMD");
-    println!("4. Sequential power-of-2 alphabet → GenericSimdEncoder");
+    println!("4. Sequential power-of-2 alphabet → GenericSimdCodec");
     println!("5. None → scalar fallback");
 }
