@@ -10,7 +10,7 @@ use std::sync::OnceLock;
 
 pub mod alphabets;
 
-#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+#[cfg(target_arch = "x86_64")]
 pub mod generic;
 
 #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
@@ -31,10 +31,10 @@ pub use x86_64::{
 #[cfg(target_arch = "aarch64")]
 pub use aarch64::{
     decode_base16_simd, decode_base256_simd, decode_base64_simd, encode_base16_simd,
-    encode_base256_simd, encode_base64_simd,
+    encode_base256_simd, encode_base64_simd, GenericSimdCodec,
 };
 
-#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+#[cfg(target_arch = "x86_64")]
 pub use generic::GenericSimdCodec;
 
 // CPU feature detection cache
