@@ -90,6 +90,41 @@ real    0m0.47s
 
 The ~4% overhead is acceptable for the memory savings.
 
+## xxHash Configuration in Streaming
+
+When using streaming mode with hashing enabled, you can configure xxHash algorithms with custom seeds and secrets (for XXH3 variants). This is particularly useful for large files where you want consistent hash customization without loading the entire file into memory.
+
+### CLI Usage
+
+```bash
+# Stream encode with xxHash and custom seed
+base-d --stream -e base64 --hash xxhash64 --hash-seed 42 large_file.bin > encoded.txt
+
+# Stream with XXH3 secret
+cat secret.bin | base-d --stream --hash xxhash3 --hash-secret-stdin < huge_data.bin > output.txt
+
+# Combine streaming, compression, and custom hash
+base-d --stream --compress zstd --hash xxhash3-128 --hash-seed 999 multi_gb_file.bin > compressed.txt
+```
+
+### API Usage
+
+```rust
+use base_d::{StreamingEncoder, XxHashConfig, HashAlgorithm, Dictionary};
+use std::fs::File;
+
+// Create streaming encoder with custom xxHash config
+let xxhash_config = XxHashConfig::with_seed(42);
+
+let mut encoder = StreamingEncoder::new(&dictionary, output)
+    .with_xxhash_config(xxhash_config)
+    .with_hash(HashAlgorithm::XxHash64);
+
+encoder.encode(&mut large_file)?;
+```
+
+The hash is computed incrementally as data streams through, so memory usage remains constant regardless of file size or hash configuration.
+
 ## When to Use Streaming
 
 ### Use Streaming When:

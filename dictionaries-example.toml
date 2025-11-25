@@ -12,3 +12,10 @@ mode = "base_conversion"
 [alphabets.my_base100]
 mode = "byte_range"
 start_codepoint = 128000  # Different range than default base100
+
+# xxHash Configuration
+[settings.xxhash]
+# Default seed for all xxHash algorithms (0-18446744073709551615)
+default_seed = 0
+# Path to secret file for XXH3 variants (must be >= 136 bytes)
+# default_secret_file = "~/.config/base-d/xxh3-secret.bin"

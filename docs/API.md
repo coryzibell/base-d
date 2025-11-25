@@ -373,15 +373,204 @@ All types are `Send` and `Sync` where appropriate:
 - `DictionariesConfig` is `Send + Sync`
 - `StreamingEncoder` and `StreamingDecoder` are `Send` (not `Sync` due to `Write` requirement)
 
+## Hashing API
+
+### `HashAlgorithm`
+
+Supported hash algorithms.
+
+```rust
+use base_d::HashAlgorithm;
+use std::str::FromStr;
+
+// Parse from string
+let algo = HashAlgorithm::from_str("sha256")?;
+
+// Get output size
+let size = HashAlgorithm::Sha256.output_size(); // 32 bytes
+
+// Get string representation
+let name = HashAlgorithm::Blake3.as_str(); // "blake3"
+```
+
+### `hash`
+
+Compute hash with default settings (backward compatible).
+
+```rust
+use base_d::{hash, HashAlgorithm};
+
+let data = b"hello world";
+let hash_bytes = hash(data, HashAlgorithm::Sha256);
+// Returns Vec<u8> with raw hash output
+```
+
+### `hash_with_config`
+
+Compute hash with custom xxHash configuration (seed and/or secret).
+
+```rust
+use base_d::{hash_with_config, HashAlgorithm, XxHashConfig};
+
+let data = b"hello world";
+
+// Use custom seed
+let config = XxHashConfig::with_seed(42);
+let hash_bytes = hash_with_config(data, HashAlgorithm::XxHash64, &config);
+
+// Hash output will differ from default seed (0)
+```
+
+### `XxHashConfig`
+
+Configuration for xxHash algorithms.
+
+```rust
+#[derive(Debug, Clone, Default)]
+pub struct XxHashConfig {
+    pub seed: u64,
+    pub secret: Option<Vec<u8>>,
+}
+
+impl XxHashConfig {
+    pub fn with_seed(seed: u64) -> Self;
+    pub fn with_secret(seed: u64, secret: Vec<u8>) -> Result<Self, String>;
+}
+```
+
+## Hashing Examples
+
+### Example 7: Hashing with Custom Seed
+
+```rust
+use base_d::{hash_with_config, HashAlgorithm, XxHashConfig};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let data = b"hello world";
+
+    // Default seed (backward compatible)
+    let default_config = XxHashConfig::default();
+    let hash1 = hash_with_config(data, HashAlgorithm::XxHash64, &default_config);
+
+    // Custom seed
+    let custom_config = XxHashConfig::with_seed(42);
+    let hash2 = hash_with_config(data, HashAlgorithm::XxHash64, &custom_config);
+
+    // Different seeds produce different hashes
+    assert_ne!(hash1, hash2);
+
+    // Format as hex string
+    let hex = hash2.iter()
+        .map(|b| format!("{:02x}", b))
+        .collect::<String>();
+    println!("Hash: {}", hex);
+
+    Ok(())
+}
+```
+
+### Example 8: XXH3 with Secret File
+
+```rust
+use base_d::{hash_with_config, HashAlgorithm, XxHashConfig};
+use std::fs;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Read secret from file (must be >= 136 bytes)
+    let secret = fs::read("/path/to/xxh3-secret.bin")?;
+
+    // Create config with seed and secret
+    let config = XxHashConfig::with_secret(0, secret)?;
+
+    // Hash data with secret
+    let data = b"sensitive data";
+    let hash = hash_with_config(data, HashAlgorithm::XxHash3_64, &config);
+
+    println!("XXH3 hash: {:x?}", hash);
+
+    Ok(())
+}
+```
+
+### Example 9: Loading xxHash Config from TOML
+
+```rust
+use base_d::{DictionariesConfig, XxHashConfig, hash_with_config, HashAlgorithm};
+use std::fs;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Load config from file
+    let config = DictionariesConfig::load_with_overrides()?;
+
+    // Build XxHashConfig from settings
+    let seed = config.settings.xxhash.default_seed;
+
+    let xxhash_config = if let Some(ref secret_path) = config.settings.xxhash.default_secret_file {
+        // Expand tilde in path
+        let expanded = shellexpand::tilde(secret_path);
+        let secret = fs::read(expanded.as_ref())?;
+        XxHashConfig::with_secret(seed, secret)?
+    } else {
+        XxHashConfig::with_seed(seed)
+    };
+
+    // Use config for hashing
+    let data = b"hello world";
+    let hash = hash_with_config(data, HashAlgorithm::XxHash64, &xxhash_config);
+
+    println!("Hash: {:x?}", hash);
+
+    Ok(())
+}
+```
+
+### Example 10: xxHash in Streaming Mode
+
+```rust
+use base_d::{DictionariesConfig, Dictionary, StreamingEncoder, XxHashConfig, HashAlgorithm};
+use std::fs::File;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = DictionariesConfig::load_default()?;
+    let alphabet_config = config.get_dictionary("base64").unwrap();
+
+    let chars: Vec<char> = alphabet_config.chars.chars().collect();
+    let dictionary = Dictionary::new_with_mode(
+        chars,
+        alphabet_config.mode.clone(),
+        alphabet_config.padding.as_ref().and_then(|s| s.chars().next())
+    )?;
+
+    // Create xxHash config with custom seed
+    let xxhash_config = XxHashConfig::with_seed(42);
+
+    let mut input = File::open("large_file.bin")?;
+    let output = File::create("encoded.txt")?;
+
+    // Create streaming encoder with hashing enabled
+    let mut encoder = StreamingEncoder::new(&dictionary, output)
+        .with_xxhash_config(xxhash_config)
+        .with_hash(HashAlgorithm::XxHash64);
+
+    encoder.encode(&mut input)?;
+
+    // Hash is computed during streaming and included in output metadata
+
+    Ok(())
+}
+```
+
 ## Performance Tips
 
 1. **Reuse Dictionaries**: Create dictionary once and reuse for multiple operations
 2. **Use Streaming**: For files > 10MB, use `StreamingEncoder`/`StreamingDecoder`
-3. **Choose Right Mode**: 
+3. **Choose Right Mode**:
    - Chunked: Best for RFC compliance and streaming
    - ByteRange: Best for emoji/1:1 mapping
    - BaseConversion: Most flexible but slowest
 4. **Avoid String Allocations**: `encode` returns `String`, consider using streaming for large data
+5. **xxHash for Speed**: Use xxHash3 for fastest non-cryptographic hashing
+6. **Reuse Hash Config**: Create `XxHashConfig` once and reuse across multiple operations
 
 ## See Also
 

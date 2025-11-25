@@ -33,7 +33,15 @@ struct Cli {
     /// Compute hash of input data (md5, sha256, sha512, blake3, etc.)
     #[arg(long)]
     hash: Option<String>,
-    
+
+    /// Seed for xxHash algorithms (u64, default: 0)
+    #[arg(long)]
+    hash_seed: Option<u64>,
+
+    /// Read XXH3 secret from stdin (must be >= 136 bytes)
+    #[arg(long)]
+    hash_secret_stdin: bool,
+
     /// Output raw binary data (no encoding after compression)
     #[arg(short = 'r', long)]
     raw: bool,
@@ -64,9 +72,59 @@ struct Cli {
     neo: Option<Option<String>>,
 }
 
+/// Load xxHash configuration from CLI args and config file.
+fn load_xxhash_config(
+    cli: &Cli,
+    config: &DictionariesConfig,
+    hash_algo: Option<&base_d::HashAlgorithm>,
+) -> Result<base_d::XxHashConfig, Box<dyn std::error::Error>> {
+    let seed = cli
+        .hash_seed
+        .or_else(|| {
+            let default_seed = config.settings.xxhash.default_seed;
+            if default_seed != 0 {
+                Some(default_seed)
+            } else {
+                None
+            }
+        })
+        .unwrap_or(0);
+
+    let secret = if cli.hash_secret_stdin {
+        let mut buf = Vec::new();
+        io::stdin().read_to_end(&mut buf)?;
+        Some(buf)
+    } else if let Some(ref path) = config.settings.xxhash.default_secret_file {
+        Some(fs::read(shellexpand::tilde(path).as_ref())?)
+    } else {
+        None
+    };
+
+    // Warn if secret provided for non-XXH3
+    if secret.is_some() {
+        if let Some(algo) = hash_algo {
+            if !matches!(
+                algo,
+                base_d::HashAlgorithm::XxHash3_64 | base_d::HashAlgorithm::XxHash3_128
+            ) {
+                eprintln!(
+                    "Warning: --hash-secret-stdin only applies to xxh3-64/xxh3-128, ignoring for {}",
+                    algo.as_str()
+                );
+                return Ok(base_d::XxHashConfig::with_seed(seed));
+            }
+        }
+    }
+
+    match secret {
+        Some(s) => base_d::XxHashConfig::with_secret(seed, s).map_err(|e| e.into()),
+        None => Ok(base_d::XxHashConfig::with_seed(seed)),
+    }
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
-    
+
     // Load dictionaries configuration with user overrides
     let config = DictionariesConfig::load_with_overrides()?;
     
@@ -164,10 +222,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 decoder = decoder.with_decompression(algo);
             }
             
-            // Add hashing if specified  
+            // Add hashing if specified
             if let Some(hash_name) = &cli.hash {
                 let hash_algo = base_d::HashAlgorithm::from_str(hash_name)?;
                 decoder = decoder.with_hashing(hash_algo);
+
+                // Add xxHash config
+                let xxhash_config = load_xxhash_config(&cli, &config, Some(&hash_algo))?;
+                decoder = decoder.with_xxhash_config(xxhash_config);
             }
             
             let hash = if let Some(file_path) = &cli.file {
@@ -204,6 +266,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if let Some(hash_name) = &cli.hash {
                 let hash_algo = base_d::HashAlgorithm::from_str(hash_name)?;
                 encoder = encoder.with_hashing(hash_algo);
+
+                // Add xxHash config
+                let xxhash_config = load_xxhash_config(&cli, &config, Some(&hash_algo))?;
+                encoder = encoder.with_xxhash_config(xxhash_config);
             }
             
             let hash = if let Some(file_path) = &cli.file {
@@ -275,7 +341,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Step 3: Hash if requested
     if let Some(hash_name) = &cli.hash {
         let hash_algo = base_d::HashAlgorithm::from_str(hash_name)?;
-        let hash_output = base_d::hash(&data, hash_algo);
+        let xxhash_config = load_xxhash_config(&cli, &config, Some(&hash_algo))?;
+        let hash_output = base_d::hash_with_config(&data, hash_algo, &xxhash_config);
         
         // If encoding specified, encode the hash; otherwise output as hex
         if let Some(encode_name) = &cli.encode {

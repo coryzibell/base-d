@@ -62,12 +62,26 @@ pub struct CompressionConfig {
     pub default_level: u32,
 }
 
+/// xxHash-specific settings.
+#[derive(Debug, Deserialize, Clone, Default)]
+pub struct XxHashSettings {
+    /// Default seed for xxHash algorithms
+    #[serde(default)]
+    pub default_seed: u64,
+    /// Path to default secret file for XXH3 variants
+    #[serde(default)]
+    pub default_secret_file: Option<String>,
+}
+
 /// Global settings for base-d.
 #[derive(Debug, Deserialize, Clone, Default)]
 pub struct Settings {
     /// Default dictionary to use when compressing without explicit encoding
     #[serde(default = "default_dictionary")]
     pub default_dictionary: String,
+    /// xxHash configuration
+    #[serde(default)]
+    pub xxhash: XxHashSettings,
 }
 
 fn default_dictionary() -> String {
