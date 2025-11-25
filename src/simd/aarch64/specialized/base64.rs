@@ -172,7 +172,8 @@ unsafe fn translate_neon(indices: uint8x16_t, variant: AlphabetVariant) -> uint8
     };
 
     let mut lut_indices = vqsubq_u8(indices, vdupq_n_u8(51));
-    let mask = vreinterpretq_u8_s8(vcgtq_s8(vreinterpretq_s8_u8(indices), vdupq_n_s8(25)));
+    let indices_signed = vreinterpretq_s8_u8(indices);
+    let mask = vreinterpretq_u8_s8(vcgtq_s8(indices_signed, vdupq_n_s8(25)));
     lut_indices = vsubq_u8(lut_indices, mask);
 
     let offsets = vqtbl1q_u8(lut, lut_indices);
