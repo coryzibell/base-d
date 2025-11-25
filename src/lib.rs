@@ -140,7 +140,6 @@ mod detection;
 mod encoders;
 mod hashing;
 
-#[cfg(target_arch = "x86_64")]
 mod simd;
 
 pub use compression::{compress, decompress, CompressionAlgorithm};

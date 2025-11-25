@@ -1,14 +1,14 @@
-use base_d::{decode, encode, Alphabet, AlphabetsConfig, EncodingMode};
+use base_d::{decode, encode, Dictionary, DictionariesConfig, EncodingMode};
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 
-fn get_alphabet(name: &str) -> Alphabet {
-    let config = AlphabetsConfig::load_default().unwrap();
-    let alphabet_config = config.get_alphabet(name).unwrap();
+fn get_alphabet(name: &str) -> Dictionary {
+    let config = DictionariesConfig::load_default().unwrap();
+    let alphabet_config = config.get_dictionary(name).unwrap();
 
     match alphabet_config.mode {
         EncodingMode::ByteRange => {
             let start = alphabet_config.start_codepoint.unwrap();
-            Alphabet::new_with_mode_and_range(
+            Dictionary::new_with_mode_and_range(
                 Vec::new(),
                 alphabet_config.mode.clone(),
                 None,
@@ -22,7 +22,7 @@ fn get_alphabet(name: &str) -> Alphabet {
                 .padding
                 .as_ref()
                 .and_then(|s| s.chars().next());
-            Alphabet::new_with_mode(chars, alphabet_config.mode.clone(), padding).unwrap()
+            Dictionary::new_with_mode(chars, alphabet_config.mode.clone(), padding).unwrap()
         }
     }
 }
