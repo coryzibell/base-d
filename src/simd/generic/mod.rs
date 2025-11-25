@@ -9,11 +9,7 @@
 
 use crate::core::dictionary::Dictionary;
 use crate::simd::alphabets::{AlphabetMetadata, TranslationStrategy};
-
-#[cfg(target_arch = "x86_64")]
 use crate::simd::translate::{SequentialTranslate, SimdTranslate};
-
-#[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::*;
 
 /// SIMD-accelerated codec that works with any compatible alphabet

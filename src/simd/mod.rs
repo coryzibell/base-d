@@ -9,7 +9,11 @@ use crate::core::dictionary::Dictionary;
 use std::sync::OnceLock;
 
 pub mod alphabets;
+
+#[cfg(target_arch = "x86_64")]
 pub mod generic;
+
+#[cfg(target_arch = "x86_64")]
 pub mod translate;
 
 #[cfg(target_arch = "x86_64")]
@@ -30,6 +34,7 @@ pub use aarch64::{
     encode_base256_simd, encode_base64_simd,
 };
 
+#[cfg(target_arch = "x86_64")]
 pub use generic::GenericSimdCodec;
 
 // CPU feature detection cache
