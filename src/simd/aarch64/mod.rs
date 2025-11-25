@@ -5,11 +5,14 @@
 //!
 //! NEON is mandatory on aarch64, so all ARM64 CPUs support these instructions.
 
+pub mod generic;
 mod specialized;
 
 use crate::core::dictionary::Dictionary;
 use crate::simd::alphabets::identify_base64_variant;
 use specialized::base16::identify_hex_variant;
+
+pub use generic::GenericSimdCodec;
 
 /// Check if NEON is available
 ///

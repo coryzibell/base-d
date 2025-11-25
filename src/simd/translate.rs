@@ -9,15 +9,18 @@
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::*;
 
+#[cfg(target_arch = "aarch64")]
+use std::arch::aarch64::*;
+
 /// SIMD translation operations for encoding/decoding
 ///
 /// This trait abstracts the translation layer, allowing different
 /// alphabet structures to plug into the same reshuffle algorithms.
 ///
 /// # Safety
-/// All methods in this trait require SSSE3 support and must only be
-/// called within a function marked with `#[target_feature(enable = "ssse3")]`.
-#[cfg(target_arch = "x86_64")]
+/// All methods in this trait require SIMD support (SSSE3 on x86_64, NEON on aarch64)
+/// and must only be called within a function marked with appropriate target_feature.
+#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
 #[allow(dead_code)]
 pub trait SimdTranslate {
     /// Translate indices to characters (encoding)
@@ -26,8 +29,19 @@ pub trait SimdTranslate {
     /// and converts them to their corresponding character codepoints.
     ///
     /// # Safety
-    /// Caller must verify SSSE3 support before calling
+    /// Caller must verify SIMD support before calling
+    #[cfg(target_arch = "x86_64")]
     unsafe fn translate_encode(&self, indices: __m128i) -> __m128i;
+
+    /// Translate indices to characters (encoding) - NEON version
+    ///
+    /// Takes a vector of alphabet indices (e.g., 0-63 for base64)
+    /// and converts them to their corresponding character codepoints.
+    ///
+    /// # Safety
+    /// Caller must verify NEON support before calling
+    #[cfg(target_arch = "aarch64")]
+    unsafe fn translate_encode(&self, indices: uint8x16_t) -> uint8x16_t;
 
     /// Translate characters to indices (decoding)
     ///
@@ -35,14 +49,33 @@ pub trait SimdTranslate {
     /// alphabet indices. Returns None if invalid characters detected.
     ///
     /// # Safety
-    /// Caller must verify SSSE3 support before calling
+    /// Caller must verify SIMD support before calling
+    #[cfg(target_arch = "x86_64")]
     unsafe fn translate_decode(&self, chars: __m128i) -> Option<__m128i>;
+
+    /// Translate characters to indices (decoding) - NEON version
+    ///
+    /// Takes a vector of character bytes and converts them to
+    /// alphabet indices. Returns None if invalid characters detected.
+    ///
+    /// # Safety
+    /// Caller must verify NEON support before calling
+    #[cfg(target_arch = "aarch64")]
+    unsafe fn translate_decode(&self, chars: uint8x16_t) -> Option<uint8x16_t>;
 
     /// Validate that all characters are valid for this alphabet
     ///
     /// # Safety
-    /// Caller must verify SSSE3 support before calling
+    /// Caller must verify SIMD support before calling
+    #[cfg(target_arch = "x86_64")]
     unsafe fn validate(&self, chars: __m128i) -> bool;
+
+    /// Validate that all characters are valid for this alphabet - NEON version
+    ///
+    /// # Safety
+    /// Caller must verify NEON support before calling
+    #[cfg(target_arch = "aarch64")]
+    unsafe fn validate(&self, chars: uint8x16_t) -> bool;
 }
 
 /// SIMD translation for sequential alphabets (zero-cost)
@@ -169,6 +202,66 @@ impl SimdTranslate for SequentialTranslate {
         let invalid_mask = _mm_movemask_epi8(too_large);
 
         invalid_mask == 0
+    }
+}
+
+#[cfg(target_arch = "aarch64")]
+impl SimdTranslate for SequentialTranslate {
+    #[target_feature(enable = "neon")]
+    unsafe fn translate_encode(&self, indices: uint8x16_t) -> uint8x16_t {
+        // Zero-cost translation: single vector add
+        // indices + start_codepoint = characters
+        //
+        // Example: base64 starting at '@' (0x40)
+        // Index 0 → 0 + 0x40 = '@'
+        // Index 1 → 1 + 0x40 = 'A'
+        // Index 63 → 63 + 0x40 = '\x7F'
+        //
+        // NEON: vaddq_u8
+        let offset = vdupq_n_u8(self.start_codepoint as u8);
+        vaddq_u8(indices, offset)
+    }
+
+    #[target_feature(enable = "neon")]
+    unsafe fn translate_decode(&self, chars: uint8x16_t) -> Option<uint8x16_t> {
+        // Reverse translation: subtract start_codepoint
+        // chars - start_codepoint = indices
+        let offset = vdupq_n_u8(self.start_codepoint as u8);
+        let indices = vsubq_u8(chars, offset);
+
+        // Validate range: all indices must be <= max_index
+        let max_valid = vdupq_n_u8(self.max_index());
+
+        // NEON unsigned comparison: indices > max_valid
+        let too_large = vcgtq_u8(indices, max_valid);
+
+        // Check if any lane is invalid (vmaxvq returns max across all lanes)
+        let invalid = vmaxvq_u8(too_large);
+
+        if invalid == 0 {
+            Some(indices)
+        } else {
+            None
+        }
+    }
+
+    #[target_feature(enable = "neon")]
+    unsafe fn validate(&self, chars: uint8x16_t) -> bool {
+        // Validate that all characters are in [start, start + 2^bits)
+        let start = vdupq_n_u8(self.start_codepoint as u8);
+
+        // Check: start <= chars < end
+        // For chars >= start: chars - start >= 0 (unsigned, wraps if chars < start)
+        let chars_offset = vsubq_u8(chars, start);
+        let max_valid = vdupq_n_u8(self.max_index());
+
+        // Unsigned comparison: chars_offset > max_valid
+        let too_large = vcgtq_u8(chars_offset, max_valid);
+
+        // Check if any lane is invalid
+        let invalid = vmaxvq_u8(too_large);
+
+        invalid == 0
     }
 }
 

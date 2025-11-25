@@ -10,10 +10,10 @@ use std::sync::OnceLock;
 
 pub mod alphabets;
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
 pub mod generic;
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
 pub mod translate;
 
 #[cfg(target_arch = "x86_64")]
@@ -34,7 +34,7 @@ pub use aarch64::{
     encode_base256_simd, encode_base64_simd,
 };
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
 pub use generic::GenericSimdCodec;
 
 // CPU feature detection cache
@@ -155,7 +155,11 @@ pub fn encode_with_simd(data: &[u8], dict: &Dictionary) -> Option<String> {
         return encode_base256_simd(data, dict);
     }
 
-    // 4. No GenericSimdCodec on aarch64 yet
+    // 4. Try GenericSimdCodec for sequential power-of-2 alphabets
+    if let Some(codec) = GenericSimdCodec::from_dictionary(dict) {
+        return codec.encode(data, dict);
+    }
+
     // 5. No SIMD optimization available
     None
 }
@@ -246,7 +250,11 @@ pub fn decode_with_simd(encoded: &str, dict: &Dictionary) -> Option<Vec<u8>> {
         return decode_base256_simd(encoded, dict);
     }
 
-    // 4. No GenericSimdCodec on aarch64 yet
+    // 4. Try GenericSimdCodec for sequential power-of-2 alphabets
+    if let Some(codec) = GenericSimdCodec::from_dictionary(dict) {
+        return codec.decode(encoded, dict);
+    }
+
     // 5. No SIMD optimization available
     None
 }
