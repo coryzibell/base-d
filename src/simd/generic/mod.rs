@@ -75,6 +75,7 @@ impl GenericSimdCodec {
     /// Decode string using SIMD acceleration
     ///
     /// Returns None if decoding fails or alphabet is incompatible.
+    #[allow(dead_code)]
     pub fn decode(&self, encoded: &str, dict: &Dictionary) -> Option<Vec<u8>> {
         // Dispatch to appropriate bit-width decoder
         match self.metadata.bits_per_symbol {

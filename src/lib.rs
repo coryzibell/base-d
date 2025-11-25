@@ -1,3 +1,20 @@
+#![allow(clippy::should_implement_trait)]
+#![allow(clippy::derivable_impls)]
+#![allow(clippy::manual_div_ceil)]
+#![allow(clippy::io_other_error)]
+#![allow(clippy::unnecessary_cast)]
+#![allow(clippy::collapsible_if)]
+#![allow(clippy::manual_range_contains)]
+#![allow(clippy::iter_nth_zero)]
+#![allow(clippy::map_identity)]
+#![allow(clippy::large_enum_variant)]
+#![allow(clippy::redundant_locals)]
+#![allow(clippy::manual_is_multiple_of)]
+#![allow(clippy::doc_lazy_continuation)]
+#![allow(clippy::collapsible_else_if)]
+#![allow(clippy::explicit_iter_loop)]
+#![allow(clippy::needless_range_loop)]
+
 //! # base-d
 //!
 //! A universal, multi-dictionary encoding library for Rust.

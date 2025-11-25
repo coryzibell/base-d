@@ -67,6 +67,7 @@ pub fn has_neon() -> bool {
 }
 
 #[cfg(not(target_arch = "aarch64"))]
+#[allow(dead_code)]
 pub fn has_neon() -> bool {
     false
 }
@@ -175,6 +176,7 @@ pub fn encode_with_simd(_data: &[u8], _dict: &Dictionary) -> Option<String> {
 ///
 /// Returns `None` if no SIMD optimization is available for this dictionary.
 #[cfg(target_arch = "x86_64")]
+#[allow(dead_code)]
 pub fn decode_with_simd(encoded: &str, dict: &Dictionary) -> Option<Vec<u8>> {
     // Requires SIMD support
     if !has_avx2() && !has_ssse3() {
@@ -215,6 +217,7 @@ pub fn decode_with_simd(encoded: &str, dict: &Dictionary) -> Option<Vec<u8>> {
 
 /// SIMD decoding for aarch64 platforms
 #[cfg(target_arch = "aarch64")]
+#[allow(dead_code)]
 pub fn decode_with_simd(encoded: &str, dict: &Dictionary) -> Option<Vec<u8>> {
     // NEON is always available on aarch64
     if !has_neon() {
@@ -253,6 +256,7 @@ pub fn decode_with_simd(encoded: &str, dict: &Dictionary) -> Option<Vec<u8>> {
 
 /// Fallback for other platforms
 #[cfg(all(not(target_arch = "x86_64"), not(target_arch = "aarch64")))]
+#[allow(dead_code)]
 pub fn decode_with_simd(_encoded: &str, _dict: &Dictionary) -> Option<Vec<u8>> {
     None
 }

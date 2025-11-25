@@ -13,6 +13,7 @@ use std::sync::OnceLock;
 
 /// SIMD capability levels supported on x86_64
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum SimdLevel {
     /// AVX2 support (256-bit SIMD, requires Haswell+/Excavator+, 2013+)
     Avx2,
@@ -23,6 +24,7 @@ pub enum SimdLevel {
 }
 
 /// Cached SIMD level detection result
+#[allow(dead_code)]
 static SIMD_LEVEL: OnceLock<SimdLevel> = OnceLock::new();
 
 /// Detect available SIMD features on x86_64
@@ -30,6 +32,7 @@ static SIMD_LEVEL: OnceLock<SimdLevel> = OnceLock::new();
 /// Checks for AVX2 first, then SSSE3, using CPUID via `is_x86_feature_detected!()`.
 /// Result is cached in OnceLock for zero-cost subsequent calls.
 #[inline]
+#[allow(dead_code)]
 fn detect_simd_level() -> SimdLevel {
     #[cfg(target_arch = "x86_64")]
     {
@@ -53,12 +56,14 @@ fn detect_simd_level() -> SimdLevel {
 /// The first call performs CPUID detection. Subsequent calls return the cached result
 /// with negligible overhead.
 #[inline]
+#[allow(dead_code)]
 pub fn simd_level() -> SimdLevel {
     *SIMD_LEVEL.get_or_init(detect_simd_level)
 }
 
 /// Check if AVX2 is available
 #[inline]
+#[allow(dead_code)]
 pub fn has_avx2() -> bool {
     matches!(simd_level(), SimdLevel::Avx2)
 }
@@ -67,6 +72,7 @@ pub fn has_avx2() -> bool {
 ///
 /// Returns true if either SSSE3 or AVX2 is available, since AVX2 implies SSSE3 support.
 #[inline]
+#[allow(dead_code)]
 pub fn has_ssse3() -> bool {
     matches!(simd_level(), SimdLevel::Ssse3 | SimdLevel::Avx2)
 }

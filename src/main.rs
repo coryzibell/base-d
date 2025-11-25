@@ -1,6 +1,5 @@
 use base_d::{decode, encode, DictionariesConfig, Dictionary};
 use clap::Parser;
-use hex;
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
@@ -190,7 +189,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             base_d::EncodingMode::ByteRange => {
                 let start = alphabet_config
                     .start_codepoint
-                    .ok_or_else(|| "ByteRange mode requires start_codepoint")?;
+                    .ok_or("ByteRange mode requires start_codepoint")?;
                 Dictionary::new_with_mode_and_range(
                     Vec::new(),
                     alphabet_config.mode.clone(),
