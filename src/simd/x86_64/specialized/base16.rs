@@ -7,6 +7,7 @@
 //! Base16 is simpler than base64 since 4-bit aligns nicely with bytes:
 //! - 1 byte = 2 hex chars
 //! - 16 bytes = 32 chars (perfect for 128-bit SIMD)
+//! - 32 bytes = 64 chars (perfect for 256-bit AVX2)
 
 use super::super::common;
 use crate::core::dictionary::Dictionary;
@@ -20,16 +21,28 @@ pub enum HexVariant {
     Lowercase,
 }
 
-/// SIMD-accelerated base16 encoding using SSSE3
+/// SIMD-accelerated base16 encoding with runtime dispatch
 ///
-/// Processes 16 bytes at a time, producing 32 hex characters.
+/// Automatically selects the best available SIMD implementation:
+/// - AVX2 (256-bit): Processes 32 bytes -> 64 chars per iteration
+/// - SSSE3 (128-bit): Processes 16 bytes -> 32 chars per iteration
 /// Falls back to scalar for remainder.
 pub fn encode(data: &[u8], _dictionary: &Dictionary, variant: HexVariant) -> Option<String> {
     // Pre-allocate output (2 chars per byte)
     let output_len = data.len() * 2;
     let mut result = String::with_capacity(output_len);
 
-    // SAFETY: Caller verified SSSE3 support
+    // SAFETY: Runtime detection verifies CPU feature support
+    #[cfg(target_arch = "x86_64")]
+    unsafe {
+        if is_x86_feature_detected!("avx2") {
+            encode_avx2_impl(data, variant, &mut result);
+        } else {
+            encode_ssse3_impl(data, variant, &mut result);
+        }
+    }
+
+    #[cfg(not(target_arch = "x86_64"))]
     unsafe {
         encode_ssse3_impl(data, variant, &mut result);
     }
@@ -37,7 +50,12 @@ pub fn encode(data: &[u8], _dictionary: &Dictionary, variant: HexVariant) -> Opt
     Some(result)
 }
 
-/// SIMD-accelerated base16 decoding using SSSE3
+/// SIMD-accelerated base16 decoding with runtime dispatch
+///
+/// Automatically selects the best available SIMD implementation:
+/// - AVX2 (256-bit): Processes 64 chars -> 32 bytes per iteration
+/// - SSSE3 (128-bit): Processes 32 chars -> 16 bytes per iteration
+/// Falls back to scalar for remainder.
 pub fn decode(encoded: &str, _variant: HexVariant) -> Option<Vec<u8>> {
     let encoded_bytes = encoded.as_bytes();
 
@@ -49,7 +67,21 @@ pub fn decode(encoded: &str, _variant: HexVariant) -> Option<Vec<u8>> {
     let output_len = encoded_bytes.len() / 2;
     let mut result = Vec::with_capacity(output_len);
 
-    // SAFETY: Caller verified SSSE3 support
+    // SAFETY: Runtime detection verifies CPU feature support
+    #[cfg(target_arch = "x86_64")]
+    unsafe {
+        if is_x86_feature_detected!("avx2") {
+            if !decode_avx2_impl(encoded_bytes, &mut result) {
+                return None;
+            }
+        } else {
+            if !decode_ssse3_impl(encoded_bytes, &mut result) {
+                return None;
+            }
+        }
+    }
+
+    #[cfg(not(target_arch = "x86_64"))]
     unsafe {
         if !decode_ssse3_impl(encoded_bytes, &mut result) {
             return None;
@@ -57,6 +89,226 @@ pub fn decode(encoded: &str, _variant: HexVariant) -> Option<Vec<u8>> {
     }
 
     Some(result)
+}
+
+/// AVX2 base16 encoding implementation
+///
+/// Algorithm:
+/// 1. Load 32 bytes
+/// 2. Split each byte into high/low nibbles
+/// 3. Translate nibbles (0-15) to ASCII hex characters using vpshufb
+/// 4. Interleave high/low nibbles across lane boundaries
+/// 5. Store 64 hex characters
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2")]
+unsafe fn encode_avx2_impl(data: &[u8], variant: HexVariant, result: &mut String) {
+    use std::arch::x86_64::*;
+
+    const BLOCK_SIZE: usize = 32;
+
+    if data.len() < BLOCK_SIZE {
+        // Fall back to SSSE3 for small inputs
+        encode_ssse3_impl(data, variant, result);
+        return;
+    }
+
+    let (num_rounds, simd_bytes) = common::calculate_blocks(data.len(), BLOCK_SIZE);
+
+    // Build 256-bit lookup table (duplicate 128-bit pattern across both lanes)
+    let lut_128 = match variant {
+        HexVariant::Uppercase => _mm_setr_epi8(
+            b'0' as i8, b'1' as i8, b'2' as i8, b'3' as i8, b'4' as i8, b'5' as i8, b'6' as i8,
+            b'7' as i8, b'8' as i8, b'9' as i8, b'A' as i8, b'B' as i8, b'C' as i8, b'D' as i8,
+            b'E' as i8, b'F' as i8,
+        ),
+        HexVariant::Lowercase => _mm_setr_epi8(
+            b'0' as i8, b'1' as i8, b'2' as i8, b'3' as i8, b'4' as i8, b'5' as i8, b'6' as i8,
+            b'7' as i8, b'8' as i8, b'9' as i8, b'a' as i8, b'b' as i8, b'c' as i8, b'd' as i8,
+            b'e' as i8, b'f' as i8,
+        ),
+    };
+    let lut = _mm256_broadcastsi128_si256(lut_128);
+
+    let mask_0f = _mm256_set1_epi8(0x0F);
+
+    let mut offset = 0;
+    for _ in 0..num_rounds {
+        // Load 32 bytes
+        let input_vec = _mm256_loadu_si256(data.as_ptr().add(offset) as *const __m256i);
+
+        // Extract high nibbles (shift right by 4)
+        let hi_nibbles = _mm256_and_si256(_mm256_srli_epi32(input_vec, 4), mask_0f);
+
+        // Extract low nibbles
+        let lo_nibbles = _mm256_and_si256(input_vec, mask_0f);
+
+        // Translate nibbles to ASCII (vpshufb operates per 128-bit lane)
+        let hi_ascii = _mm256_shuffle_epi8(lut, hi_nibbles);
+        let lo_ascii = _mm256_shuffle_epi8(lut, lo_nibbles);
+
+        // Interleave: hi[0], lo[0], hi[1], lo[1], ...
+        // unpacklo/unpackhi work within 128-bit lanes, so we need cross-lane permutation
+
+        // Within each lane: interleave lower/upper halves
+        let lane0_lo = _mm256_unpacklo_epi8(hi_ascii, lo_ascii); // Lane0[0-7], Lane1[0-7]
+        let lane0_hi = _mm256_unpackhi_epi8(hi_ascii, lo_ascii); // Lane0[8-15], Lane1[8-15]
+
+        // Permute to get correct output order
+        // lane0_lo contains: [0-15 of lane0, 0-15 of lane1]
+        // lane0_hi contains: [16-31 of lane0, 16-31 of lane1]
+        // Need: [0-15 of lane0, 16-31 of lane0, 0-15 of lane1, 16-31 of lane1]
+
+        let result_lo = _mm256_permute2x128_si256(lane0_lo, lane0_hi, 0x20); // 0,2
+        let result_hi = _mm256_permute2x128_si256(lane0_lo, lane0_hi, 0x31); // 1,3
+
+        // Store 64 output characters
+        let mut output_buf = [0u8; 64];
+        _mm256_storeu_si256(output_buf.as_mut_ptr() as *mut __m256i, result_lo);
+        _mm256_storeu_si256(output_buf.as_mut_ptr().add(32) as *mut __m256i, result_hi);
+
+        // Append to result (safe because hex is ASCII)
+        for &byte in &output_buf {
+            result.push(byte as char);
+        }
+
+        offset += BLOCK_SIZE;
+    }
+
+    // Handle remainder with SSSE3 or scalar
+    if simd_bytes < data.len() {
+        encode_ssse3_impl(&data[simd_bytes..], variant, result);
+    }
+}
+
+/// AVX2 base16 decoding implementation
+///
+/// Algorithm:
+/// 1. Load 64 hex chars
+/// 2. Deinterleave into high/low nibble streams
+/// 3. Validate (0-9, A-F, a-f only)
+/// 4. Translate ASCII → 0-15 values
+/// 5. Pack pairs of nibbles into bytes (high << 4 | low)
+/// 6. Store 32 bytes
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2")]
+unsafe fn decode_avx2_impl(encoded: &[u8], result: &mut Vec<u8>) -> bool {
+    use std::arch::x86_64::*;
+
+    const INPUT_BLOCK_SIZE: usize = 64;
+    const OUTPUT_BLOCK_SIZE: usize = 32;
+
+    if encoded.len() < INPUT_BLOCK_SIZE {
+        // Fall back to SSSE3 for small inputs
+        return decode_ssse3_impl(encoded, result);
+    }
+
+    let (num_rounds, simd_bytes) = common::calculate_blocks(encoded.len(), INPUT_BLOCK_SIZE);
+
+    // Process full blocks
+    for round in 0..num_rounds {
+        let offset = round * INPUT_BLOCK_SIZE;
+
+        // Load 64 bytes (32 pairs of hex chars)
+        let input_lo = _mm256_loadu_si256(encoded.as_ptr().add(offset) as *const __m256i);
+        let input_hi = _mm256_loadu_si256(encoded.as_ptr().add(offset + 32) as *const __m256i);
+
+        // Deinterleave: separate high and low nibble chars
+        // High nibbles are at even positions (0, 2, 4, ...)
+        // Low nibbles are at odd positions (1, 3, 5, ...)
+
+        // Create masks for even/odd bytes
+        let mask_even = _mm256_set1_epi16(0x00FF_u16 as i16);
+
+        // Extract even bytes (high nibbles) and odd bytes (low nibbles) from each 16-bit pair
+        let hi_chars_lane0 = _mm256_and_si256(input_lo, mask_even);
+        let lo_chars_lane0 = _mm256_srli_epi16(input_lo, 8);
+        let hi_chars_lane1 = _mm256_and_si256(input_hi, mask_even);
+        let lo_chars_lane1 = _mm256_srli_epi16(input_hi, 8);
+
+        // Pack bytes: collapse 16-bit values to 8-bit
+        let hi_chars = _mm256_packus_epi16(hi_chars_lane0, hi_chars_lane1);
+        let lo_chars = _mm256_packus_epi16(lo_chars_lane0, lo_chars_lane1);
+
+        // Fix lane crossing from packus
+        let hi_chars = _mm256_permute4x64_epi64(hi_chars, 0xD8); // 0b11011000
+        let lo_chars = _mm256_permute4x64_epi64(lo_chars, 0xD8);
+
+        // Decode both nibble streams
+        let hi_vals = decode_nibble_chars_avx2(hi_chars);
+        let lo_vals = decode_nibble_chars_avx2(lo_chars);
+
+        // Check for invalid characters (-1 in decoded values)
+        if _mm256_movemask_epi8(_mm256_cmpgt_epi8(_mm256_setzero_si256(), hi_vals)) != 0 {
+            return false; // Invalid character in high nibbles
+        }
+        if _mm256_movemask_epi8(_mm256_cmpgt_epi8(_mm256_setzero_si256(), lo_vals)) != 0 {
+            return false; // Invalid character in low nibbles
+        }
+
+        // Pack nibbles into bytes: (high << 4) | low
+        let packed = _mm256_or_si256(_mm256_slli_epi32(hi_vals, 4), lo_vals);
+
+        // Store 32 bytes
+        let mut output_buf = [0u8; 32];
+        _mm256_storeu_si256(output_buf.as_mut_ptr() as *mut __m256i, packed);
+        result.extend_from_slice(&output_buf[0..OUTPUT_BLOCK_SIZE]);
+    }
+
+    // Handle remainder with SSSE3 fallback
+    if simd_bytes < encoded.len() {
+        if !decode_ssse3_impl(&encoded[simd_bytes..], result) {
+            return false;
+        }
+    }
+
+    true
+}
+
+/// Decode a 256-bit vector of hex characters to nibble values (0-15)
+///
+/// Returns -1 for invalid characters
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2")]
+unsafe fn decode_nibble_chars_avx2(chars: std::arch::x86_64::__m256i) -> std::arch::x86_64::__m256i {
+    use std::arch::x86_64::*;
+
+    // Strategy: Use character ranges to select appropriate lookup
+    // '0'-'9': 0x30-0x39 → subtract 0x30 → 0-9
+    // 'A'-'F': 0x41-0x46 → subtract 0x37 → 10-15
+    // 'a'-'f': 0x61-0x66 → subtract 0x57 → 10-15
+
+    // Check if char is a digit ('0'-'9': 0x30-0x39)
+    let is_digit = _mm256_and_si256(
+        _mm256_cmpgt_epi8(chars, _mm256_set1_epi8(0x2F)), // > '/'
+        _mm256_cmpgt_epi8(_mm256_set1_epi8(0x3A), chars), // < ':'
+    );
+
+    // Check if char is uppercase hex ('A'-'F': 0x41-0x46)
+    let is_upper = _mm256_and_si256(
+        _mm256_cmpgt_epi8(chars, _mm256_set1_epi8(0x40)), // > '@'
+        _mm256_cmpgt_epi8(_mm256_set1_epi8(0x47), chars), // < 'G'
+    );
+
+    // Check if char is lowercase hex ('a'-'f': 0x61-0x66)
+    let is_lower = _mm256_and_si256(
+        _mm256_cmpgt_epi8(chars, _mm256_set1_epi8(0x60)), // > '`'
+        _mm256_cmpgt_epi8(_mm256_set1_epi8(0x67), chars), // < 'g'
+    );
+
+    // Decode using appropriate offset
+    let digit_vals = _mm256_and_si256(is_digit, _mm256_sub_epi8(chars, _mm256_set1_epi8(0x30)));
+    let upper_vals = _mm256_and_si256(is_upper, _mm256_sub_epi8(chars, _mm256_set1_epi8(0x37)));
+    let lower_vals = _mm256_and_si256(is_lower, _mm256_sub_epi8(chars, _mm256_set1_epi8(0x57)));
+
+    // Combine results (only one should be non-zero per byte)
+    let valid_vals = _mm256_or_si256(_mm256_or_si256(digit_vals, upper_vals), lower_vals);
+
+    // Set invalid chars to -1
+    let is_valid = _mm256_or_si256(_mm256_or_si256(is_digit, is_upper), is_lower);
+    _mm256_or_si256(
+        _mm256_and_si256(is_valid, valid_vals),
+        _mm256_andnot_si256(is_valid, _mm256_set1_epi8(-1)),
+    )
 }
 
 /// SSSE3 base16 encoding implementation

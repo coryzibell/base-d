@@ -1,7 +1,7 @@
 //! x86_64 SIMD implementations
 //!
 //! This module provides SIMD-accelerated encoding and decoding for various
-//! bit-width encodings on x86_64 platforms with SSSE3 support.
+//! bit-width encodings on x86_64 platforms with SSSE3 and AVX2 support.
 
 pub(crate) mod common;
 mod specialized;
@@ -9,6 +9,67 @@ mod specialized;
 use crate::core::dictionary::Dictionary;
 use crate::simd::alphabets::identify_base64_variant;
 use specialized::base16::identify_hex_variant;
+use std::sync::OnceLock;
+
+/// SIMD capability levels supported on x86_64
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimdLevel {
+    /// AVX2 support (256-bit SIMD, requires Haswell+/Excavator+, 2013+)
+    Avx2,
+    /// SSSE3 support (128-bit SIMD with pshufb, requires Nehalem+/Bulldozer+, 2008+)
+    Ssse3,
+    /// No SIMD support
+    None,
+}
+
+/// Cached SIMD level detection result
+static SIMD_LEVEL: OnceLock<SimdLevel> = OnceLock::new();
+
+/// Detect available SIMD features on x86_64
+///
+/// Checks for AVX2 first, then SSSE3, using CPUID via `is_x86_feature_detected!()`.
+/// Result is cached in OnceLock for zero-cost subsequent calls.
+#[inline]
+fn detect_simd_level() -> SimdLevel {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx2") {
+            SimdLevel::Avx2
+        } else if is_x86_feature_detected!("ssse3") {
+            SimdLevel::Ssse3
+        } else {
+            SimdLevel::None
+        }
+    }
+
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        SimdLevel::None
+    }
+}
+
+/// Get the cached SIMD level for this CPU
+///
+/// The first call performs CPUID detection. Subsequent calls return the cached result
+/// with negligible overhead.
+#[inline]
+pub fn simd_level() -> SimdLevel {
+    *SIMD_LEVEL.get_or_init(detect_simd_level)
+}
+
+/// Check if AVX2 is available
+#[inline]
+pub fn has_avx2() -> bool {
+    matches!(simd_level(), SimdLevel::Avx2)
+}
+
+/// Check if SSSE3 is available (legacy function, check for AVX2 or SSSE3)
+///
+/// Returns true if either SSSE3 or AVX2 is available, since AVX2 implies SSSE3 support.
+#[inline]
+pub fn has_ssse3() -> bool {
+    matches!(simd_level(), SimdLevel::Ssse3 | SimdLevel::Avx2)
+}
 
 /// Public API for SIMD base64 encoding
 ///
