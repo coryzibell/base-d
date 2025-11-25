@@ -391,7 +391,8 @@ fn encode_scalar_remainder(data: &[u8], dictionary: &Dictionary, result: &mut St
     }
 
     if bits_in_buffer > 0 {
-        let index = ((bit_buffer << (bits_per_char - bits_in_buffer)) & ((1 << bits_per_char) - 1)) as usize;
+        let index = ((bit_buffer << (bits_per_char - bits_in_buffer)) & ((1 << bits_per_char) - 1))
+            as usize;
         if let Some(ch) = dictionary.encode_digit(index) {
             result.push(ch);
         }
