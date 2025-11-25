@@ -68,7 +68,7 @@ pub fn decode_base64_simd(encoded: &str, dictionary: &Dictionary) -> Option<Vec<
 ///
 /// Currently returns None (placeholder implementation).
 #[cfg(target_arch = "aarch64")]
-pub fn encode_base16_simd(data: &[u8], dictionary: &Dictionary) -> Option<String> {
+pub fn encode_base16_simd(_data: &[u8], dictionary: &Dictionary) -> Option<String> {
     // Only optimize base16 (hex)
     if dictionary.base() != 16 {
         return None;

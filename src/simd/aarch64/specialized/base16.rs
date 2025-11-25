@@ -181,7 +181,7 @@ unsafe fn decode_neon_impl(encoded: &[u8], result: &mut Vec<u8>) -> bool {
 
     // Process full blocks
     for round in 0..num_blocks {
-        let offset = round * INPUT_BLOCK_SIZE;
+        let mut offset = round * INPUT_BLOCK_SIZE;
 
         // Load 32 bytes (16 pairs of hex chars)
         let input_lo = vld1q_u8(encoded.as_ptr().add(offset));
