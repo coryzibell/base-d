@@ -2,9 +2,9 @@ use base_d::DictionariesConfig;
 
 fn main() {
     let config = DictionariesConfig::load_default().unwrap();
-    
+
     println!("Available dictionaries:\n");
-    
+
     for (name, alphabet_config) in config.dictionaries.iter() {
         let (char_count, preview) = match alphabet_config.mode {
             base_d::EncodingMode::ByteRange => {
@@ -28,6 +28,9 @@ fn main() {
             base_d::EncodingMode::Chunked => "chunk",
             base_d::EncodingMode::ByteRange => "range",
         };
-        println!("  {} (base-{}, {}): {}...", name, char_count, mode_str, preview);
+        println!(
+            "  {} (base-{}, {}): {}...",
+            name, char_count, mode_str, preview
+        );
     }
 }

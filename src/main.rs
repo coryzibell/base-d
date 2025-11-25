@@ -1,9 +1,9 @@
-use base_d::{DictionariesConfig, Dictionary, encode, decode};
+use base_d::{decode, encode, DictionariesConfig, Dictionary};
 use clap::Parser;
+use hex;
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
-use hex;
 
 #[derive(Parser)]
 #[command(name = "base-d")]
@@ -13,23 +13,23 @@ struct Cli {
     /// Encode using this dictionary
     #[arg(short = 'e', long)]
     encode: Option<String>,
-    
+
     /// Decode from this dictionary
     #[arg(short = 'd', long)]
     decode: Option<String>,
-    
+
     /// Compress data before encoding (gzip, zstd, brotli, lz4)
     #[arg(short = 'c', long)]
     compress: Option<String>,
-    
+
     /// Decompress data after decoding (gzip, zstd, brotli, lz4, snappy, lzma)
     #[arg(long)]
     decompress: Option<String>,
-    
+
     /// Compression level (algorithm-specific, typically 1-9)
     #[arg(long)]
     level: Option<u32>,
-    
+
     /// Compute hash of input data (md5, sha256, sha512, blake3, etc.)
     #[arg(long)]
     hash: Option<String>,
@@ -45,27 +45,27 @@ struct Cli {
     /// Output raw binary data (no encoding after compression)
     #[arg(short = 'r', long)]
     raw: bool,
-    
+
     /// Auto-detect dictionary from input and decode
     #[arg(long)]
     detect: bool,
-    
+
     /// Show top N candidate dictionaries when using --detect
     #[arg(long, value_name = "N")]
     show_candidates: Option<usize>,
-    
+
     /// File to process (if not provided, reads from stdin)
     #[arg(value_name = "FILE")]
     file: Option<PathBuf>,
-    
+
     /// List available dictionaries
     #[arg(short, long)]
     list: bool,
-    
+
     /// Use streaming mode for large files (memory efficient)
     #[arg(short, long)]
     stream: bool,
-    
+
     /// Enter the Matrix: Stream random data as Matrix-style falling code
     /// Optionally specify a dictionary (default: base256_matrix)
     #[arg(long, value_name = "DICTIONARY")]
@@ -127,24 +127,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Load dictionaries configuration with user overrides
     let config = DictionariesConfig::load_with_overrides()?;
-    
+
     // Handle --neo mode (Matrix effect)
     if let Some(alphabet_opt) = &cli.neo {
         let alphabet_name = alphabet_opt.as_deref().unwrap_or("base256_matrix");
         return matrix_mode(&config, alphabet_name);
     }
-    
+
     // Handle --detect mode (auto-detect dictionary)
     if cli.detect {
         return detect_mode(&config, &cli);
     }
-    
+
     // Handle list command
     if cli.list {
         println!("Available dictionaries:\n");
         let mut alphabets: Vec<_> = config.dictionaries.iter().collect();
         alphabets.sort_by_key(|(name, _)| *name);
-        
+
         for (name, alphabet_config) in alphabets {
             let (char_count, preview) = match alphabet_config.mode {
                 base_d::EncodingMode::ByteRange => {
@@ -169,59 +169,79 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 base_d::EncodingMode::Chunked => "chunk",
                 base_d::EncodingMode::ByteRange => "range",
             };
-            println!("  {:<15} base-{:<3} {:>5}  {}{}", name, char_count, mode_str, preview, suffix);
+            println!(
+                "  {:<15} base-{:<3} {:>5}  {}{}",
+                name, char_count, mode_str, preview, suffix
+            );
         }
         return Ok(());
     }
-    
+
     // Helper function to create dictionary from config
     let create_alphabet = |name: &str| -> Result<Dictionary, Box<dyn std::error::Error>> {
-        let alphabet_config = config.get_dictionary(name)
-            .ok_or_else(|| format!("Dictionary '{}' not found. Use --list to see available dictionaries.", name))?;
-        
+        let alphabet_config = config.get_dictionary(name).ok_or_else(|| {
+            format!(
+                "Dictionary '{}' not found. Use --list to see available dictionaries.",
+                name
+            )
+        })?;
+
         let dictionary = match alphabet_config.mode {
             base_d::EncodingMode::ByteRange => {
-                let start = alphabet_config.start_codepoint
+                let start = alphabet_config
+                    .start_codepoint
                     .ok_or_else(|| "ByteRange mode requires start_codepoint")?;
-                Dictionary::new_with_mode_and_range(Vec::new(), alphabet_config.mode.clone(), None, Some(start))
-                    .map_err(|e| format!("Invalid dictionary: {}", e))?
+                Dictionary::new_with_mode_and_range(
+                    Vec::new(),
+                    alphabet_config.mode.clone(),
+                    None,
+                    Some(start),
+                )
+                .map_err(|e| format!("Invalid dictionary: {}", e))?
             }
             _ => {
                 let chars: Vec<char> = alphabet_config.chars.chars().collect();
-                let padding = alphabet_config.padding.as_ref().and_then(|s| s.chars().next());
+                let padding = alphabet_config
+                    .padding
+                    .as_ref()
+                    .and_then(|s| s.chars().next());
                 Dictionary::new_with_mode(chars, alphabet_config.mode.clone(), padding)
                     .map_err(|e| format!("Invalid dictionary: {}", e))?
             }
         };
         Ok(dictionary)
     };
-    
+
     // Parse compression algorithms if provided
-    let compress_algo = cli.compress.as_ref()
+    let compress_algo = cli
+        .compress
+        .as_ref()
         .map(|s| base_d::CompressionAlgorithm::from_str(s))
         .transpose()?;
-    
-    let decompress_algo = cli.decompress.as_ref()
+
+    let decompress_algo = cli
+        .decompress
+        .as_ref()
         .map(|s| base_d::CompressionAlgorithm::from_str(s))
         .transpose()?;
-    
+
     // Validate flags
     if cli.raw && cli.encode.is_some() {
         return Err("Cannot use --raw with --encode (output would not be raw)".into());
     }
-    
+
     // Handle streaming mode separately (now with compression/hashing support)
     if cli.stream {
         if let Some(decode_name) = &cli.decode {
             use base_d::StreamingDecoder;
             let decode_alphabet = create_alphabet(decode_name)?;
             let mut decoder = StreamingDecoder::new(&decode_alphabet, io::stdout());
-            
+
             // Add decompression if specified
             if let Some(algo) = decompress_algo {
                 decoder = decoder.with_decompression(algo);
             }
-            
+
             // Add hashing if specified
             if let Some(hash_name) = &cli.hash {
                 let hash_algo = base_d::HashAlgorithm::from_str(hash_name)?;
@@ -231,14 +251,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let xxhash_config = load_xxhash_config(&cli, &config, Some(&hash_algo))?;
                 decoder = decoder.with_xxhash_config(xxhash_config);
             }
-            
+
             let hash = if let Some(file_path) = &cli.file {
                 let mut file = fs::File::open(file_path)?;
                 decoder.decode(&mut file).map_err(|e| format!("{:?}", e))?
             } else {
-                decoder.decode(&mut io::stdin()).map_err(|e| format!("{:?}", e))?
+                decoder
+                    .decode(&mut io::stdin())
+                    .map_err(|e| format!("{:?}", e))?
             };
-            
+
             // Print hash if computed
             if let Some(hash_bytes) = hash {
                 if let Some(encode_name) = &cli.encode {
@@ -249,19 +271,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     eprintln!("Hash: {}", hex::encode(hash_bytes));
                 }
             }
-            
+
             return Ok(());
         } else if let Some(encode_name) = &cli.encode {
             use base_d::StreamingEncoder;
             let encode_alphabet = create_alphabet(encode_name)?;
             let mut encoder = StreamingEncoder::new(&encode_alphabet, io::stdout());
-            
+
             // Add compression if specified
             if let Some(algo) = compress_algo {
                 let level = cli.level.unwrap_or(6);
                 encoder = encoder.with_compression(algo, level);
             }
-            
+
             // Add hashing if specified
             if let Some(hash_name) = &cli.hash {
                 let hash_algo = base_d::HashAlgorithm::from_str(hash_name)?;
@@ -271,25 +293,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let xxhash_config = load_xxhash_config(&cli, &config, Some(&hash_algo))?;
                 encoder = encoder.with_xxhash_config(xxhash_config);
             }
-            
+
             let hash = if let Some(file_path) = &cli.file {
                 let mut file = fs::File::open(file_path)?;
                 encoder.encode(&mut file).map_err(|e| format!("{}", e))?
             } else {
-                encoder.encode(&mut io::stdin()).map_err(|e| format!("{}", e))?
+                encoder
+                    .encode(&mut io::stdin())
+                    .map_err(|e| format!("{}", e))?
             };
-            
+
             // Print hash if computed
             if let Some(hash_bytes) = hash {
                 eprintln!("Hash: {}", hex::encode(hash_bytes));
             }
-            
+
             return Ok(());
         } else {
             return Err("Streaming mode requires either --encode or --decode".into());
         }
     }
-    
+
     // Determine compression level
     let get_compression_level = |algo: base_d::CompressionAlgorithm| -> u32 {
         if let Some(level) = cli.level {
@@ -308,7 +332,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     };
-    
+
     // Read input data
     let input_data = if let Some(file_path) = &cli.file {
         if cli.decode.is_some() {
@@ -321,10 +345,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         io::stdin().read_to_end(&mut buffer)?;
         buffer
     };
-    
+
     // Process data through pipeline
     let mut data = input_data;
-    
+
     // Step 1: Decode if requested
     if let Some(decode_name) = &cli.decode {
         let decode_alphabet = create_alphabet(decode_name)?;
@@ -332,18 +356,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .map_err(|_| "Input data is not valid UTF-8 text for decoding")?;
         data = decode(text.trim(), &decode_alphabet)?;
     }
-    
+
     // Step 2: Decompress if requested
     if let Some(algo) = decompress_algo {
         data = base_d::decompress(&data, algo)?;
     }
-    
+
     // Step 3: Hash if requested
     if let Some(hash_name) = &cli.hash {
         let hash_algo = base_d::HashAlgorithm::from_str(hash_name)?;
         let xxhash_config = load_xxhash_config(&cli, &config, Some(&hash_algo))?;
         let hash_output = base_d::hash_with_config(&data, hash_algo, &xxhash_config);
-        
+
         // If encoding specified, encode the hash; otherwise output as hex
         if let Some(encode_name) = &cli.encode {
             let encode_alphabet = create_alphabet(encode_name)?;
@@ -358,13 +382,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         return Ok(());
     }
-    
+
     // Step 4: Compress if requested
     if let Some(algo) = compress_algo {
         let level = get_compression_level(algo);
         data = base_d::compress(&data, algo, level)?;
     }
-    
+
     // Step 5: Encode if requested, or output raw/default
     if cli.raw {
         // Raw binary output
@@ -392,34 +416,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             io::stdout().write_all(&data)?;
         }
     }
-    
+
     Ok(())
 }
 
-fn matrix_mode(config: &DictionariesConfig, alphabet_name: &str) -> Result<(), Box<dyn std::error::Error>> {
+fn matrix_mode(
+    config: &DictionariesConfig,
+    alphabet_name: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     use std::thread;
     use std::time::Duration;
-    
+
     // Load the specified dictionary
-    let alphabet_config = config.get_dictionary(alphabet_name)
+    let alphabet_config = config
+        .get_dictionary(alphabet_name)
         .ok_or(format!("{} dictionary not found", alphabet_name))?;
-    
+
     let chars: Vec<char> = alphabet_config.chars.chars().collect();
-    let dictionary = Dictionary::new_with_mode(
-        chars,
-        alphabet_config.mode.clone(),
-        None
-    )?;
-    
+    let dictionary = Dictionary::new_with_mode(chars, alphabet_config.mode.clone(), None)?;
+
     // Get terminal width
     let term_width = match terminal_size::terminal_size() {
         Some((terminal_size::Width(w), _)) => w as usize,
         None => 80, // Default to 80 if we can't detect
     };
-    
+
     println!("\x1b[2J\x1b[H"); // Clear screen and move to top
     println!("\x1b[32m"); // Green text
-    
+
     // Iconic Matrix messages - typed character by character
     let messages = [
         "Wake up, Neo...",
@@ -427,7 +451,7 @@ fn matrix_mode(config: &DictionariesConfig, alphabet_name: &str) -> Result<(), B
         "Follow the white rabbit.",
         "Knock, knock, Neo.",
     ];
-    
+
     for message in &messages {
         // Type out character by character
         for ch in message.chars() {
@@ -436,39 +460,39 @@ fn matrix_mode(config: &DictionariesConfig, alphabet_name: &str) -> Result<(), B
             thread::sleep(Duration::from_millis(100));
         }
         thread::sleep(Duration::from_millis(800)); // Pause to read
-        
+
         // Clear the line
         print!("\r\x1b[K");
         io::stdout().flush()?;
         thread::sleep(Duration::from_millis(200));
     }
-    
+
     // Small pause before starting the stream
     thread::sleep(Duration::from_millis(500));
-    
+
     // Cross-platform random source
     let mut rng = rand::thread_rng();
-    
+
     loop {
         // Generate random bytes (one line worth)
         let bytes_per_line = term_width / 2; // Approximate, Matrix chars may be wider
         let mut random_bytes = vec![0u8; bytes_per_line];
-        
+
         use rand::RngCore;
         rng.fill_bytes(&mut random_bytes);
-        
+
         // Encode with Matrix dictionary
         let encoded = encode(&random_bytes, &dictionary);
-        
+
         // Trim to terminal width (Matrix chars can be double-width)
         let display: String = encoded.chars().take(term_width).collect();
-        
+
         // Print the line
         println!("{}", display);
-        
+
         // Flush to ensure immediate display
         io::stdout().flush()?;
-        
+
         // Sleep for half a second
         thread::sleep(Duration::from_millis(500));
     }
@@ -476,7 +500,7 @@ fn matrix_mode(config: &DictionariesConfig, alphabet_name: &str) -> Result<(), B
 
 fn detect_mode(config: &DictionariesConfig, cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
     use base_d::DictionaryDetector;
-    
+
     // Read input
     let input = if let Some(file_path) = &cli.file {
         fs::read_to_string(file_path)?
@@ -485,47 +509,49 @@ fn detect_mode(config: &DictionariesConfig, cli: &Cli) -> Result<(), Box<dyn std
         io::stdin().read_to_string(&mut buffer)?;
         buffer
     };
-    
+
     // Create detector and detect
     let detector = DictionaryDetector::new(config)?;
     let matches = detector.detect(input.trim());
-    
+
     if matches.is_empty() {
         eprintln!("Could not detect dictionary - no matches found.");
         eprintln!("The input may not be encoded data, or uses an unknown dictionary.");
         std::process::exit(1);
     }
-    
+
     // If --show-candidates is specified, show top N candidates
     if let Some(n) = cli.show_candidates {
         println!("Top {} candidate dictionaries:\n", n);
         for (i, m) in matches.iter().take(n).enumerate() {
-            println!("{}. {} (confidence: {:.1}%)", 
-                i + 1, 
-                m.name, 
+            println!(
+                "{}. {} (confidence: {:.1}%)",
+                i + 1,
+                m.name,
                 m.confidence * 100.0
             );
         }
         return Ok(());
     }
-    
+
     // Otherwise, use the best match to decode
     let best_match = &matches[0];
-    
+
     // Show what was detected (to stderr so it doesn't interfere with output)
-    eprintln!("Detected: {} (confidence: {:.1}%)", 
-        best_match.name, 
+    eprintln!(
+        "Detected: {} (confidence: {:.1}%)",
+        best_match.name,
         best_match.confidence * 100.0
     );
-    
+
     // If confidence is low, warn the user
     if best_match.confidence < 0.7 {
         eprintln!("Warning: Low confidence detection. Results may be incorrect.");
     }
-    
+
     // Decode using the detected dictionary
     let decoded = decode(input.trim(), &best_match.dictionary)?;
-    
+
     // Handle decompression if requested
     let output = if let Some(decompress_name) = &cli.decompress {
         let algo = base_d::CompressionAlgorithm::from_str(decompress_name)?;
@@ -533,10 +559,9 @@ fn detect_mode(config: &DictionariesConfig, cli: &Cli) -> Result<(), Box<dyn std
     } else {
         decoded
     };
-    
+
     // Output the decoded data
     io::stdout().write_all(&output)?;
-    
+
     Ok(())
 }
-

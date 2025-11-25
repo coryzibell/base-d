@@ -134,22 +134,24 @@
 //! # }
 //! ```
 
-mod core;
-mod encoders;
 mod compression;
+mod core;
 mod detection;
+mod encoders;
 mod hashing;
 
 #[cfg(target_arch = "x86_64")]
 mod simd;
 
+pub use compression::{compress, decompress, CompressionAlgorithm};
+pub use core::config::{
+    CompressionConfig, DictionariesConfig, DictionaryConfig, EncodingMode, Settings,
+};
 pub use core::dictionary::Dictionary;
-pub use core::config::{DictionariesConfig, DictionaryConfig, EncodingMode, CompressionConfig, Settings};
-pub use encoders::streaming::{StreamingEncoder, StreamingDecoder};
+pub use detection::{detect_dictionary, DictionaryDetector, DictionaryMatch};
 pub use encoders::encoding::DecodeError;
-pub use compression::{CompressionAlgorithm, compress, decompress};
-pub use detection::{DictionaryDetector, DictionaryMatch, detect_dictionary};
-pub use hashing::{HashAlgorithm, hash, hash_with_config, XxHashConfig};
+pub use encoders::streaming::{StreamingDecoder, StreamingEncoder};
+pub use hashing::{hash, hash_with_config, HashAlgorithm, XxHashConfig};
 
 /// Encodes binary data using the specified dictionary.
 ///

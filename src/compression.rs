@@ -24,7 +24,7 @@ impl CompressionAlgorithm {
             _ => Err(format!("Unknown compression algorithm: {}", s)),
         }
     }
-    
+
     pub fn as_str(&self) -> &str {
         match self {
             CompressionAlgorithm::Gzip => "gzip",
@@ -38,7 +38,11 @@ impl CompressionAlgorithm {
 }
 
 /// Compress data using the specified algorithm and level.
-pub fn compress(data: &[u8], algorithm: CompressionAlgorithm, level: u32) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+pub fn compress(
+    data: &[u8],
+    algorithm: CompressionAlgorithm,
+    level: u32,
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     match algorithm {
         CompressionAlgorithm::Gzip => compress_gzip(data, level),
         CompressionAlgorithm::Zstd => compress_zstd(data, level),
@@ -50,7 +54,10 @@ pub fn compress(data: &[u8], algorithm: CompressionAlgorithm, level: u32) -> Res
 }
 
 /// Decompress data using the specified algorithm.
-pub fn decompress(data: &[u8], algorithm: CompressionAlgorithm) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+pub fn decompress(
+    data: &[u8],
+    algorithm: CompressionAlgorithm,
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     match algorithm {
         CompressionAlgorithm::Gzip => decompress_gzip(data),
         CompressionAlgorithm::Zstd => decompress_zstd(data),
@@ -62,9 +69,9 @@ pub fn decompress(data: &[u8], algorithm: CompressionAlgorithm) -> Result<Vec<u8
 }
 
 fn compress_gzip(data: &[u8], level: u32) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    use flate2::Compression;
     use flate2::write::GzEncoder;
-    
+    use flate2::Compression;
+
     let mut encoder = GzEncoder::new(Vec::new(), Compression::new(level));
     encoder.write_all(data)?;
     Ok(encoder.finish()?)
@@ -72,7 +79,7 @@ fn compress_gzip(data: &[u8], level: u32) -> Result<Vec<u8>, Box<dyn std::error:
 
 fn decompress_gzip(data: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     use flate2::read::GzDecoder;
-    
+
     let mut decoder = GzDecoder::new(data);
     let mut result = Vec::new();
     decoder.read_to_end(&mut result)?;
@@ -125,7 +132,7 @@ fn decompress_snappy(data: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>>
 
 fn compress_lzma(data: &[u8], level: u32) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     use xz2::write::XzEncoder;
-    
+
     let mut encoder = XzEncoder::new(Vec::new(), level);
     encoder.write_all(data)?;
     Ok(encoder.finish()?)
@@ -133,7 +140,7 @@ fn compress_lzma(data: &[u8], level: u32) -> Result<Vec<u8>, Box<dyn std::error:
 
 fn decompress_lzma(data: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     use xz2::read::XzDecoder;
-    
+
     let mut decoder = XzDecoder::new(data);
     let mut result = Vec::new();
     decoder.read_to_end(&mut result)?;
@@ -143,7 +150,7 @@ fn decompress_lzma(data: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_gzip_roundtrip() {
         let data = b"Hello, world! This is a test of gzip compression.";
@@ -151,7 +158,7 @@ mod tests {
         let decompressed = decompress(&compressed, CompressionAlgorithm::Gzip).unwrap();
         assert_eq!(data.as_ref(), decompressed.as_slice());
     }
-    
+
     #[test]
     fn test_zstd_roundtrip() {
         let data = b"Hello, world! This is a test of zstd compression.";
@@ -159,7 +166,7 @@ mod tests {
         let decompressed = decompress(&compressed, CompressionAlgorithm::Zstd).unwrap();
         assert_eq!(data.as_ref(), decompressed.as_slice());
     }
-    
+
     #[test]
     fn test_brotli_roundtrip() {
         let data = b"Hello, world! This is a test of brotli compression.";
@@ -167,7 +174,7 @@ mod tests {
         let decompressed = decompress(&compressed, CompressionAlgorithm::Brotli).unwrap();
         assert_eq!(data.as_ref(), decompressed.as_slice());
     }
-    
+
     #[test]
     fn test_lz4_roundtrip() {
         let data = b"Hello, world! This is a test of lz4 compression.";
@@ -175,7 +182,7 @@ mod tests {
         let decompressed = decompress(&compressed, CompressionAlgorithm::Lz4).unwrap();
         assert_eq!(data.as_ref(), decompressed.as_slice());
     }
-    
+
     #[test]
     fn test_snappy_roundtrip() {
         let data = b"Hello, world! This is a test of snappy compression.";
@@ -183,7 +190,7 @@ mod tests {
         let decompressed = decompress(&compressed, CompressionAlgorithm::Snappy).unwrap();
         assert_eq!(data.as_ref(), decompressed.as_slice());
     }
-    
+
     #[test]
     fn test_lzma_roundtrip() {
         let data = b"Hello, world! This is a test of lzma compression.";

@@ -1,7 +1,7 @@
-//! Alphabet variants for SIMD base64 encoding
+//! Alphabet metadata and translation strategies for SIMD encoding
 //!
-//! This module defines different base64 alphabet variants and provides
-//! utilities to identify which variant a Dictionary uses.
+//! This module analyzes dictionaries to determine optimal SIMD translation
+//! strategies and defines alphabet variants for known encodings.
 
 use crate::core::dictionary::Dictionary;
 
@@ -21,7 +21,10 @@ pub enum AlphabetVariant {
 /// Identify which base64 alphabet variant a Dictionary uses
 ///
 /// Returns `None` if the dictionary is not base64 (base != 64) or
-/// if it doesn't match a known variant.
+/// if it doesn't match a known variant exactly.
+///
+/// This performs a strict check of all 64 positions to ensure the alphabet
+/// matches the standard or URL-safe variant completely.
 ///
 /// # Arguments
 ///
@@ -29,23 +32,30 @@ pub enum AlphabetVariant {
 ///
 /// # Returns
 ///
-/// - `Some(AlphabetVariant::Base64Standard)` if positions 62-63 are '+' and '/'
-/// - `Some(AlphabetVariant::Base64Url)` if positions 62-63 are '-' and '_'
-/// - `None` if not base64 or doesn't match a known variant
+/// - `Some(AlphabetVariant::Base64Standard)` if all positions match standard base64
+/// - `Some(AlphabetVariant::Base64Url)` if all positions match URL-safe base64
+/// - `None` if not base64 or doesn't match a known variant exactly
 pub fn identify_base64_variant(dict: &Dictionary) -> Option<AlphabetVariant> {
     // Only works for base64
     if dict.base() != 64 {
         return None;
     }
 
-    // Check characters at positions 62 and 63
+    // Check characters at positions 62 and 63 for quick filtering
     let char_62 = dict.encode_digit(62)?;
     let char_63 = dict.encode_digit(63)?;
 
-    match (char_62, char_63) {
-        ('+', '/') => Some(AlphabetVariant::Base64Standard),
-        ('-', '_') => Some(AlphabetVariant::Base64Url),
-        _ => None,
+    let candidate = match (char_62, char_63) {
+        ('+', '/') => AlphabetVariant::Base64Standard,
+        ('-', '_') => AlphabetVariant::Base64Url,
+        _ => return None,
+    };
+
+    // Verify all positions match the expected variant
+    if verify_base64_alphabet(dict, candidate) {
+        Some(candidate)
+    } else {
+        None
     }
 }
 
@@ -61,7 +71,6 @@ pub fn identify_base64_variant(dict: &Dictionary) -> Option<AlphabetVariant> {
 /// # Returns
 ///
 /// `true` if all positions match, `false` otherwise
-#[allow(dead_code)]
 pub fn verify_base64_alphabet(dict: &Dictionary, variant: AlphabetVariant) -> bool {
     if dict.base() != 64 {
         return false;
@@ -83,6 +92,258 @@ pub fn verify_base64_alphabet(dict: &Dictionary, variant: AlphabetVariant) -> bo
     }
 
     true
+}
+
+/// Character range mapping for ranged translation strategies
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CharRange {
+    /// Index range: [start_index, end_index)
+    pub index_start: u8,
+    pub index_end: u8,
+    /// Character range: [start_char, end_char)
+    pub char_start: char,
+    pub char_end: char,
+    /// Offset to add: char = index + offset
+    pub offset: i8,
+}
+
+/// Classification of how an alphabet's indices map to characters
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TranslationStrategy {
+    /// Single contiguous Unicode range: index → char is `start + index`
+    /// Example: 64 chars starting at U+0040 ('@')
+    /// Encoding: add constant offset
+    /// Decoding: subtract constant offset
+    Sequential { start_codepoint: u32 },
+
+    /// Multiple contiguous ranges with gaps
+    /// Example: base64 (A-Z, a-z, 0-9, +/)
+    /// Encoding: range check + offset per range
+    /// Decoding: range check + offset per range
+    Ranged { ranges: &'static [CharRange] },
+
+    /// Arbitrary mapping requiring lookup table
+    /// Example: custom shuffled alphabet
+    /// Encoding: LUT required
+    /// Decoding: reverse LUT/HashMap required
+    Arbitrary,
+}
+
+/// Known range definitions for standard alphabets
+static BASE64_STANDARD_RANGES: &[CharRange] = &[
+    CharRange {
+        index_start: 0,
+        index_end: 26,
+        char_start: 'A',
+        char_end: 'Z',
+        offset: 65,
+    },
+    CharRange {
+        index_start: 26,
+        index_end: 52,
+        char_start: 'a',
+        char_end: 'z',
+        offset: 71,
+    },
+    CharRange {
+        index_start: 52,
+        index_end: 62,
+        char_start: '0',
+        char_end: '9',
+        offset: -4,
+    },
+    // Special cases for +/ handled separately in SIMD
+];
+
+static BASE64_URL_RANGES: &[CharRange] = &[
+    CharRange {
+        index_start: 0,
+        index_end: 26,
+        char_start: 'A',
+        char_end: 'Z',
+        offset: 65,
+    },
+    CharRange {
+        index_start: 26,
+        index_end: 52,
+        char_start: 'a',
+        char_end: 'z',
+        offset: 71,
+    },
+    CharRange {
+        index_start: 52,
+        index_end: 62,
+        char_start: '0',
+        char_end: '9',
+        offset: -4,
+    },
+    // Special cases for -_ handled separately in SIMD
+];
+
+static HEX_UPPER_RANGES: &[CharRange] = &[
+    CharRange {
+        index_start: 0,
+        index_end: 10,
+        char_start: '0',
+        char_end: '9',
+        offset: 48,
+    },
+    CharRange {
+        index_start: 10,
+        index_end: 16,
+        char_start: 'A',
+        char_end: 'F',
+        offset: 55,
+    },
+];
+
+static HEX_LOWER_RANGES: &[CharRange] = &[
+    CharRange {
+        index_start: 0,
+        index_end: 10,
+        char_start: '0',
+        char_end: '9',
+        offset: 48,
+    },
+    CharRange {
+        index_start: 10,
+        index_end: 16,
+        char_start: 'a',
+        char_end: 'f',
+        offset: 87,
+    },
+];
+
+/// Metadata about an alphabet's structure for SIMD optimization
+#[derive(Debug, Clone)]
+pub struct AlphabetMetadata {
+    /// Dictionary base (2, 4, 8, 16, 32, 64, 128, 256)
+    pub base: usize,
+
+    /// Bits per symbol (1, 2, 3, 4, 5, 6, 7, 8)
+    pub bits_per_symbol: u8,
+
+    /// Translation strategy
+    pub strategy: TranslationStrategy,
+
+    /// Whether SIMD acceleration is available
+    pub simd_compatible: bool,
+}
+
+impl AlphabetMetadata {
+    /// Returns whether SIMD acceleration is available for this alphabet
+    pub fn simd_available(&self) -> bool {
+        self.simd_compatible
+    }
+
+    /// Analyze a Dictionary and determine its translation strategy
+    pub fn from_dictionary(dict: &Dictionary) -> Self {
+        let base = dict.base();
+
+        // Check power-of-2 requirement
+        if !base.is_power_of_two() {
+            return Self {
+                base,
+                bits_per_symbol: 0,
+                strategy: TranslationStrategy::Arbitrary,
+                simd_compatible: false,
+            };
+        }
+
+        let bits_per_symbol = (base as f64).log2() as u8;
+
+        // Analyze character sequence
+        let strategy = Self::detect_strategy(dict);
+
+        // SIMD compatible if:
+        // 1. Power of 2 base
+        // 2. Sequential or known ranged pattern
+        // 3. Base supported by existing SIMD (4, 6, 8 bits)
+        let simd_compatible = matches!(bits_per_symbol, 4 | 6 | 8)
+            && !matches!(strategy, TranslationStrategy::Arbitrary);
+
+        Self {
+            base,
+            bits_per_symbol,
+            strategy,
+            simd_compatible,
+        }
+    }
+
+    fn detect_strategy(dict: &Dictionary) -> TranslationStrategy {
+        let base = dict.base();
+        let chars: Vec<char> = (0..base).filter_map(|i| dict.encode_digit(i)).collect();
+
+        if chars.len() != base {
+            return TranslationStrategy::Arbitrary;
+        }
+
+        // Check for sequential (all codepoints contiguous)
+        let first_codepoint = chars[0] as u32;
+        let is_sequential = chars
+            .iter()
+            .enumerate()
+            .all(|(i, &c)| (c as u32) == first_codepoint + (i as u32));
+
+        if is_sequential {
+            return TranslationStrategy::Sequential {
+                start_codepoint: first_codepoint,
+            };
+        }
+
+        // Check for known ranged patterns
+        if let Some(ranges) = Self::detect_ranges(&chars) {
+            return TranslationStrategy::Ranged { ranges };
+        }
+
+        TranslationStrategy::Arbitrary
+    }
+
+    fn detect_ranges(chars: &[char]) -> Option<&'static [CharRange]> {
+        // Check against known patterns
+
+        // Standard base64: A-Za-z0-9+/
+        if chars.len() == 64 && Self::matches_base64_standard(chars) {
+            return Some(BASE64_STANDARD_RANGES);
+        }
+
+        // URL-safe base64: A-Za-z0-9-_
+        if chars.len() == 64 && Self::matches_base64_url(chars) {
+            return Some(BASE64_URL_RANGES);
+        }
+
+        // Hex uppercase: 0-9A-F
+        if chars.len() == 16 && Self::matches_hex_upper(chars) {
+            return Some(HEX_UPPER_RANGES);
+        }
+
+        // Hex lowercase: 0-9a-f
+        if chars.len() == 16 && Self::matches_hex_lower(chars) {
+            return Some(HEX_LOWER_RANGES);
+        }
+
+        None
+    }
+
+    fn matches_base64_standard(chars: &[char]) -> bool {
+        let expected = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        chars.iter().zip(expected.chars()).all(|(a, b)| *a == b)
+    }
+
+    fn matches_base64_url(chars: &[char]) -> bool {
+        let expected = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+        chars.iter().zip(expected.chars()).all(|(a, b)| *a == b)
+    }
+
+    fn matches_hex_upper(chars: &[char]) -> bool {
+        let expected = "0123456789ABCDEF";
+        chars.iter().zip(expected.chars()).all(|(a, b)| *a == b)
+    }
+
+    fn matches_hex_lower(chars: &[char]) -> bool {
+        let expected = "0123456789abcdef";
+        chars.iter().zip(expected.chars()).all(|(a, b)| *a == b)
+    }
 }
 
 #[cfg(test)]
@@ -157,5 +418,169 @@ mod tests {
             &dict,
             AlphabetVariant::Base64Standard
         ));
+    }
+
+    #[test]
+    fn test_sequential_alphabet_detection() {
+        // Create a sequential alphabet: 64 chars starting at Latin Extended-A (U+0100)
+        let chars: Vec<char> = (0x100..0x140)
+            .map(|cp| char::from_u32(cp).unwrap())
+            .collect();
+        let dict = Dictionary::new_with_mode(chars, EncodingMode::Chunked, None).unwrap();
+
+        let metadata = AlphabetMetadata::from_dictionary(&dict);
+        assert_eq!(metadata.base, 64);
+        assert_eq!(metadata.bits_per_symbol, 6);
+        assert!(matches!(
+            metadata.strategy,
+            TranslationStrategy::Sequential {
+                start_codepoint: 0x100
+            }
+        ));
+        assert!(metadata.simd_compatible);
+    }
+
+    #[test]
+    fn test_ranged_base64_standard_detection() {
+        let dict = make_base64_standard_dict();
+        let metadata = AlphabetMetadata::from_dictionary(&dict);
+
+        assert_eq!(metadata.base, 64);
+        assert_eq!(metadata.bits_per_symbol, 6);
+        assert!(matches!(
+            metadata.strategy,
+            TranslationStrategy::Ranged { .. }
+        ));
+        assert!(metadata.simd_compatible);
+    }
+
+    #[test]
+    fn test_ranged_base64_url_detection() {
+        let dict = make_base64_url_dict();
+        let metadata = AlphabetMetadata::from_dictionary(&dict);
+
+        assert_eq!(metadata.base, 64);
+        assert_eq!(metadata.bits_per_symbol, 6);
+        assert!(matches!(
+            metadata.strategy,
+            TranslationStrategy::Ranged { .. }
+        ));
+        assert!(metadata.simd_compatible);
+    }
+
+    #[test]
+    fn test_ranged_hex_upper_detection() {
+        let chars: Vec<char> = "0123456789ABCDEF".chars().collect();
+        let dict = Dictionary::new(chars).unwrap();
+        let metadata = AlphabetMetadata::from_dictionary(&dict);
+
+        assert_eq!(metadata.base, 16);
+        assert_eq!(metadata.bits_per_symbol, 4);
+        assert!(matches!(
+            metadata.strategy,
+            TranslationStrategy::Ranged { .. }
+        ));
+        assert!(metadata.simd_compatible);
+    }
+
+    #[test]
+    fn test_ranged_hex_lower_detection() {
+        let chars: Vec<char> = "0123456789abcdef".chars().collect();
+        let dict = Dictionary::new(chars).unwrap();
+        let metadata = AlphabetMetadata::from_dictionary(&dict);
+
+        assert_eq!(metadata.base, 16);
+        assert_eq!(metadata.bits_per_symbol, 4);
+        assert!(matches!(
+            metadata.strategy,
+            TranslationStrategy::Ranged { .. }
+        ));
+        assert!(metadata.simd_compatible);
+    }
+
+    #[test]
+    fn test_arbitrary_alphabet_detection() {
+        // Create a shuffled/arbitrary alphabet
+        let chars: Vec<char> = "ZYXWVUTSRQPONMLKJIHGFEDCBAzyxwvutsrqponmlkjihgfedcba9876543210+/"
+            .chars()
+            .collect();
+        let dict = Dictionary::new_with_mode(chars, EncodingMode::Chunked, None).unwrap();
+        let metadata = AlphabetMetadata::from_dictionary(&dict);
+
+        assert_eq!(metadata.base, 64);
+        assert_eq!(metadata.bits_per_symbol, 6);
+        assert!(matches!(metadata.strategy, TranslationStrategy::Arbitrary));
+        assert!(!metadata.simd_compatible);
+    }
+
+    #[test]
+    fn test_non_power_of_two_detection() {
+        // Base 10 is not power of 2
+        let chars: Vec<char> = "0123456789".chars().collect();
+        let dict = Dictionary::new(chars).unwrap();
+        let metadata = AlphabetMetadata::from_dictionary(&dict);
+
+        assert_eq!(metadata.base, 10);
+        assert_eq!(metadata.bits_per_symbol, 0);
+        assert!(matches!(metadata.strategy, TranslationStrategy::Arbitrary));
+        assert!(!metadata.simd_compatible);
+    }
+
+    #[test]
+    fn test_base32_sequential() {
+        // Create sequential base32 alphabet
+        let chars: Vec<char> = (0x41..0x61).map(|cp| char::from_u32(cp).unwrap()).collect();
+        let dict = Dictionary::new(chars).unwrap();
+        let metadata = AlphabetMetadata::from_dictionary(&dict);
+
+        assert_eq!(metadata.base, 32);
+        assert_eq!(metadata.bits_per_symbol, 5);
+        assert!(matches!(
+            metadata.strategy,
+            TranslationStrategy::Sequential {
+                start_codepoint: 0x41
+            }
+        ));
+        // base32 (5 bits) is not currently SIMD compatible
+        assert!(!metadata.simd_compatible);
+    }
+
+    #[test]
+    fn test_base256_sequential() {
+        // Create sequential base256 alphabet using valid Unicode range
+        // Use a range starting from 0x100 (Latin Extended-A) to avoid control characters
+        let chars: Vec<char> = (0x100..0x200)
+            .map(|cp| char::from_u32(cp).unwrap())
+            .collect();
+        let dict = Dictionary::new(chars).unwrap();
+        let metadata = AlphabetMetadata::from_dictionary(&dict);
+
+        assert_eq!(metadata.base, 256);
+        assert_eq!(metadata.bits_per_symbol, 8);
+        assert!(matches!(
+            metadata.strategy,
+            TranslationStrategy::Sequential {
+                start_codepoint: 0x100
+            }
+        ));
+        assert!(metadata.simd_compatible);
+    }
+
+    #[test]
+    fn test_sequential_starting_at_printable() {
+        // Base16 sequential starting at '!' (U+0021)
+        let chars: Vec<char> = (0x21..0x31).map(|cp| char::from_u32(cp).unwrap()).collect();
+        let dict = Dictionary::new(chars).unwrap();
+        let metadata = AlphabetMetadata::from_dictionary(&dict);
+
+        assert_eq!(metadata.base, 16);
+        assert_eq!(metadata.bits_per_symbol, 4);
+        assert!(matches!(
+            metadata.strategy,
+            TranslationStrategy::Sequential {
+                start_codepoint: 0x21
+            }
+        ));
+        assert!(metadata.simd_compatible);
     }
 }

@@ -93,7 +93,7 @@ impl DictionariesConfig {
     pub fn from_toml(content: &str) -> Result<Self, toml::de::Error> {
         toml::from_str(content)
     }
-    
+
     /// Loads the built-in dictionary configurations.
     ///
     /// Returns the default alphabets bundled with the library.
@@ -101,13 +101,13 @@ impl DictionariesConfig {
         let content = include_str!("../../dictionaries.toml");
         Ok(Self::from_toml(content)?)
     }
-    
+
     /// Loads configuration from a custom file path.
     pub fn load_from_file(path: &std::path::Path) -> Result<Self, Box<dyn std::error::Error>> {
         let content = std::fs::read_to_string(path)?;
         Ok(Self::from_toml(&content)?)
     }
-    
+
     /// Loads configuration with user overrides from standard locations.
     ///
     /// Searches in priority order:
@@ -118,7 +118,7 @@ impl DictionariesConfig {
     /// Later configurations override earlier ones for matching dictionary names.
     pub fn load_with_overrides() -> Result<Self, Box<dyn std::error::Error>> {
         let mut config = Self::load_default()?;
-        
+
         // Try to load user config from ~/.config/base-d/dictionaries.toml
         if let Some(config_dir) = dirs::config_dir() {
             let user_config_path = config_dir.join("base-d").join("dictionaries.toml");
@@ -128,12 +128,15 @@ impl DictionariesConfig {
                         config.merge(user_config);
                     }
                     Err(e) => {
-                        eprintln!("Warning: Failed to load user config from {:?}: {}", user_config_path, e);
+                        eprintln!(
+                            "Warning: Failed to load user config from {:?}: {}",
+                            user_config_path, e
+                        );
                     }
                 }
             }
         }
-        
+
         // Try to load local config from ./dictionaries.toml
         let local_config_path = std::path::Path::new("dictionaries.toml");
         if local_config_path.exists() {
@@ -142,14 +145,17 @@ impl DictionariesConfig {
                     config.merge(local_config);
                 }
                 Err(e) => {
-                    eprintln!("Warning: Failed to load local config from {:?}: {}", local_config_path, e);
+                    eprintln!(
+                        "Warning: Failed to load local config from {:?}: {}",
+                        local_config_path, e
+                    );
                 }
             }
         }
-        
+
         Ok(config)
     }
-    
+
     /// Merges another configuration into this one.
     ///
     /// Alphabets from `other` override alphabets with the same name in `self`.
@@ -158,7 +164,7 @@ impl DictionariesConfig {
             self.dictionaries.insert(name, dictionary);
         }
     }
-    
+
     /// Retrieves an dictionary configuration by name.
     pub fn get_dictionary(&self, name: &str) -> Option<&DictionaryConfig> {
         self.dictionaries.get(name)
@@ -168,20 +174,20 @@ impl DictionariesConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_load_default_config() {
         let config = DictionariesConfig::load_default().unwrap();
         assert!(config.dictionaries.contains_key("cards"));
     }
-    
+
     #[test]
     fn test_cards_alphabet_length() {
         let config = DictionariesConfig::load_default().unwrap();
         let cards = config.get_dictionary("cards").unwrap();
         assert_eq!(cards.chars.chars().count(), 52);
     }
-    
+
     #[test]
     fn test_base64_chunked_mode() {
         let config = DictionariesConfig::load_default().unwrap();
@@ -189,14 +195,14 @@ mod tests {
         assert_eq!(base64.mode, EncodingMode::Chunked);
         assert_eq!(base64.padding, Some("=".to_string()));
     }
-    
+
     #[test]
     fn test_base64_math_mode() {
         let config = DictionariesConfig::load_default().unwrap();
         let base64_math = config.get_dictionary("base64_math").unwrap();
         assert_eq!(base64_math.mode, EncodingMode::BaseConversion);
     }
-    
+
     #[test]
     fn test_merge_configs() {
         let mut config1 = DictionariesConfig {
@@ -204,38 +210,47 @@ mod tests {
             compression: HashMap::new(),
             settings: Settings::default(),
         };
-        config1.dictionaries.insert("test1".to_string(), DictionaryConfig {
-            chars: "ABC".to_string(),
-            mode: EncodingMode::BaseConversion,
-            padding: None,
-            start_codepoint: None,
-        });
-        
+        config1.dictionaries.insert(
+            "test1".to_string(),
+            DictionaryConfig {
+                chars: "ABC".to_string(),
+                mode: EncodingMode::BaseConversion,
+                padding: None,
+                start_codepoint: None,
+            },
+        );
+
         let mut config2 = DictionariesConfig {
             dictionaries: HashMap::new(),
             compression: HashMap::new(),
             settings: Settings::default(),
         };
-        config2.dictionaries.insert("test2".to_string(), DictionaryConfig {
-            chars: "XYZ".to_string(),
-            mode: EncodingMode::BaseConversion,
-            padding: None,
-            start_codepoint: None,
-        });
-        config2.dictionaries.insert("test1".to_string(), DictionaryConfig {
-            chars: "DEF".to_string(),
-            mode: EncodingMode::BaseConversion,
-            padding: None,
-            start_codepoint: None,
-        });
-        
+        config2.dictionaries.insert(
+            "test2".to_string(),
+            DictionaryConfig {
+                chars: "XYZ".to_string(),
+                mode: EncodingMode::BaseConversion,
+                padding: None,
+                start_codepoint: None,
+            },
+        );
+        config2.dictionaries.insert(
+            "test1".to_string(),
+            DictionaryConfig {
+                chars: "DEF".to_string(),
+                mode: EncodingMode::BaseConversion,
+                padding: None,
+                start_codepoint: None,
+            },
+        );
+
         config1.merge(config2);
-        
+
         assert_eq!(config1.dictionaries.len(), 2);
         assert_eq!(config1.get_dictionary("test1").unwrap().chars, "DEF");
         assert_eq!(config1.get_dictionary("test2").unwrap().chars, "XYZ");
     }
-    
+
     #[test]
     fn test_load_from_toml_string() {
         let toml_content = r#"
@@ -248,4 +263,3 @@ mode = "base_conversion"
         assert_eq!(config.get_dictionary("custom").unwrap().chars, "0123456789");
     }
 }
-
