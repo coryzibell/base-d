@@ -410,12 +410,13 @@ impl GenericSimdCodec {
         // Each group of 3 input bytes (24 bits) becomes 4 output bytes (4 x 6 bits)
 
         // Shuffle indices to duplicate bytes for 6-bit extraction
+        // Each group of 3 input bytes becomes 4 output bytes with duplicates
         let shuffle_indices = vld1q_u8(
             [
-                1, 0, 2, 1, // bytes for output positions 0-3
-                4, 3, 5, 4, // bytes for output positions 4-7
-                7, 6, 8, 7, // bytes for output positions 8-11
-                10, 9, 11, 10, // bytes for output positions 12-15
+                0, 0, 1, 2, // bytes 0-2 -> positions 0-3
+                3, 3, 4, 5, // bytes 3-5 -> positions 4-7
+                6, 6, 7, 8, // bytes 6-8 -> positions 8-11
+                9, 9, 10, 11, // bytes 9-11 -> positions 12-15
             ]
             .as_ptr(),
         );
@@ -652,11 +653,6 @@ mod tests {
 
         assert!(result.is_some());
         let encoded = result.unwrap();
-
-        // Debug: print actual output
-        eprintln!("Encoded length: {}", encoded.len());
-        eprintln!("Encoded bytes: {:?}", encoded.as_bytes());
-        eprintln!("Encoded chars: {:?}", encoded.chars().collect::<Vec<_>>());
 
         // Verify length: 12 bytes processed -> 16 base64 chars
         assert_eq!(encoded.len(), 16);
