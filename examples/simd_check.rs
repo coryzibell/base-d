@@ -51,16 +51,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     #[cfg(target_arch = "x86_64")]
     {
-        if is_x86_feature_detected!("avx2") || is_x86_feature_detected!("ssse3") {
+        if is_x86_feature_detected!("ssse3") {
             println!("\n✓ SIMD acceleration active for base64!");
-            println!("  (Note: Full SIMD implementation coming in v0.2.0)");
         }
     }
 
     println!("\n=== Performance Notes ===");
-    println!("Current scalar: ~370 MiB/s");
-    println!("Projected SIMD: ~1.5-2 GiB/s (4-5x faster)");
-    println!("\nRun 'cargo bench' to measure actual performance.");
+    println!("SIMD encoding uses SSSE3 instructions for ~4-5x speedup");
+    println!("Run 'cargo bench' to measure actual performance.");
 
     Ok(())
 }

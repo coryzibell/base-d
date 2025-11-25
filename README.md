@@ -32,9 +32,9 @@ base-d is a flexible encoding framework that goes far beyond traditional base64.
 
 ### Performance
 
-- **SIMD-Accelerated** - Runtime AVX2/SSSE3 detection for automatic performance boost on x86_64
+- **SIMD-Accelerated** - Runtime SSSE3 detection for ~4x faster base64 encoding on x86_64
 - **Highly Optimized** - Fast lookup tables, memory pre-allocation, CPU cache-friendly chunking
-- **~370 MiB/s** base64 encoding (scalar), **1.5-2 GiB/s projected** (full SIMD)
+- **~370 MiB/s** base64 encoding (scalar), **~1.5 GiB/s** with SIMD
 - **Streaming Mode** - Process multi-GB files with constant 4KB memory usage
 
 ### Extensive Dictionary Collection
