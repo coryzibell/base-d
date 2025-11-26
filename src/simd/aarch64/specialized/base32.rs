@@ -263,7 +263,8 @@ unsafe fn decode_neon_impl(encoded: &[u8], variant: Base32Variant, result: &mut 
         let invalid_mask = vcgtq_s8(check_signed, vdupq_n_s8(0x1F));
 
         // Check if any byte is invalid (use vmaxvq_u8 to test if any bit set)
-        if vmaxvq_u8(vreinterpretq_u8_s8(invalid_mask)) != 0 {
+        // vcgtq_s8 returns uint8x16_t, already the correct type
+        if vmaxvq_u8(invalid_mask) != 0 {
             return false; // Invalid characters
         }
 
