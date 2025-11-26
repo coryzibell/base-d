@@ -9,6 +9,7 @@ use crate::core::dictionary::Dictionary;
 use std::sync::OnceLock;
 
 pub mod alphabets;
+pub mod lut;
 
 #[cfg(target_arch = "x86_64")]
 pub mod generic;
@@ -38,11 +39,16 @@ pub use aarch64::{
 #[cfg(target_arch = "x86_64")]
 pub use generic::GenericSimdCodec;
 
+pub use lut::SmallLutCodec;
+
 // CPU feature detection cache
 static HAS_AVX2: OnceLock<bool> = OnceLock::new();
 
 #[cfg(target_arch = "x86_64")]
 static HAS_SSSE3: OnceLock<bool> = OnceLock::new();
+
+#[cfg(target_arch = "x86_64")]
+static HAS_AVX512_VBMI: OnceLock<bool> = OnceLock::new();
 
 /// Check if AVX2 is available (cached after first call)
 #[cfg(target_arch = "x86_64")]
@@ -54,6 +60,12 @@ pub fn has_avx2() -> bool {
 #[cfg(target_arch = "x86_64")]
 pub fn has_ssse3() -> bool {
     *HAS_SSSE3.get_or_init(|| is_x86_feature_detected!("ssse3"))
+}
+
+/// Check if AVX-512 VBMI is available (cached after first call)
+#[cfg(target_arch = "x86_64")]
+pub fn has_avx512_vbmi() -> bool {
+    *HAS_AVX512_VBMI.get_or_init(|| is_x86_feature_detected!("avx512vbmi"))
 }
 
 #[cfg(all(not(target_arch = "x86_64"), not(target_arch = "aarch64")))]
@@ -130,7 +142,14 @@ pub fn encode_with_simd(data: &[u8], dict: &Dictionary) -> Option<String> {
         return codec.encode(data, dict);
     }
 
-    // 6. No SIMD optimization available
+    // 6. Try SmallLutCodec for small arbitrary alphabets (≤16 chars)
+    if base <= 16 && base.is_power_of_two() {
+        if let Some(codec) = SmallLutCodec::from_dictionary(dict) {
+            return codec.encode(data, dict);
+        }
+    }
+
+    // 7. No SIMD optimization available
     None
 }
 
@@ -175,7 +194,14 @@ pub fn encode_with_simd(data: &[u8], dict: &Dictionary) -> Option<String> {
         return codec.encode(data, dict);
     }
 
-    // 6. No SIMD optimization available
+    // 6. Try SmallLutCodec for small arbitrary alphabets (≤16 chars)
+    if base <= 16 && base.is_power_of_two() {
+        if let Some(codec) = SmallLutCodec::from_dictionary(dict) {
+            return codec.encode(data, dict);
+        }
+    }
+
+    // 7. No SIMD optimization available
     None
 }
 
@@ -238,7 +264,14 @@ pub fn decode_with_simd(encoded: &str, dict: &Dictionary) -> Option<Vec<u8>> {
         return codec.decode(encoded, dict);
     }
 
-    // 6. No SIMD optimization available
+    // 6. Try SmallLutCodec for small arbitrary alphabets (≤16 chars)
+    if base <= 16 && base.is_power_of_two() {
+        if let Some(codec) = SmallLutCodec::from_dictionary(dict) {
+            return codec.decode(encoded, dict);
+        }
+    }
+
+    // 7. No SIMD optimization available
     None
 }
 
@@ -284,7 +317,14 @@ pub fn decode_with_simd(encoded: &str, dict: &Dictionary) -> Option<Vec<u8>> {
         return codec.decode(encoded, dict);
     }
 
-    // 6. No SIMD optimization available
+    // 6. Try SmallLutCodec for small arbitrary alphabets (≤16 chars)
+    if base <= 16 && base.is_power_of_two() {
+        if let Some(codec) = SmallLutCodec::from_dictionary(dict) {
+            return codec.decode(encoded, dict);
+        }
+    }
+
+    // 7. No SIMD optimization available
     None
 }
 

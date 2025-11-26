@@ -46,7 +46,7 @@ impl GenericSimdCodec {
                 // Future: implement RangedTranslate
                 return None;
             }
-            TranslationStrategy::Arbitrary => {
+            TranslationStrategy::Arbitrary { .. } => {
                 return None; // Cannot SIMD optimize
             }
         };

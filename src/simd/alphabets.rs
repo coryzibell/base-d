@@ -217,7 +217,20 @@ pub enum TranslationStrategy {
     /// Example: custom shuffled alphabet
     /// Encoding: LUT required
     /// Decoding: reverse LUT/HashMap required
-    Arbitrary,
+    Arbitrary { alphabet_size: usize },
+}
+
+/// LUT codec selection strategy based on alphabet size
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LutStrategy {
+    /// Not applicable (sequential or ranged alphabet)
+    NotApplicable,
+    /// Small alphabet (<=16 chars): Direct pshufb/tbl lookup
+    SmallDirect,
+    /// Large alphabet (17-64 chars): Platform-dependent (vqtbl4q/vpermb/range-reduction)
+    LargePlatformDependent,
+    /// Very large (>64 chars): No SIMD benefit, scalar only
+    ScalarOnly,
 }
 
 /// Known range definitions for standard alphabets
@@ -327,6 +340,22 @@ impl AlphabetMetadata {
         self.simd_compatible
     }
 
+    /// Determine LUT codec suitability for arbitrary alphabets
+    pub fn lut_strategy(&self) -> LutStrategy {
+        match self.strategy {
+            TranslationStrategy::Arbitrary { alphabet_size } => {
+                if alphabet_size <= 16 {
+                    LutStrategy::SmallDirect
+                } else if alphabet_size <= 64 {
+                    LutStrategy::LargePlatformDependent
+                } else {
+                    LutStrategy::ScalarOnly
+                }
+            }
+            _ => LutStrategy::NotApplicable,
+        }
+    }
+
     /// Analyze a Dictionary and determine its translation strategy
     pub fn from_dictionary(dict: &Dictionary) -> Self {
         let base = dict.base();
@@ -336,7 +365,9 @@ impl AlphabetMetadata {
             return Self {
                 base,
                 bits_per_symbol: 0,
-                strategy: TranslationStrategy::Arbitrary,
+                strategy: TranslationStrategy::Arbitrary {
+                    alphabet_size: base,
+                },
                 simd_compatible: false,
             };
         }
@@ -351,7 +382,7 @@ impl AlphabetMetadata {
         // 2. Sequential or known ranged pattern
         // 3. Base supported by existing SIMD (4, 5, 6, 8 bits)
         let simd_compatible = matches!(bits_per_symbol, 4 | 5 | 6 | 8)
-            && !matches!(strategy, TranslationStrategy::Arbitrary);
+            && !matches!(strategy, TranslationStrategy::Arbitrary { .. });
 
         Self {
             base,
@@ -366,7 +397,9 @@ impl AlphabetMetadata {
         let chars: Vec<char> = (0..base).filter_map(|i| dict.encode_digit(i)).collect();
 
         if chars.len() != base {
-            return TranslationStrategy::Arbitrary;
+            return TranslationStrategy::Arbitrary {
+                alphabet_size: chars.len(),
+            };
         }
 
         // Check for sequential (all codepoints contiguous)
@@ -387,7 +420,9 @@ impl AlphabetMetadata {
             return TranslationStrategy::Ranged { ranges };
         }
 
-        TranslationStrategy::Arbitrary
+        TranslationStrategy::Arbitrary {
+            alphabet_size: base,
+        }
     }
 
     fn detect_ranges(chars: &[char]) -> Option<&'static [CharRange]> {
@@ -600,7 +635,10 @@ mod tests {
 
         assert_eq!(metadata.base, 64);
         assert_eq!(metadata.bits_per_symbol, 6);
-        assert!(matches!(metadata.strategy, TranslationStrategy::Arbitrary));
+        assert!(matches!(
+            metadata.strategy,
+            TranslationStrategy::Arbitrary { alphabet_size: 64 }
+        ));
         assert!(!metadata.simd_compatible);
     }
 
@@ -613,7 +651,10 @@ mod tests {
 
         assert_eq!(metadata.base, 10);
         assert_eq!(metadata.bits_per_symbol, 0);
-        assert!(matches!(metadata.strategy, TranslationStrategy::Arbitrary));
+        assert!(matches!(
+            metadata.strategy,
+            TranslationStrategy::Arbitrary { alphabet_size: 10 }
+        ));
         assert!(!metadata.simd_compatible);
     }
 
