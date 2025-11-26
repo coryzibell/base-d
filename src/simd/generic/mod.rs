@@ -742,10 +742,10 @@ impl GenericSimdCodec {
         _mm_shuffle_epi8(
             packed,
             _mm_setr_epi8(
-                2, 1, 0,     // Bytes 0-2
-                5, 4,        // Bytes 3-4
-                10, 9, 8,    // Bytes 5-7
-                13, 12,      // Bytes 8-9
+                2, 1, 0, // Bytes 0-2
+                5, 4, // Bytes 3-4
+                10, 9, 8, // Bytes 5-7
+                13, 12, // Bytes 8-9
                 0, 0, 0, 0, 0, 0, // Padding
             ),
         )

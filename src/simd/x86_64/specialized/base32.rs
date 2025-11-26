@@ -176,7 +176,9 @@ unsafe fn encode_avx2_impl(
 /// Same algorithm as SSSE3 unpack_5bit_simple, but applied to both lanes simultaneously.
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
-unsafe fn extract_5bit_indices_avx2(input: std::arch::x86_64::__m256i) -> std::arch::x86_64::__m256i {
+unsafe fn extract_5bit_indices_avx2(
+    input: std::arch::x86_64::__m256i,
+) -> std::arch::x86_64::__m256i {
     use std::arch::x86_64::*;
 
     // Extract both 128-bit lanes and process separately
@@ -489,11 +491,7 @@ unsafe fn decode_avx2_impl(encoded: &[u8], variant: Base32Variant, result: &mut 
     // Handle remainder with SSSE3 fallback
     if simd_bytes < input_no_padding.len() {
         let remainder = &input_no_padding[simd_bytes..];
-        if !decode_ssse3_impl(
-            remainder,
-            variant,
-            result,
-        ) {
+        if !decode_ssse3_impl(remainder, variant, result) {
             return false;
         }
     }
@@ -507,7 +505,9 @@ unsafe fn decode_avx2_impl(encoded: &[u8], variant: Base32Variant, result: &mut 
 /// Same algorithm as SSSE3 pack_5bit_to_8bit, but applied to both lanes simultaneously.
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
-unsafe fn pack_5bit_to_8bit_avx2(indices: std::arch::x86_64::__m256i) -> std::arch::x86_64::__m256i {
+unsafe fn pack_5bit_to_8bit_avx2(
+    indices: std::arch::x86_64::__m256i,
+) -> std::arch::x86_64::__m256i {
     use std::arch::x86_64::*;
 
     // Extract both 128-bit lanes and process separately
@@ -528,11 +528,7 @@ unsafe fn pack_5bit_to_8bit_avx2(indices: std::arch::x86_64::__m256i) -> std::ar
 /// Processes 16 input characters -> 10 output bytes per iteration
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "ssse3")]
-unsafe fn decode_ssse3_impl(
-    encoded: &[u8],
-    variant: Base32Variant,
-    result: &mut Vec<u8>,
-) -> bool {
+unsafe fn decode_ssse3_impl(encoded: &[u8], variant: Base32Variant, result: &mut Vec<u8>) -> bool {
     use std::arch::x86_64::*;
 
     const INPUT_BLOCK_SIZE: usize = 16;
@@ -634,19 +630,41 @@ unsafe fn get_decode_delta_tables(
             // delta_rebase: add this + input to get 5-bit index
 
             let delta_check = _mm_setr_epi8(
-                0x7F, 0x7F, 0x7F, // 0x0, 0x1, 0x2 - invalid
+                0x7F,
+                0x7F,
+                0x7F,                // 0x0, 0x1, 0x2 - invalid
                 (0x1F - 0x37) as i8, // 0x3: '2'-'7' -> check <= 0x1F
                 (0x1F - 0x4F) as i8, // 0x4: 'A'-'O' -> check <= 0x1F
                 (0x1F - 0x5A) as i8, // 0x5: 'P'-'Z' -> check <= 0x1F
-                0x7F, 0x7F, 0x7F, 0x7F, 0x7F, 0x7F, 0x7F, 0x7F, 0x7F, 0x7F, // 0x6-0xF - invalid
+                0x7F,
+                0x7F,
+                0x7F,
+                0x7F,
+                0x7F,
+                0x7F,
+                0x7F,
+                0x7F,
+                0x7F,
+                0x7F, // 0x6-0xF - invalid
             );
 
             let delta_rebase = _mm_setr_epi8(
-                0, 0, 0, // 0x0, 0x1, 0x2 - unused
+                0,
+                0,
+                0,                           // 0x0, 0x1, 0x2 - unused
                 (26i16 - b'2' as i16) as i8, // 0x3: '2' -> 26
                 (0i16 - b'A' as i16) as i8,  // 0x4: 'A' -> 0
                 (0i16 - b'A' as i16) as i8,  // 0x5: 'A' -> 0 (P-Z use same offset)
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 0x6-0xF - unused
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0, // 0x6-0xF - unused
             );
 
             (delta_check, delta_rebase)
@@ -659,19 +677,41 @@ unsafe fn get_decode_delta_tables(
             // 0x5x: 'P'-'V' (0x50-0x56)
 
             let delta_check = _mm_setr_epi8(
-                0x7F, 0x7F, 0x7F, // 0x0, 0x1, 0x2 - invalid
+                0x7F,
+                0x7F,
+                0x7F,                // 0x0, 0x1, 0x2 - invalid
                 (0x1F - 0x39) as i8, // 0x3: '0'-'9' -> check <= 0x1F
                 (0x1F - 0x4F) as i8, // 0x4: 'A'-'O' -> check <= 0x1F
                 (0x1F - 0x56) as i8, // 0x5: 'P'-'V' -> check <= 0x1F
-                0x7F, 0x7F, 0x7F, 0x7F, 0x7F, 0x7F, 0x7F, 0x7F, 0x7F, 0x7F, // 0x6-0xF - invalid
+                0x7F,
+                0x7F,
+                0x7F,
+                0x7F,
+                0x7F,
+                0x7F,
+                0x7F,
+                0x7F,
+                0x7F,
+                0x7F, // 0x6-0xF - invalid
             );
 
             let delta_rebase = _mm_setr_epi8(
-                0, 0, 0, // 0x0, 0x1, 0x2 - unused
+                0,
+                0,
+                0,                           // 0x0, 0x1, 0x2 - unused
                 (0i16 - b'0' as i16) as i8,  // 0x3: '0' -> 0
                 (10i16 - b'A' as i16) as i8, // 0x4: 'A' -> 10
                 (10i16 - b'A' as i16) as i8, // 0x5: 'A' -> 10 (P-V use same offset)
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 0x6-0xF - unused
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0, // 0x6-0xF - unused
             );
 
             (delta_check, delta_rebase)
@@ -729,10 +769,10 @@ unsafe fn pack_5bit_to_8bit(indices: std::arch::x86_64::__m128i) -> std::arch::x
     _mm_shuffle_epi8(
         packed,
         _mm_setr_epi8(
-            2, 1, 0,     // Bytes 0-2
-            5, 4,        // Bytes 3-4
-            10, 9, 8,    // Bytes 5-7
-            13, 12,      // Bytes 8-9
+            2, 1, 0, // Bytes 0-2
+            5, 4, // Bytes 3-4
+            10, 9, 8, // Bytes 5-7
+            13, 12, // Bytes 8-9
             0, 0, 0, 0, 0, 0, // Padding
         ),
     )

@@ -194,7 +194,7 @@ unsafe fn translate_encode_neon(
             // Adjustment for >= 26: we want '2' (50) for index 26
             // So offset should be 50 - 26 = 24 instead of 65
             // Difference: 24 - 65 = -41
-            let adjustment = vandq_u8(vreinterpretq_u8_s8(ge_26), vdupq_n_u8((-41i8) as u8));
+            let adjustment = vandq_u8(ge_26, vdupq_n_u8((-41i8) as u8));
 
             vaddq_u8(vaddq_u8(indices, base), adjustment)
         }
@@ -210,7 +210,7 @@ unsafe fn translate_encode_neon(
             // Adjustment for >= 10: we want 'A' (65) for index 10
             // So offset should be 65 - 10 = 55 instead of 48
             // Difference: 55 - 48 = 7
-            let adjustment = vandq_u8(vreinterpretq_u8_s8(ge_10), vdupq_n_u8(7));
+            let adjustment = vandq_u8(ge_10, vdupq_n_u8(7));
 
             vaddq_u8(vaddq_u8(indices, base), adjustment)
         }
