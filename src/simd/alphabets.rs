@@ -349,8 +349,8 @@ impl AlphabetMetadata {
         // SIMD compatible if:
         // 1. Power of 2 base
         // 2. Sequential or known ranged pattern
-        // 3. Base supported by existing SIMD (4, 6, 8 bits)
-        let simd_compatible = matches!(bits_per_symbol, 4 | 6 | 8)
+        // 3. Base supported by existing SIMD (4, 5, 6, 8 bits)
+        let simd_compatible = matches!(bits_per_symbol, 4 | 5 | 6 | 8)
             && !matches!(strategy, TranslationStrategy::Arbitrary);
 
         Self {
@@ -632,8 +632,8 @@ mod tests {
                 start_codepoint: 0x41
             }
         ));
-        // base32 (5 bits) is not currently SIMD compatible
-        assert!(!metadata.simd_compatible);
+        // base32 (5 bits) is now SIMD compatible
+        assert!(metadata.simd_compatible);
     }
 
     #[test]

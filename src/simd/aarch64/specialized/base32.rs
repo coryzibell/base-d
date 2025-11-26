@@ -14,27 +14,29 @@ use super::common;
 use crate::core::dictionary::Dictionary;
 use crate::simd::alphabets::Base32Variant;
 
-/// Base32 encoding
+/// NEON-accelerated base32 encoding
 ///
-/// NOTE: Currently uses scalar implementation due to complexity of 5-bit packing with SIMD.
-/// The multiply-shift approach from base64 doesn't translate cleanly to 5-bit boundaries.
-/// TODO: Implement optimized SIMD encode path using proper shuffle masks.
-pub fn encode(data: &[u8], dictionary: &Dictionary, _variant: Base32Variant) -> Option<String> {
+/// Processes 10 input bytes -> 16 output characters per iteration.
+/// Falls back to scalar for remainder.
+pub fn encode(data: &[u8], dictionary: &Dictionary, variant: Base32Variant) -> Option<String> {
     // Pre-allocate output
     let output_len = ((data.len() + 4) / 5) * 8;
     let mut result = String::with_capacity(output_len);
 
-    // Use scalar encoding
-    encode_scalar_remainder(data, dictionary, &mut result);
+    unsafe {
+        encode_neon_impl(data, dictionary, variant, &mut result);
+    }
 
     Some(result)
 }
 
-/// SIMD-accelerated base32 decoding
+/// NEON-accelerated base32 decoding
 ///
-/// NOTE: Currently uses scalar fallback due to complexity of 5-bit unpacking.
-/// TODO: Implement optimized SIMD decode path.
+/// Processes 16 input characters -> 10 output bytes per iteration.
+/// Falls back to scalar for remainder.
 pub fn decode(encoded: &str, variant: Base32Variant) -> Option<Vec<u8>> {
+    let encoded_bytes = encoded.as_bytes();
+
     // Calculate output size
     let input_no_padding = encoded.trim_end_matches('=');
     let output_len = (input_no_padding.len() / 8) * 5
@@ -49,27 +51,10 @@ pub fn decode(encoded: &str, variant: Base32Variant) -> Option<Vec<u8>> {
 
     let mut result = Vec::with_capacity(output_len);
 
-    // Use scalar decode for now
-    // The 5-bit packing is complex and the multiply-add approach from base64
-    // doesn't translate cleanly. Encoding is SIMD-accelerated which provides
-    // the primary performance benefit.
-    if !decode_scalar_remainder(
-        input_no_padding.as_bytes(),
-        &mut |c| match variant {
-            Base32Variant::Rfc4648 => match c {
-                b'A'..=b'Z' => Some((c - b'A') as u8),
-                b'2'..=b'7' => Some((c - b'2' + 26) as u8),
-                _ => None,
-            },
-            Base32Variant::Rfc4648Hex => match c {
-                b'0'..=b'9' => Some((c - b'0') as u8),
-                b'A'..=b'V' => Some((c - b'A' + 10) as u8),
-                _ => None,
-            },
-        },
-        &mut result,
-    ) {
-        return None;
+    unsafe {
+        if !decode_neon_impl(encoded_bytes, variant, &mut result) {
+            return None;
+        }
     }
 
     Some(result)
@@ -88,6 +73,430 @@ fn encode_scalar_remainder(data: &[u8], dictionary: &Dictionary, result: &mut St
             result.push(pad_char);
         }
     }
+}
+
+/// NEON base32 encoding implementation
+///
+/// Processes 10 input bytes -> 16 output characters per iteration.
+#[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "neon")]
+unsafe fn encode_neon_impl(
+    data: &[u8],
+    dictionary: &Dictionary,
+    variant: Base32Variant,
+    result: &mut String,
+) {
+    use std::arch::aarch64::*;
+
+    const BLOCK_SIZE: usize = 10; // 10 bytes -> 16 chars
+
+    // Need at least 16 bytes in buffer to safely load 128 bits
+    if data.len() < 16 {
+        // Fall back to scalar for small inputs
+        encode_scalar_remainder(data, dictionary, result);
+        return;
+    }
+
+    // Process blocks of 10 bytes. We load 16 bytes but only use 10.
+    // Ensure we don't read past the buffer: need 6 extra bytes after last block
+    let safe_len = if data.len() >= 6 { data.len() - 6 } else { 0 };
+    let num_blocks = safe_len / BLOCK_SIZE;
+    let simd_bytes = num_blocks * BLOCK_SIZE;
+
+    let mut offset = 0;
+    for _ in 0..num_blocks {
+        // Load 16 bytes (we only use the first 10)
+        let input_vec = vld1q_u8(data.as_ptr().add(offset));
+
+        // Extract 5-bit indices from 10 packed bytes
+        let indices = unpack_5bit_simple_neon(input_vec);
+
+        // Translate 5-bit indices to ASCII
+        let encoded = translate_encode_neon(indices, variant);
+
+        // Store 16 output characters
+        let mut output_buf = [0u8; 16];
+        vst1q_u8(output_buf.as_mut_ptr(), encoded);
+
+        // Append to result (safe because base32 is ASCII)
+        for &byte in &output_buf {
+            result.push(byte as char);
+        }
+
+        offset += BLOCK_SIZE;
+    }
+
+    // Handle remainder with scalar code
+    if simd_bytes < data.len() {
+        encode_scalar_remainder(&data[simd_bytes..], dictionary, result);
+    }
+}
+
+/// Simple 5-bit unpacking using direct shifts and masks (NEON)
+///
+/// Extracts 16 x 5-bit values from 10 bytes
+#[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "neon")]
+unsafe fn unpack_5bit_simple_neon(
+    input: std::arch::aarch64::uint8x16_t,
+) -> std::arch::aarch64::uint8x16_t {
+    use std::arch::aarch64::*;
+
+    // Extract bytes 0-9 into a buffer for easier manipulation
+    let mut buf = [0u8; 16];
+    vst1q_u8(buf.as_mut_ptr(), input);
+
+    // Extract 5-bit indices manually (two 5-byte groups)
+    let mut indices = [0u8; 16];
+
+    // First group: bytes 0-4 -> indices 0-7
+    indices[0] = buf[0] >> 3;
+    indices[1] = ((buf[0] & 0x07) << 2) | (buf[1] >> 6);
+    indices[2] = (buf[1] >> 1) & 0x1F;
+    indices[3] = ((buf[1] & 0x01) << 4) | (buf[2] >> 4);
+    indices[4] = ((buf[2] & 0x0F) << 1) | (buf[3] >> 7);
+    indices[5] = (buf[3] >> 2) & 0x1F;
+    indices[6] = ((buf[3] & 0x03) << 3) | (buf[4] >> 5);
+    indices[7] = buf[4] & 0x1F;
+
+    // Second group: bytes 5-9 -> indices 8-15
+    indices[8] = buf[5] >> 3;
+    indices[9] = ((buf[5] & 0x07) << 2) | (buf[6] >> 6);
+    indices[10] = (buf[6] >> 1) & 0x1F;
+    indices[11] = ((buf[6] & 0x01) << 4) | (buf[7] >> 4);
+    indices[12] = ((buf[7] & 0x0F) << 1) | (buf[8] >> 7);
+    indices[13] = (buf[8] >> 2) & 0x1F;
+    indices[14] = ((buf[8] & 0x03) << 3) | (buf[9] >> 5);
+    indices[15] = buf[9] & 0x1F;
+
+    vld1q_u8(indices.as_ptr())
+}
+
+/// Translate 5-bit indices (0-31) to base32 ASCII characters (NEON)
+#[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "neon")]
+unsafe fn translate_encode_neon(
+    indices: std::arch::aarch64::uint8x16_t,
+    variant: Base32Variant,
+) -> std::arch::aarch64::uint8x16_t {
+    use std::arch::aarch64::*;
+
+    match variant {
+        Base32Variant::Rfc4648 => {
+            // RFC 4648 standard: 0-25 -> 'A'-'Z', 26-31 -> '2'-'7'
+            // Create mask for indices >= 26
+            let indices_signed = vreinterpretq_s8_u8(indices);
+            let ge_26 = vcgtq_s8(indices_signed, vdupq_n_s8(25));
+
+            // Base offset is 'A' (65) for all
+            let base = vdupq_n_u8(b'A');
+
+            // Adjustment for >= 26: we want '2' (50) for index 26
+            // So offset should be 50 - 26 = 24 instead of 65
+            // Difference: 24 - 65 = -41
+            let adjustment = vandq_u8(vreinterpretq_u8_s8(ge_26), vdupq_n_u8((-41i8) as u8));
+
+            vaddq_u8(vaddq_u8(indices, base), adjustment)
+        }
+        Base32Variant::Rfc4648Hex => {
+            // RFC 4648 hex: 0-9 -> '0'-'9', 10-31 -> 'A'-'V'
+            // Create mask for indices >= 10
+            let indices_signed = vreinterpretq_s8_u8(indices);
+            let ge_10 = vcgtq_s8(indices_signed, vdupq_n_s8(9));
+
+            // Base offset is '0' (48) for indices 0-9
+            let base = vdupq_n_u8(b'0');
+
+            // Adjustment for >= 10: we want 'A' (65) for index 10
+            // So offset should be 65 - 10 = 55 instead of 48
+            // Difference: 55 - 48 = 7
+            let adjustment = vandq_u8(vreinterpretq_u8_s8(ge_10), vdupq_n_u8(7));
+
+            vaddq_u8(vaddq_u8(indices, base), adjustment)
+        }
+    }
+}
+
+/// NEON base32 decoding implementation
+///
+/// Based on Lemire's algorithm: https://lemire.me/blog/2023/07/20/fast-decoding-of-base32-strings/
+/// Processes 16 input characters -> 10 output bytes per iteration
+#[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "neon")]
+unsafe fn decode_neon_impl(encoded: &[u8], variant: Base32Variant, result: &mut Vec<u8>) -> bool {
+    use std::arch::aarch64::*;
+
+    const INPUT_BLOCK_SIZE: usize = 16;
+
+    // Strip padding
+    let input_no_padding = if let Some(last_non_pad) = encoded.iter().rposition(|&b| b != b'=') {
+        &encoded[..=last_non_pad]
+    } else {
+        encoded
+    };
+
+    // Get decode LUTs for this variant
+    let (delta_check, delta_rebase) = get_decode_delta_tables_neon(variant);
+
+    // Calculate number of full 16-byte blocks
+    let num_blocks = input_no_padding.len() / INPUT_BLOCK_SIZE;
+    let simd_bytes = num_blocks * INPUT_BLOCK_SIZE;
+
+    // Process full blocks
+    for round in 0..num_blocks {
+        let offset = round * INPUT_BLOCK_SIZE;
+
+        // Load 16 bytes
+        let input_vec = vld1q_u8(input_no_padding.as_ptr().add(offset));
+
+        // Validate and translate using hash-based approach
+        // 1. Extract hash key (upper 4 bits)
+        let input_u32 = vreinterpretq_u32_u8(input_vec);
+        let hash_key_u32 = vandq_u32(vshrq_n_u32(input_u32, 4), vdupq_n_u32(0x0F0F0F0F));
+        let hash_key = vreinterpretq_u8_u32(hash_key_u32);
+
+        // 2. Validate: check = delta_check[hash_key] + input
+        let check = vaddq_u8(vqtbl1q_u8(delta_check, hash_key), input_vec);
+
+        // 3. Check should be <= 0x1F (31) for valid base32 characters
+        let check_signed = vreinterpretq_s8_u8(check);
+        let invalid_mask = vcgtq_s8(check_signed, vdupq_n_s8(0x1F));
+
+        // Check if any byte is invalid (use vmaxvq_u8 to test if any bit set)
+        if vmaxvq_u8(vreinterpretq_u8_s8(invalid_mask)) != 0 {
+            return false; // Invalid characters
+        }
+
+        // 4. Translate: indices = input + delta_rebase[hash_key]
+        let indices = vaddq_u8(input_vec, vqtbl1q_u8(delta_rebase, hash_key));
+
+        // Pack 5-bit values into bytes (16 chars -> 10 bytes)
+        let decoded = pack_5bit_to_8bit_neon(indices);
+
+        // Store 10 bytes
+        let mut output_buf = [0u8; 16];
+        vst1q_u8(output_buf.as_mut_ptr(), decoded);
+        result.extend_from_slice(&output_buf[0..10]);
+    }
+
+    // Handle remainder with scalar fallback
+    if simd_bytes < input_no_padding.len() {
+        let remainder = &input_no_padding[simd_bytes..];
+        if !decode_scalar_remainder(
+            remainder,
+            &mut |c| match variant {
+                Base32Variant::Rfc4648 => match c {
+                    b'A'..=b'Z' => Some((c - b'A') as u8),
+                    b'2'..=b'7' => Some((c - b'2' + 26) as u8),
+                    _ => None,
+                },
+                Base32Variant::Rfc4648Hex => match c {
+                    b'0'..=b'9' => Some((c - b'0') as u8),
+                    b'A'..=b'V' => Some((c - b'A' + 10) as u8),
+                    _ => None,
+                },
+            },
+            result,
+        ) {
+            return false;
+        }
+    }
+
+    true
+}
+
+/// Get decode delta tables for hash-based validation (NEON)
+///
+/// Returns (delta_check, delta_rebase) lookup tables indexed by high nibble.
+/// These tables enable single-shuffle validation and translation.
+#[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "neon")]
+unsafe fn get_decode_delta_tables_neon(
+    variant: Base32Variant,
+) -> (
+    std::arch::aarch64::uint8x16_t,
+    std::arch::aarch64::uint8x16_t,
+) {
+    use std::arch::aarch64::*;
+
+    match variant {
+        Base32Variant::Rfc4648 => {
+            // RFC 4648 standard: A-Z (0x41-0x5A) -> 0-25, 2-7 (0x32-0x37) -> 26-31
+            // Hash key is high nibble (input >> 4)
+            //
+            // High nibble ranges:
+            // 0x3x: '2'-'7' (0x32-0x37)
+            // 0x4x: 'A'-'O' (0x41-0x4F)
+            // 0x5x: 'P'-'Z' (0x50-0x5A)
+
+            let delta_check = vld1q_u8(
+                [
+                    0x7F,
+                    0x7F,
+                    0x7F,                // 0x0, 0x1, 0x2 - invalid
+                    (0x1F - 0x37) as u8, // 0x3: '2'-'7' -> check <= 0x1F
+                    (0x1F - 0x4F) as u8, // 0x4: 'A'-'O' -> check <= 0x1F
+                    (0x1F - 0x5A) as u8, // 0x5: 'P'-'Z' -> check <= 0x1F
+                    0x7F,
+                    0x7F,
+                    0x7F,
+                    0x7F,
+                    0x7F,
+                    0x7F,
+                    0x7F,
+                    0x7F,
+                    0x7F,
+                    0x7F, // 0x6-0xF - invalid
+                ]
+                .as_ptr(),
+            );
+
+            let delta_rebase = vld1q_u8(
+                [
+                    0,
+                    0,
+                    0,                           // 0x0, 0x1, 0x2 - unused
+                    (26i16 - b'2' as i16) as u8, // 0x3: '2' -> 26
+                    (0i16 - b'A' as i16) as u8,  // 0x4: 'A' -> 0
+                    (0i16 - b'A' as i16) as u8,  // 0x5: 'A' -> 0 (P-Z use same offset)
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0, // 0x6-0xF - unused
+                ]
+                .as_ptr(),
+            );
+
+            (delta_check, delta_rebase)
+        }
+        Base32Variant::Rfc4648Hex => {
+            // RFC 4648 hex: 0-9 (0x30-0x39) -> 0-9, A-V (0x41-0x56) -> 10-31
+            // High nibble ranges:
+            // 0x3x: '0'-'9' (0x30-0x39)
+            // 0x4x: 'A'-'O' (0x41-0x4F)
+            // 0x5x: 'P'-'V' (0x50-0x56)
+
+            let delta_check = vld1q_u8(
+                [
+                    0x7F,
+                    0x7F,
+                    0x7F,                // 0x0, 0x1, 0x2 - invalid
+                    (0x1F - 0x39) as u8, // 0x3: '0'-'9' -> check <= 0x1F
+                    (0x1F - 0x4F) as u8, // 0x4: 'A'-'O' -> check <= 0x1F
+                    (0x1F - 0x56) as u8, // 0x5: 'P'-'V' -> check <= 0x1F
+                    0x7F,
+                    0x7F,
+                    0x7F,
+                    0x7F,
+                    0x7F,
+                    0x7F,
+                    0x7F,
+                    0x7F,
+                    0x7F,
+                    0x7F, // 0x6-0xF - invalid
+                ]
+                .as_ptr(),
+            );
+
+            let delta_rebase = vld1q_u8(
+                [
+                    0,
+                    0,
+                    0,                           // 0x0, 0x1, 0x2 - unused
+                    (0i16 - b'0' as i16) as u8,  // 0x3: '0' -> 0
+                    (10i16 - b'A' as i16) as u8, // 0x4: 'A' -> 10
+                    (10i16 - b'A' as i16) as u8, // 0x5: 'A' -> 10 (P-V use same offset)
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0, // 0x6-0xF - unused
+                ]
+                .as_ptr(),
+            );
+
+            (delta_check, delta_rebase)
+        }
+    }
+}
+
+/// Pack 16 bytes of 5-bit indices into 10 bytes (NEON)
+///
+/// Based on Lemire's multiply-shift approach for base32.
+/// 16 5-bit values -> 10 8-bit bytes
+#[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "neon")]
+unsafe fn pack_5bit_to_8bit_neon(
+    indices: std::arch::aarch64::uint8x16_t,
+) -> std::arch::aarch64::uint8x16_t {
+    use std::arch::aarch64::*;
+
+    // Process in groups of 8 chars -> 5 bytes
+    // Input: 8 bytes, each containing 5-bit value (0x00-0x1F)
+    // Output: 5 packed bytes
+
+    // Stage 1: Emulate _mm_maddubs_epi16 using NEON
+    // _mm_maddubs_epi16: multiply pairs of bytes, then add adjacent results
+    // Multiply by 0x20 (32) to shift left by 5 bits, 0x01 to keep in place
+
+    let indices_u16 = vreinterpretq_u16_u8(indices);
+
+    // Extract even and odd bytes
+    let even = vandq_u16(indices_u16, vdupq_n_u16(0xFF)); // Low byte of each pair
+    let odd = vshrq_n_u16(indices_u16, 8); // High byte of each pair
+
+    // Multiply: even * 0x01 + odd * 0x20 = even + (odd << 5)
+    let merged = vaddq_u16(even, vshlq_n_u16(odd, 5));
+
+    // Stage 2: Emulate _mm_madd_epi16 using NEON
+    // Combine 16-bit pairs into 32-bit values
+    let merged_u32 = vreinterpretq_u32_u16(merged);
+
+    // Extract low and high 16-bit values from each 32-bit pair
+    let lo = vandq_u32(merged_u32, vdupq_n_u32(0xFFFF));
+    let hi = vshrq_n_u32(merged_u32, 16);
+
+    // Pattern from x86: multiply by [0x00104000, 0x00010400, ...]
+    // This is effectively: lo * 0x4000 + hi * 0x01 for first pair,
+    //                      lo * 0x0400 + hi * 0x01 for second pair
+    // But we need to apply different multipliers per lane.
+
+    // Simplified: combine with shifts
+    // First and third 32-bit values: lo << 10 | hi
+    // Second and fourth 32-bit values: lo << 10 | hi (same pattern)
+
+    let combined_low = vorrq_u32(vshlq_n_u32(lo, 10), hi);
+
+    // Stage 3: Shift and combine to consolidate bits
+    let combined_u64 = vreinterpretq_u64_u32(combined_low);
+    let shifted = vshrq_n_u64(combined_u64, 48);
+    let packed = vreinterpretq_u32_u64(vorrq_u64(combined_u64, shifted));
+
+    // Stage 4: Shuffle to extract the 10 valid bytes in correct order
+    let shuffle_mask = vld1q_u8(
+        [
+            2, 1, 0, // Bytes 0-2
+            5, 4, // Bytes 3-4
+            10, 9, 8, // Bytes 5-7
+            13, 12, // Bytes 8-9
+            0, 0, 0, 0, 0, 0, // Padding
+        ]
+        .as_ptr(),
+    );
+
+    let packed_bytes = vreinterpretq_u8_u32(packed);
+    vqtbl1q_u8(packed_bytes, shuffle_mask)
 }
 
 /// Decode bytes using scalar algorithm
