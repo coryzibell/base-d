@@ -449,7 +449,8 @@ unsafe fn pack_5bit_to_8bit_neon(
 
     // Stage 1: Emulate _mm_maddubs_epi16 using NEON
     // _mm_maddubs_epi16: multiply pairs of bytes, then add adjacent results
-    // Multiply by 0x20 (32) to shift left by 5 bits, 0x01 to keep in place
+    // With constant 0x01200120: low byte * 0x20 (32) + high byte * 0x01
+    // This computes (even << 5) | odd for each 16-bit output
 
     let indices_u16 = vreinterpretq_u16_u8(indices);
 
@@ -457,27 +458,22 @@ unsafe fn pack_5bit_to_8bit_neon(
     let even = vandq_u16(indices_u16, vdupq_n_u16(0xFF)); // Low byte of each pair
     let odd = vshrq_n_u16(indices_u16, 8); // High byte of each pair
 
-    // Multiply: even * 0x01 + odd * 0x20 = even + (odd << 5)
-    let merged = vaddq_u16(even, vshlq_n_u16(odd, 5));
+    // Multiply: even * 0x20 + odd * 0x01 = (even << 5) + odd
+    let merged = vaddq_u16(vshlq_n_u16(even, 5), odd);
 
     // Stage 2: Emulate _mm_madd_epi16 using NEON
-    // Combine 16-bit pairs into 32-bit values
-    let merged_u32 = vreinterpretq_u32_u16(merged);
+    // _mm_madd_epi16 multiplies pairs of 16-bit values and horizontally adds to 32-bit
+    // x86 multiplier pattern (as 16-bit values): [0x4000, 0x0010, 0x0400, 0x0001, 0x4000, 0x0010, 0x0400, 0x0001]
+    // Result[i] = merged[2*i] * mult[2*i] + merged[2*i+1] * mult[2*i+1]
 
-    // Extract low and high 16-bit values from each 32-bit pair
-    let lo = vandq_u32(merged_u32, vdupq_n_u32(0xFFFF));
-    let hi = vshrq_n_u32(merged_u32, 16);
+    let multipliers = vld1q_u16([0x4000, 0x0010, 0x0400, 0x0001, 0x4000, 0x0010, 0x0400, 0x0001].as_ptr());
 
-    // Pattern from x86: multiply by [0x00104000, 0x00010400, ...]
-    // This is effectively: lo * 0x4000 + hi * 0x01 for first pair,
-    //                      lo * 0x0400 + hi * 0x01 for second pair
-    // But we need to apply different multipliers per lane.
+    // Multiply all 16-bit pairs
+    let products = vmulq_u16(merged, multipliers);
 
-    // Simplified: combine with shifts
-    // First and third 32-bit values: lo << 10 | hi
-    // Second and fourth 32-bit values: lo << 10 | hi (same pattern)
-
-    let combined_low = vorrq_u32(vshlq_n_u32(lo, 10), hi);
+    // Horizontally add adjacent pairs to get 32-bit results
+    // NEON provides vpaddlq_u16 which pairwise adds and widens to 32-bit
+    let combined_low = vpaddlq_u16(products);
 
     // Stage 3: Shift and combine to consolidate bits
     let combined_u64 = vreinterpretq_u64_u32(combined_low);
