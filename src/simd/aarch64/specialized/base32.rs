@@ -434,7 +434,8 @@ unsafe fn get_decode_delta_tables_neon(
 
 /// Pack 16 bytes of 5-bit indices into 10 bytes (NEON)
 ///
-/// Based on Lemire's multiply-shift approach for base32.
+/// Uses direct bit manipulation since NEON lacks direct equivalents to
+/// x86's _mm_maddubs_epi16 and _mm_madd_epi16 intrinsics.
 /// 16 5-bit values -> 10 8-bit bytes
 #[cfg(target_arch = "aarch64")]
 #[target_feature(enable = "neon")]
@@ -443,57 +444,28 @@ unsafe fn pack_5bit_to_8bit_neon(
 ) -> std::arch::aarch64::uint8x16_t {
     use std::arch::aarch64::*;
 
-    // Process in groups of 8 chars -> 5 bytes
-    // Input: 8 bytes, each containing 5-bit value (0x00-0x1F)
-    // Output: 5 packed bytes
+    // Extract indices to buffer for bit manipulation
+    let mut idx = [0u8; 16];
+    vst1q_u8(idx.as_mut_ptr(), indices);
 
-    // Stage 1: Emulate _mm_maddubs_epi16 using NEON
-    // _mm_maddubs_epi16: multiply pairs of bytes, then add adjacent results
-    // With constant 0x01200120: low byte * 0x20 (32) + high byte * 0x01
-    // This computes (even << 5) | odd for each 16-bit output
+    let mut out = [0u8; 16];
 
-    let indices_u16 = vreinterpretq_u16_u8(indices);
+    // Pack first group: 8 x 5-bit values -> 5 bytes
+    // Bits: [4:0][4:0][4:0][4:0][4:0][4:0][4:0][4:0] -> 40 bits = 5 bytes
+    out[0] = (idx[0] << 3) | (idx[1] >> 2);
+    out[1] = (idx[1] << 6) | (idx[2] << 1) | (idx[3] >> 4);
+    out[2] = (idx[3] << 4) | (idx[4] >> 1);
+    out[3] = (idx[4] << 7) | (idx[5] << 2) | (idx[6] >> 3);
+    out[4] = (idx[6] << 5) | idx[7];
 
-    // Extract even and odd bytes
-    let even = vandq_u16(indices_u16, vdupq_n_u16(0xFF)); // Low byte of each pair
-    let odd = vshrq_n_u16(indices_u16, 8); // High byte of each pair
+    // Pack second group: 8 x 5-bit values -> 5 bytes
+    out[5] = (idx[8] << 3) | (idx[9] >> 2);
+    out[6] = (idx[9] << 6) | (idx[10] << 1) | (idx[11] >> 4);
+    out[7] = (idx[11] << 4) | (idx[12] >> 1);
+    out[8] = (idx[12] << 7) | (idx[13] << 2) | (idx[14] >> 3);
+    out[9] = (idx[14] << 5) | idx[15];
 
-    // Multiply: even * 0x20 + odd * 0x01 = (even << 5) + odd
-    let merged = vaddq_u16(vshlq_n_u16(even, 5), odd);
-
-    // Stage 2: Emulate _mm_madd_epi16 using NEON
-    // _mm_madd_epi16 multiplies pairs of 16-bit values and horizontally adds to 32-bit
-    // x86 multiplier pattern (as 16-bit values): [0x4000, 0x0010, 0x0400, 0x0001, 0x4000, 0x0010, 0x0400, 0x0001]
-    // Result[i] = merged[2*i] * mult[2*i] + merged[2*i+1] * mult[2*i+1]
-
-    let multipliers = vld1q_u16([0x4000, 0x0010, 0x0400, 0x0001, 0x4000, 0x0010, 0x0400, 0x0001].as_ptr());
-
-    // Multiply all 16-bit pairs
-    let products = vmulq_u16(merged, multipliers);
-
-    // Horizontally add adjacent pairs to get 32-bit results
-    // NEON provides vpaddlq_u16 which pairwise adds and widens to 32-bit
-    let combined_low = vpaddlq_u16(products);
-
-    // Stage 3: Shift and combine to consolidate bits
-    let combined_u64 = vreinterpretq_u64_u32(combined_low);
-    let shifted = vshrq_n_u64(combined_u64, 48);
-    let packed = vreinterpretq_u32_u64(vorrq_u64(combined_u64, shifted));
-
-    // Stage 4: Shuffle to extract the 10 valid bytes in correct order
-    let shuffle_mask = vld1q_u8(
-        [
-            2, 1, 0, // Bytes 0-2
-            5, 4, // Bytes 3-4
-            10, 9, 8, // Bytes 5-7
-            13, 12, // Bytes 8-9
-            0, 0, 0, 0, 0, 0, // Padding
-        ]
-        .as_ptr(),
-    );
-
-    let packed_bytes = vreinterpretq_u8_u32(packed);
-    vqtbl1q_u8(packed_bytes, shuffle_mask)
+    vld1q_u8(out.as_ptr())
 }
 
 /// Decode bytes using scalar algorithm
