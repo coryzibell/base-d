@@ -69,6 +69,10 @@ struct Cli {
     /// Optionally specify a dictionary (default: base256_matrix)
     #[arg(long, value_name = "DICTIONARY")]
     neo: Option<Option<String>>,
+
+    /// Random dictionary encoding: Pick a random dictionary and encode with it
+    #[arg(long, conflicts_with = "encode")]
+    dejavu: bool,
 }
 
 /// Load xxHash configuration from CLI args and config file.
@@ -392,6 +396,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if cli.raw {
         // Raw binary output
         io::stdout().write_all(&data)?;
+    } else if cli.dejavu {
+        // Random dictionary encoding
+        use rand::seq::SliceRandom;
+        let mut rng = rand::thread_rng();
+
+        let dict_names: Vec<&String> = config.dictionaries.keys().collect();
+        let random_dict = dict_names
+            .choose(&mut rng)
+            .ok_or("No dictionaries available")?;
+
+        eprintln!("dejavu: using {}", random_dict);
+
+        let encode_alphabet = create_alphabet(random_dict)?;
+        let encoded = encode(&data, &encode_alphabet);
+        println!("{}", encoded);
     } else if let Some(encode_name) = &cli.encode {
         // Explicit encoding
         let encode_alphabet = create_alphabet(encode_name)?;
