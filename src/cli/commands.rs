@@ -64,9 +64,9 @@ pub fn matrix_mode(
         // For base256 dictionaries: 1 byte = 1 character (8 bits perfectly matches log2(256))
         // The base256_matrix dictionary uses half-width katakana (single-width chars)
         let bytes_per_line = if dictionary.base() == 256 {
-            term_width  // Perfect 1:1 encoding for base256
+            term_width // Perfect 1:1 encoding for base256
         } else {
-            term_width / 2  // Conservative estimate for other bases
+            term_width / 2 // Conservative estimate for other bases
         };
         let mut random_bytes = vec![0u8; bytes_per_line];
 
@@ -165,6 +165,7 @@ pub fn detect_mode(
 }
 
 /// Streaming decode mode
+#[allow(clippy::too_many_arguments)]
 pub fn streaming_decode(
     config: &DictionaryRegistry,
     decode_name: &str,
@@ -223,6 +224,7 @@ pub fn streaming_decode(
 }
 
 /// Streaming encode mode
+#[allow(clippy::too_many_arguments)]
 pub fn streaming_encode(
     config: &DictionaryRegistry,
     encode_name: &str,
