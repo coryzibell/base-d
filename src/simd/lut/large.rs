@@ -731,13 +731,13 @@ impl LargeLutCodec {
 
         // Shuffle mask: Reshuffle bytes to prepare for 6-bit extraction
         // For each group of 3 input bytes ABC (24 bits) -> 4 output indices (4 x 6 bits)
-        // Position needs: 0:[A], 1:[A+B], 2:[B+C], 3:[C]
+        // Matches specialized/base64.rs reshuffle pattern
         let shuffle_indices = vld1q_u8(
             [
-                0, 1, 1, 2, // bytes 0-2 -> positions 0-3
-                3, 4, 4, 5, // bytes 3-5 -> positions 4-7
-                6, 7, 7, 8, // bytes 6-8 -> positions 8-11
-                9, 10, 10, 11, // bytes 9-11 -> positions 12-15
+                1, 0, 2, 1, // bytes 0-2 -> positions 0-3
+                4, 3, 5, 4, // bytes 3-5 -> positions 4-7
+                7, 6, 8, 7, // bytes 6-8 -> positions 8-11
+                10, 9, 11, 10, // bytes 9-11 -> positions 12-15
             ]
             .as_ptr(),
         );
@@ -746,16 +746,18 @@ impl LargeLutCodec {
         let shuffled_u32 = vreinterpretq_u32_u8(shuffled);
 
         // Extract 6-bit groups using shifts and masks
-        // First extraction: positions 0 and 2 in each group (using mulhi emulation)
+        // First extraction: positions 0 and 2 in each group
+        // Mask 0x0FC0FC00: isolate specific bit positions
         let t0 = vandq_u32(shuffled_u32, vdupq_n_u32(0x0FC0FC00));
         let t0_u16 = vreinterpretq_u16_u32(t0);
-        let mult_hi = vmulq_n_u16(t0_u16, 0x0400);
+        let mult_hi = vmulq_n_u16(t0_u16, 0x0040);
         let t1 = vreinterpretq_u32_u16(vshrq_n_u16(mult_hi, 10));
 
         // Second extraction: positions 1 and 3 in each group
+        // Mask 0x003F03F0: isolate different bit positions
         let t2 = vandq_u32(shuffled_u32, vdupq_n_u32(0x003F03F0));
         let t2_u16 = vreinterpretq_u16_u32(t2);
-        let mult_lo = vmulq_n_u16(t2_u16, 0x0100);
+        let mult_lo = vmulq_n_u16(t2_u16, 0x0010);
         let t3 = vreinterpretq_u32_u16(vshrq_n_u16(mult_lo, 6));
 
         // Combine the two results
@@ -1192,12 +1194,12 @@ impl LargeLutCodec {
 
         // Shuffle mask: Reshuffle bytes to prepare for 6-bit extraction
         // For each group of 3 input bytes ABC (24 bits) -> 4 output indices (4 x 6 bits)
-        // Position needs: 0:[A], 1:[A+B], 2:[B+C], 3:[C]
+        // Matches specialized/base64.rs: _mm_set_epi8(10,11,9,10, 7,8,6,7, 4,5,3,4, 1,2,0,1)
         let shuffle_indices = _mm_setr_epi8(
-            0, 1, 1, 2, // bytes 0-2 -> positions 0-3
-            3, 4, 4, 5, // bytes 3-5 -> positions 4-7
-            6, 7, 7, 8, // bytes 6-8 -> positions 8-11
-            9, 10, 10, 11, // bytes 9-11 -> positions 12-15
+            1, 0, 2, 1, // bytes 0-2 -> positions 0-3
+            4, 3, 5, 4, // bytes 3-5 -> positions 4-7
+            7, 6, 8, 7, // bytes 6-8 -> positions 8-11
+            10, 9, 11, 10, // bytes 9-11 -> positions 12-15
         );
 
         let shuffled = _mm_shuffle_epi8(input, shuffle_indices);
