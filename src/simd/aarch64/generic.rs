@@ -411,56 +411,42 @@ impl GenericSimdCodec {
 
         // Shuffle indices to duplicate bytes for 6-bit extraction
         // Each group of 3 input bytes becomes 4 output bytes with duplicates
-        // Matches x86_64 base64.rs pattern: [1,0,2,1, 4,3,5,4, 7,6,8,7, 10,9,11,10]
+        // Pattern: [0, 0, 1, 2, 3, 3, 4, 5, 6, 6, 7, 8, 9, 9, 10, 11]
         let shuffle_indices = vld1q_u8(
             [
-                1, 0, 2, 1, // bytes 0-2 -> positions 0-3
-                4, 3, 5, 4, // bytes 3-5 -> positions 4-7
-                7, 6, 8, 7, // bytes 6-8 -> positions 8-11
-                10, 9, 11, 10, // bytes 9-11 -> positions 12-15
+                0, 0, 1, 2,    // bytes 0-2 -> positions 0-3
+                3, 3, 4, 5,    // bytes 3-5 -> positions 4-7
+                6, 6, 7, 8,    // bytes 6-8 -> positions 8-11
+                9, 9, 10, 11,  // bytes 9-11 -> positions 12-15
             ]
             .as_ptr(),
         );
 
         let shuffled = vqtbl1q_u8(input, shuffle_indices);
 
-        // Extract 6-bit groups using multiplication tricks
-        // For 3 bytes ABC (24 bits) -> 4 groups of 6 bits
-        //
-        // This matches the x86_64 algorithm which uses mulhi_epu16 and mullo_epi16.
-        // NEON doesn't have a direct mulhi equivalent, so we use vmull/vshrn pattern.
+        // Extract 6-bit groups using shifts and masks
+        // Pattern for 3 bytes ABC (24 bits) -> 4x 6-bit values:
+        // [AAAAAA??] [??BBBBBB] [????CCCC] [CC??????]
+        // After shuffle, we have bytes duplicated to allow extraction
 
         let shuffled_u32 = vreinterpretq_u32_u8(shuffled);
 
-        // First extraction: get bits for positions 0 and 2 in each group of 4
-        // x86: mulhi_epu16(and(shuffled, 0x0FC0FC00), 0x04000040)
-        let t0 = vandq_u32(shuffled_u32, vdupq_n_u32(0x0FC0FC00_u32));
-        let t1 = {
-            let t0_u16 = vreinterpretq_u16_u32(t0);
-            // Implement mulhi_epu16 using vmull + vshrn
-            // 0x04000040 as 16-bit lanes: [0x0040, 0x0400, 0x0040, 0x0400, ...]
-            let mult_pattern = vreinterpretq_u16_u32(vdupq_n_u32(0x04000040_u32));
-            let lo = vget_low_u16(t0_u16);
-            let hi = vget_high_u16(t0_u16);
-            let mult_lo = vget_low_u16(mult_pattern);
-            let mult_hi = vget_high_u16(mult_pattern);
-            let lo_32 = vmull_u16(lo, mult_lo);
-            let hi_32 = vmull_u16(hi, mult_hi);
-            let lo_result = vshrn_n_u32(lo_32, 16);
-            let hi_result = vshrn_n_u32(hi_32, 16);
-            vreinterpretq_u32_u16(vcombine_u16(lo_result, hi_result))
-        };
+        // First extraction: positions 0 and 2 in each group
+        // Mask 0x0FC0FC00: isolate specific bit positions
+        let t0 = vandq_u32(shuffled_u32, vdupq_n_u32(0x0FC0FC00));
 
-        // Second extraction: get bits for positions 1 and 3 in each group of 4
-        // x86: mullo_epi16(and(shuffled, 0x003F03F0), 0x01000010)
-        let t2 = vandq_u32(shuffled_u32, vdupq_n_u32(0x003F03F0_u32));
-        let t3 = {
-            let t2_u16 = vreinterpretq_u16_u32(t2);
-            // mullo is just regular multiply (keep low 16 bits)
-            // 0x01000010 as 16-bit lanes: [0x0010, 0x0100, 0x0010, 0x0100, ...]
-            let mult_pattern = vreinterpretq_u16_u32(vdupq_n_u32(0x01000010_u32));
-            vreinterpretq_u32_u16(vmulq_u16(t2_u16, mult_pattern))
-        };
+        // Simulate mulhi_epu16: multiply and extract high bits
+        // For NEON, use shifts to achieve same effect
+        let t0_u16 = vreinterpretq_u16_u32(t0);
+        let mult_hi = vmulq_n_u16(t0_u16, 0x0040);
+        let t1 = vreinterpretq_u32_u16(vshrq_n_u16(mult_hi, 10));
+
+        // Second extraction: positions 1 and 3 in each group
+        // Mask 0x003F03F0: isolate different bit positions
+        let t2 = vandq_u32(shuffled_u32, vdupq_n_u32(0x003F03F0));
+        let t2_u16 = vreinterpretq_u16_u32(t2);
+        let mult_lo = vmulq_n_u16(t2_u16, 0x0010);
+        let t3 = vreinterpretq_u32_u16(vshrq_n_u16(mult_lo, 6));
 
         // Combine the two results
         vreinterpretq_u8_u32(vorrq_u32(t1, t3))
