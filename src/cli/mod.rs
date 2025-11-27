@@ -72,10 +72,12 @@ struct Cli {
 
     /// Enter the Matrix: Stream random data as Matrix-style falling code
     /// Optionally specify a dictionary (default: base256_matrix)
+    /// Can be combined with --dejavu to pick a random dictionary for Matrix mode
     #[arg(long, value_name = "DICTIONARY")]
     neo: Option<Option<String>>,
 
     /// Random dictionary encoding: Pick a random dictionary and encode with it
+    /// When combined with --neo, uses random dictionary for Matrix mode
     #[arg(long, conflicts_with = "encode")]
     dejavu: bool,
 }
@@ -88,7 +90,19 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     // Handle --neo mode (Matrix effect)
     if let Some(alphabet_opt) = &cli.neo {
-        let alphabet_name = alphabet_opt.as_deref().unwrap_or("base256_matrix");
+        let alphabet_name = if cli.dejavu {
+            // Pick random dictionary for Matrix mode when --dejavu is used
+            use rand::seq::SliceRandom;
+            let mut rng = rand::thread_rng();
+            let dict_names: Vec<&String> = config.dictionaries.keys().collect();
+            let random_dict = dict_names
+                .choose(&mut rng)
+                .ok_or("No dictionaries available")?;
+            eprintln!("dejavu: Matrix mode using {}", random_dict);
+            random_dict.as_str()
+        } else {
+            alphabet_opt.as_deref().unwrap_or("base256_matrix")
+        };
         return commands::matrix_mode(&config, alphabet_name);
     }
 
