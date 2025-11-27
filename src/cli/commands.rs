@@ -165,6 +165,7 @@ pub fn detect_mode(
 }
 
 /// Streaming decode mode
+#[allow(clippy::too_many_arguments)]
 pub fn streaming_decode(
     config: &DictionaryRegistry,
     decode_name: &str,
@@ -223,6 +224,7 @@ pub fn streaming_decode(
 }
 
 /// Streaming encode mode
+#[allow(clippy::too_many_arguments)]
 pub fn streaming_encode(
     config: &DictionaryRegistry,
     encode_name: &str,
