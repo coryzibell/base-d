@@ -754,7 +754,9 @@ impl LargeLutCodec {
         let mult_lo = vmulq_n_u16(t2_u16, 0x0010);
         let t3 = vreinterpretq_u32_u16(vshrq_n_u16(mult_lo, 6));
 
-        vreinterpretq_u8_u32(vorrq_u32(t1, t3))
+        let result = vreinterpretq_u8_u32(vorrq_u32(t1, t3));
+        // Mask to ensure 6-bit indices (0-63)
+        vandq_u8(result, vdupq_n_u8(0x3F))
     }
 
     /// Scalar fallback for base32 encoding
