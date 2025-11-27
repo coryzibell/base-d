@@ -770,7 +770,8 @@ mod tests {
         let test_data = b"Hello, World! This is a test of SIMD base64 encoding.";
 
         if let Some(simd_result) = encode(test_data, &dictionary, AlphabetVariant::Base64Standard) {
-            let scalar_result = crate::encoders::algorithms::chunked::encode_chunked(test_data, &dictionary);
+            let scalar_result =
+                crate::encoders::algorithms::chunked::encode_chunked(test_data, &dictionary);
             assert_eq!(
                 simd_result, scalar_result,
                 "SIMD and scalar should produce same output"
@@ -826,7 +827,8 @@ mod tests {
 
         if let Some(simd_result) = encode(&test_data, &dictionary, AlphabetVariant::Base64Standard)
         {
-            let scalar_result = crate::encoders::algorithms::chunked::encode_chunked(&test_data, &dictionary);
+            let scalar_result =
+                crate::encoders::algorithms::chunked::encode_chunked(&test_data, &dictionary);
             assert_eq!(
                 simd_result, scalar_result,
                 "AVX2 path should match scalar output"
