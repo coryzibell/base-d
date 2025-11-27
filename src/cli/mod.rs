@@ -112,14 +112,10 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 
         // Determine switch mode
         let switch_mode = if cli.cycle {
-            let interval = commands::parse_interval(
-                cli.interval.as_deref().unwrap_or("5s")
-            )?;
+            let interval = commands::parse_interval(cli.interval.as_deref().unwrap_or("5s"))?;
             commands::SwitchMode::Cycle(interval)
         } else if cli.random {
-            let interval = commands::parse_interval(
-                cli.interval.as_deref().unwrap_or("3s")
-            )?;
+            let interval = commands::parse_interval(cli.interval.as_deref().unwrap_or("3s"))?;
             commands::SwitchMode::Random(interval)
         } else if cli.dejavu {
             // Single random pick

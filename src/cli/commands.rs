@@ -149,9 +149,8 @@ pub fn matrix_mode(
 
         // Check if we need to switch (time-based)
         let should_switch = match &switch_mode {
-            SwitchMode::Cycle(SwitchInterval::Time(d)) | SwitchMode::Random(SwitchInterval::Time(d)) => {
-                last_switch.elapsed() >= *d
-            }
+            SwitchMode::Cycle(SwitchInterval::Time(d))
+            | SwitchMode::Random(SwitchInterval::Time(d)) => last_switch.elapsed() >= *d,
             _ => false,
         };
 
@@ -174,7 +173,8 @@ pub fn matrix_mode(
         // Check for line-based switching
         let switch_per_line = matches!(
             &switch_mode,
-            SwitchMode::Cycle(SwitchInterval::PerLine) | SwitchMode::Random(SwitchInterval::PerLine)
+            SwitchMode::Cycle(SwitchInterval::PerLine)
+                | SwitchMode::Random(SwitchInterval::PerLine)
         );
 
         if switch_per_line {
