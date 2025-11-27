@@ -25,6 +25,7 @@ struct CharRange {
 
 /// Range-reduction strategy based on number of ranges
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 enum RangeStrategy {
     Simple,     // 1 range, direct offset
     Small,      // 2 ranges, single subs
@@ -163,11 +164,10 @@ impl RangeInfo {
 
         // Build offset LUT
         let mut offset_lut = [0i8; 16];
-        let mut compressed_idx = 0usize;
 
         // Second-largest range stays at compressed index 0
         offset_lut[0] = second_largest_range.offset;
-        compressed_idx = 1;
+        let mut compressed_idx = 1;
 
         // Map tail ranges (those after threshold)
         for range in ranges {
@@ -201,6 +201,7 @@ impl RangeInfo {
 
     /// Build for 6-8 ranges (medium multirange with 2-3 thresholds)
     #[cfg(target_arch = "x86_64")]
+    #[allow(dead_code)]
     fn build_medium_multirange(ranges: &[CharRange]) -> Option<Self> {
         assert!(ranges.len() >= 6 && ranges.len() <= 8);
 
@@ -225,6 +226,7 @@ impl RangeInfo {
 
     /// Select thresholds for 6-8 ranges (2-3 thresholds needed)
     #[cfg(target_arch = "x86_64")]
+    #[allow(dead_code)]
     fn select_thresholds_medium(ranges: &[CharRange]) -> Vec<u8> {
         let num_ranges = ranges.len();
         let mut thresholds = Vec::new();
@@ -257,7 +259,8 @@ impl RangeInfo {
 
     /// Build hierarchical LUT for 6-8 ranges
     #[cfg(target_arch = "x86_64")]
-    fn build_hierarchical_lut_medium(ranges: &[CharRange], thresholds: &[u8]) -> [i8; 16] {
+    #[allow(dead_code)]
+    fn build_hierarchical_lut_medium(ranges: &[CharRange], _thresholds: &[u8]) -> [i8; 16] {
         let mut lut = [0i8; 16];
         let mut compressed_idx = 0usize;
 
@@ -280,6 +283,7 @@ impl RangeInfo {
 
     /// Build for 9-12 ranges (large multirange with 3-4 thresholds)
     #[cfg(target_arch = "x86_64")]
+    #[allow(dead_code)]
     fn build_large_multirange(ranges: &[CharRange]) -> Option<Self> {
         assert!(ranges.len() >= 9 && ranges.len() <= 12);
 
@@ -302,8 +306,8 @@ impl RangeInfo {
 
     /// Select thresholds for 9-12 ranges (3-4 thresholds)
     #[cfg(target_arch = "x86_64")]
+    #[allow(dead_code)]
     fn select_thresholds_large(ranges: &[CharRange]) -> Vec<u8> {
-        let num_ranges = ranges.len();
         let mut thresholds = Vec::new();
 
         // Recursive balanced partitioning for 3-4 levels
@@ -328,7 +332,8 @@ impl RangeInfo {
 
     /// Build hierarchical LUT for 9-12 ranges
     #[cfg(target_arch = "x86_64")]
-    fn build_hierarchical_lut_large(ranges: &[CharRange], thresholds: &[u8]) -> [i8; 16] {
+    #[allow(dead_code)]
+    fn build_hierarchical_lut_large(ranges: &[CharRange], _thresholds: &[u8]) -> [i8; 16] {
         let mut lut = [0i8; 16];
         let mut compressed_idx = 0usize;
 
@@ -350,6 +355,7 @@ impl RangeInfo {
 
     /// Build for 13-16 ranges (very large multirange with 4-5 thresholds)
     #[cfg(target_arch = "x86_64")]
+    #[allow(dead_code)]
     fn build_very_large_multirange(ranges: &[CharRange]) -> Option<Self> {
         assert!(ranges.len() >= 13 && ranges.len() <= 16);
 
@@ -372,6 +378,7 @@ impl RangeInfo {
 
     /// Select thresholds for 13-16 ranges (4-5 thresholds)
     #[cfg(target_arch = "x86_64")]
+    #[allow(dead_code)]
     fn select_thresholds_very_large(ranges: &[CharRange]) -> Vec<u8> {
         let mut thresholds = Vec::new();
 
@@ -396,7 +403,8 @@ impl RangeInfo {
 
     /// Build hierarchical LUT for 13-16 ranges
     #[cfg(target_arch = "x86_64")]
-    fn build_hierarchical_lut_very_large(ranges: &[CharRange], thresholds: &[u8]) -> [i8; 16] {
+    #[allow(dead_code)]
+    fn build_hierarchical_lut_very_large(ranges: &[CharRange], _thresholds: &[u8]) -> [i8; 16] {
         let mut lut = [0i8; 16];
         let mut compressed_idx = 0usize;
 
@@ -564,7 +572,7 @@ impl LargeLutCodec {
         #[cfg(target_arch = "x86_64")]
         unsafe {
             self.encode_x86_impl(data, &mut result);
-            return Some(result);
+            Some(result)
         }
 
         #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
@@ -1545,9 +1553,9 @@ impl LargeLutCodec {
 
             // === VALIDATION (Range Checks) ===
             // Range 1: 'A'-'Z' (65-90)
-            let ge_A = _mm_cmpgt_epi8(input, _mm_set1_epi8(64)); // c > '@'
-            let le_Z = _mm_cmplt_epi8(input, _mm_set1_epi8(91)); // c < '['
-            let in_range1 = _mm_and_si128(ge_A, le_Z);
+            let ge_a = _mm_cmpgt_epi8(input, _mm_set1_epi8(64)); // c > '@'
+            let le_z = _mm_cmplt_epi8(input, _mm_set1_epi8(91)); // c < '['
+            let in_range1 = _mm_and_si128(ge_a, le_z);
 
             // Range 2: '2'-'7' (50-55)
             let ge_2 = _mm_cmpgt_epi8(input, _mm_set1_epi8(49)); // c > '1'
@@ -1613,9 +1621,9 @@ impl LargeLutCodec {
 
             // === VALIDATION (Range Checks) ===
             // Range 1: 'A'-'Z' (65-90)
-            let ge_A = vcgtq_u8(input_vec, vdupq_n_u8(64));
-            let le_Z = vcltq_u8(input_vec, vdupq_n_u8(91));
-            let in_range1 = vandq_u8(ge_A, le_Z);
+            let ge_a = vcgtq_u8(input_vec, vdupq_n_u8(64));
+            let le_z = vcltq_u8(input_vec, vdupq_n_u8(91));
+            let in_range1 = vandq_u8(ge_a, le_z);
 
             // Range 2: '2'-'7' (50-55)
             let ge_2 = vcgtq_u8(input_vec, vdupq_n_u8(49));
@@ -2806,7 +2814,7 @@ mod tests {
         let encoded = codec.encode(data, &dict);
         assert!(encoded.is_some(), "Encode should succeed for 6 ranges");
         assert!(
-            encoded.unwrap().len() > 0,
+            !encoded.unwrap().is_empty(),
             "Encoded output should not be empty"
         );
     }
@@ -2827,7 +2835,7 @@ mod tests {
         let encoded = codec.encode(&data, &dict);
         assert!(encoded.is_some(), "Encode should succeed");
         assert!(
-            encoded.unwrap().len() > 0,
+            !encoded.unwrap().is_empty(),
             "Encoded output should not be empty"
         );
     }
@@ -2854,7 +2862,7 @@ mod tests {
         let data = b"Testing 8-range encoding!";
         let encoded = codec.encode(data, &dict);
         assert!(encoded.is_some(), "Encode should succeed for 8 ranges");
-        assert!(encoded.unwrap().len() > 0);
+        assert!(!encoded.unwrap().is_empty());
     }
 
     #[test]
@@ -2867,7 +2875,7 @@ mod tests {
         let data: Vec<u8> = (0..=255).collect();
         let encoded = codec.encode(&data, &dict);
         assert!(encoded.is_some(), "Encode should succeed");
-        assert!(encoded.unwrap().len() > 0);
+        assert!(!encoded.unwrap().is_empty());
     }
 
     #[test]
@@ -2886,7 +2894,7 @@ mod tests {
         let data = b"Testing 9-range encoding!";
         let encoded = codec.encode(data, &dict);
         assert!(encoded.is_some(), "Encode should succeed for 9 ranges");
-        assert!(encoded.unwrap().len() > 0);
+        assert!(!encoded.unwrap().is_empty());
     }
 
     #[test]
@@ -2905,7 +2913,7 @@ mod tests {
         let data = b"Testing 12-range encoding!";
         let encoded = codec.encode(data, &dict);
         assert!(encoded.is_some(), "Encode should succeed for 12 ranges");
-        assert!(encoded.unwrap().len() > 0);
+        assert!(!encoded.unwrap().is_empty());
     }
 
     #[test]
@@ -2924,7 +2932,7 @@ mod tests {
         let data = b"Testing 13-range encoding!";
         let encoded = codec.encode(data, &dict);
         assert!(encoded.is_some(), "Encode should succeed for 13 ranges");
-        assert!(encoded.unwrap().len() > 0);
+        assert!(!encoded.unwrap().is_empty());
     }
 
     #[test]
@@ -2943,7 +2951,7 @@ mod tests {
         let data = b"Testing 16-range encoding!";
         let encoded = codec.encode(data, &dict);
         assert!(encoded.is_some(), "Encode should succeed for 16 ranges");
-        assert!(encoded.unwrap().len() > 0);
+        assert!(!encoded.unwrap().is_empty());
     }
 
     #[test]

@@ -244,8 +244,8 @@ unsafe fn decode_nibble_chars_neon(
 
     let zero_30 = vdupq_n_u8(0x30);
     let nine_39 = vdupq_n_u8(0x39);
-    let A_41 = vdupq_n_u8(0x41);
-    let F_46 = vdupq_n_u8(0x46);
+    let a_41 = vdupq_n_u8(0x41);
+    let f_46 = vdupq_n_u8(0x46);
     let a_61 = vdupq_n_u8(0x61);
     let f_66 = vdupq_n_u8(0x66);
 
@@ -253,7 +253,7 @@ unsafe fn decode_nibble_chars_neon(
     let is_digit = vandq_u8(vcgeq_u8(chars, zero_30), vcleq_u8(chars, nine_39));
 
     // Check if char is uppercase hex ('A'-'F')
-    let is_upper = vandq_u8(vcgeq_u8(chars, A_41), vcleq_u8(chars, F_46));
+    let is_upper = vandq_u8(vcgeq_u8(chars, a_41), vcleq_u8(chars, f_46));
 
     // Check if char is lowercase hex ('a'-'f')
     let is_lower = vandq_u8(vcgeq_u8(chars, a_61), vcleq_u8(chars, f_66));
