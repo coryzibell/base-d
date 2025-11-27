@@ -1,5 +1,5 @@
 use crate::core::dictionary::Dictionary;
-use crate::encoders::math::DecodeError;
+use super::math::DecodeError;
 
 /// Encode data using byte range mode (direct byte-to-character mapping)
 /// Each byte maps to start_codepoint + byte_value
