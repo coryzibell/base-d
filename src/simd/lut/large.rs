@@ -579,8 +579,6 @@ impl LargeLutCodec {
     #[cfg(target_arch = "aarch64")]
     #[target_feature(enable = "neon")]
     unsafe fn encode_neon_impl(&self, data: &[u8], result: &mut String) {
-        use std::arch::aarch64::*;
-
         if self.metadata.base == 32 {
             self.encode_neon_base32(data, result);
         } else if self.metadata.base == 64 {

@@ -1,4 +1,4 @@
-use base_d::{decode, encode, DictionaryRegistry, Dictionary};
+use base_d::{decode, encode, Dictionary, DictionaryRegistry};
 
 fn main() {
     let config = DictionaryRegistry::load_default().unwrap();

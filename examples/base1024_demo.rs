@@ -1,4 +1,4 @@
-use base_d::{decode, encode, DictionaryRegistry, Dictionary};
+use base_d::{decode, encode, Dictionary, DictionaryRegistry};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load base1024 dictionary - a 1024-character dictionary using CJK ideographs

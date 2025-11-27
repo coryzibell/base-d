@@ -2,7 +2,7 @@
 //!
 //! Demonstrates runtime CPU feature detection and SIMD availability
 
-use base_d::{encode, DictionaryRegistry, Dictionary};
+use base_d::{encode, Dictionary, DictionaryRegistry};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== base-d SIMD Feature Detection ===\n");
