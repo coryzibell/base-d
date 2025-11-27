@@ -117,18 +117,23 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         } else if cli.random {
             let interval = commands::parse_interval(cli.interval.as_deref().unwrap_or("3s"))?;
             commands::SwitchMode::Random(interval)
-        } else if cli.dejavu {
-            // Single random pick
-            commands::SwitchMode::RandomOnce
         } else {
-            // Static mode
+            // Static mode (allows keyboard controls)
             commands::SwitchMode::Static
         };
 
-        let initial_alphabet = alphabet_opt
-            .as_deref()
-            .unwrap_or("base256_matrix")
-            .to_string();
+        // Determine initial alphabet
+        // If --dejavu is set and no explicit alphabet, pick random
+        let initial_alphabet = if cli.dejavu && alphabet_opt.is_none() {
+            let random_dict = commands::select_random_dictionary(&config, false)?;
+            eprintln!("dejavu: Matrix mode using {}", random_dict);
+            random_dict
+        } else {
+            alphabet_opt
+                .as_deref()
+                .unwrap_or("base256_matrix")
+                .to_string()
+        };
 
         return commands::matrix_mode(&config, &initial_alphabet, switch_mode);
     }
