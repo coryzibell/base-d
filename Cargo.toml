@@ -1,6 +1,6 @@
 [package]
 name = "base-d"
-version = "0.1.76"
+version = "0.1.77"
 edition = "2021"
 authors = ["Cory Zibell <cory@zibell.dev>"]
 description = "Universal multi-alphabet encoder: Encode binary data to 33+ alphabets including RFC standards, hieroglyphs, emoji, and more"
