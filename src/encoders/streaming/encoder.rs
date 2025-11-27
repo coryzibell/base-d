@@ -1,6 +1,6 @@
-use crate::compression::CompressionAlgorithm;
 use crate::core::dictionary::Dictionary;
-use crate::hashing::HashAlgorithm;
+use crate::features::compression::CompressionAlgorithm;
+use crate::features::hashing::HashAlgorithm;
 use std::io::{Read, Write};
 
 use super::hasher::{create_hasher_writer, HasherWriter};
@@ -18,7 +18,7 @@ pub struct StreamingEncoder<'a, W: Write> {
     compress_algo: Option<CompressionAlgorithm>,
     compress_level: u32,
     hash_algo: Option<HashAlgorithm>,
-    xxhash_config: crate::hashing::XxHashConfig,
+    xxhash_config: crate::features::hashing::XxHashConfig,
 }
 
 impl<'a, W: Write> StreamingEncoder<'a, W> {
@@ -35,7 +35,7 @@ impl<'a, W: Write> StreamingEncoder<'a, W> {
             compress_algo: None,
             compress_level: 6,
             hash_algo: None,
-            xxhash_config: crate::hashing::XxHashConfig::default(),
+            xxhash_config: crate::features::hashing::XxHashConfig::default(),
         }
     }
 
@@ -53,7 +53,7 @@ impl<'a, W: Write> StreamingEncoder<'a, W> {
     }
 
     /// Sets xxHash configuration (seed and secret).
-    pub fn with_xxhash_config(mut self, config: crate::hashing::XxHashConfig) -> Self {
+    pub fn with_xxhash_config(mut self, config: crate::features::hashing::XxHashConfig) -> Self {
         self.xxhash_config = config;
         self
     }
@@ -82,7 +82,7 @@ impl<'a, W: Write> StreamingEncoder<'a, W> {
 
                 let hash = self
                     .hash_algo
-                    .map(|algo| crate::hashing::hash(&buffer, algo));
+                    .map(|algo| crate::features::hashing::hash(&buffer, algo));
 
                 let encoded = crate::encoders::algorithms::math::encode(&buffer, self.dictionary);
                 self.writer.write_all(encoded.as_bytes())?;
@@ -174,7 +174,7 @@ impl<'a, W: Write> StreamingEncoder<'a, W> {
 
                 let hash = self
                     .hash_algo
-                    .map(|algo| crate::hashing::hash(&buffer, algo));
+                    .map(|algo| crate::features::hashing::hash(&buffer, algo));
 
                 let compressed = match algo {
                     CompressionAlgorithm::Lz4 => lz4::block::compress(&buffer, None, false)

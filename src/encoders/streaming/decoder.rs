@@ -1,7 +1,7 @@
-use crate::compression::CompressionAlgorithm;
 use crate::core::dictionary::Dictionary;
 use crate::encoders::algorithms::DecodeError;
-use crate::hashing::HashAlgorithm;
+use crate::features::compression::CompressionAlgorithm;
+use crate::features::hashing::HashAlgorithm;
 use std::io::{Read, Write};
 
 use super::hasher::{create_hasher_writer, HasherWriter};
@@ -18,7 +18,7 @@ pub struct StreamingDecoder<'a, W: Write> {
     writer: W,
     decompress_algo: Option<CompressionAlgorithm>,
     hash_algo: Option<HashAlgorithm>,
-    xxhash_config: crate::hashing::XxHashConfig,
+    xxhash_config: crate::features::hashing::XxHashConfig,
 }
 
 impl<'a, W: Write> StreamingDecoder<'a, W> {
@@ -34,7 +34,7 @@ impl<'a, W: Write> StreamingDecoder<'a, W> {
             writer,
             decompress_algo: None,
             hash_algo: None,
-            xxhash_config: crate::hashing::XxHashConfig::default(),
+            xxhash_config: crate::features::hashing::XxHashConfig::default(),
         }
     }
 
@@ -51,7 +51,7 @@ impl<'a, W: Write> StreamingDecoder<'a, W> {
     }
 
     /// Sets xxHash configuration (seed and secret).
-    pub fn with_xxhash_config(mut self, config: crate::hashing::XxHashConfig) -> Self {
+    pub fn with_xxhash_config(mut self, config: crate::features::hashing::XxHashConfig) -> Self {
         self.xxhash_config = config;
         self
     }
@@ -83,7 +83,7 @@ impl<'a, W: Write> StreamingDecoder<'a, W> {
 
                 let hash = self
                     .hash_algo
-                    .map(|algo| crate::hashing::hash(&decoded, algo));
+                    .map(|algo| crate::features::hashing::hash(&decoded, algo));
 
                 self.writer
                     .write_all(&decoded)
@@ -169,7 +169,7 @@ impl<'a, W: Write> StreamingDecoder<'a, W> {
 
                 let hash = self
                     .hash_algo
-                    .map(|algo| crate::hashing::hash(&decompressed, algo));
+                    .map(|algo| crate::features::hashing::hash(&decompressed, algo));
                 self.writer.write_all(&decompressed)?;
                 return Ok(hash);
             }
