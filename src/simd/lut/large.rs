@@ -698,8 +698,11 @@ impl LargeLutCodec {
             // Reshuffle to extract 6-bit indices (same as specialized base64)
             let reshuffled = self.reshuffle_neon_base64(input_vec);
 
+            // Mask to 6 bits before LUT lookup (bits 6-7 may be set from reshuffle)
+            let indices = vandq_u8(reshuffled, vdupq_n_u8(0x3F));
+
             // Translate using vqtbl4q_u8 (64-byte lookup)
-            let chars = vqtbl4q_u8(lut_tables, reshuffled);
+            let chars = vqtbl4q_u8(lut_tables, indices);
 
             // Store 16 output characters
             let mut output_buf = [0u8; 16];
