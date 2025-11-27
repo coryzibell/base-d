@@ -1280,13 +1280,20 @@ impl LargeLutCodec {
         let encoded_bytes = encoded.as_bytes();
 
         #[cfg(target_arch = "x86_64")]
-        unsafe {
-            if is_x86_feature_detected!("ssse3") {
-                if !self.decode_ssse3_impl(encoded_bytes, &mut result) {
-                    return None;
+        {
+            unsafe {
+                if is_x86_feature_detected!("ssse3") {
+                    if !self.decode_ssse3_impl(encoded_bytes, &mut result) {
+                        return None;
+                    }
+                    return Some(result);
                 }
-                return Some(result);
             }
+            // Scalar fallback for x86_64 without SSSE3
+            if !self.decode_scalar(encoded_bytes, &mut result) {
+                return None;
+            }
+            Some(result)
         }
 
         #[cfg(target_arch = "aarch64")]
@@ -1297,11 +1304,14 @@ impl LargeLutCodec {
             return Some(result);
         }
 
-        // Scalar fallback
-        if !self.decode_scalar(encoded_bytes, &mut result) {
-            return None;
+        #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+        {
+            // Scalar fallback
+            if !self.decode_scalar(encoded_bytes, &mut result) {
+                return None;
+            }
+            Some(result)
         }
-        Some(result)
     }
 
     /// Check if alphabet is RFC4648 base32
