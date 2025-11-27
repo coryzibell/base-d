@@ -2,35 +2,91 @@ use base_d::{decode, encode, Dictionary, DictionaryRegistry};
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
+use std::time::Duration;
 
 use super::config::{create_dictionary, get_compression_level, load_xxhash_config};
+
+pub enum SwitchInterval {
+    Time(Duration),
+    PerLine,
+}
+
+pub enum SwitchMode {
+    Static,
+    RandomOnce,
+    Cycle(SwitchInterval),
+    Random(SwitchInterval),
+}
+
+/// Parse interval string like "5s", "500ms", or "line"
+pub fn parse_interval(s: &str) -> Result<SwitchInterval, Box<dyn std::error::Error>> {
+    if s == "line" {
+        return Ok(SwitchInterval::PerLine);
+    }
+
+    // Parse duration strings
+    let s = s.trim();
+
+    // Try to find where digits end
+    let split_pos = s
+        .chars()
+        .position(|c| !c.is_ascii_digit())
+        .ok_or("Invalid duration format")?;
+
+    let (num_str, unit) = s.split_at(split_pos);
+    let value: u64 = num_str.parse()?;
+
+    let duration = match unit {
+        "ms" => Duration::from_millis(value),
+        "s" => Duration::from_secs(value),
+        "m" => Duration::from_secs(value * 60),
+        _ => return Err(format!("Unknown duration unit: {}", unit).into()),
+    };
+
+    Ok(SwitchInterval::Time(duration))
+}
+
+/// Select a random dictionary from the registry.
+/// Optionally prints a "dejavu: ..." message to stderr based on the `print_message` flag.
+/// Returns the dictionary name.
+pub fn select_random_dictionary(
+    config: &DictionaryRegistry,
+    print_message: bool,
+) -> Result<String, Box<dyn std::error::Error>> {
+    use rand::seq::SliceRandom;
+    let mut rng = rand::thread_rng();
+
+    let dict_names: Vec<&String> = config.dictionaries.keys().collect();
+    let random_dict = dict_names
+        .choose(&mut rng)
+        .ok_or("No dictionaries available")?;
+
+    if print_message {
+        eprintln!("dejavu: using {}", random_dict);
+    }
+
+    Ok(random_dict.to_string())
+}
 
 /// Matrix mode: Stream random data as Matrix-style falling code
 pub fn matrix_mode(
     config: &DictionaryRegistry,
-    alphabet_name: &str,
+    initial_alphabet: &str,
+    switch_mode: SwitchMode,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use std::thread;
-    use std::time::Duration;
-
-    // Load the specified dictionary
-    let alphabet_config = config
-        .get_dictionary(alphabet_name)
-        .ok_or(format!("{} dictionary not found", alphabet_name))?;
-
-    let chars: Vec<char> = alphabet_config.chars.chars().collect();
-    let dictionary = Dictionary::new_with_mode(chars, alphabet_config.mode.clone(), None)?;
+    use std::time::Instant;
 
     // Get terminal width
     let term_width = match terminal_size::terminal_size() {
         Some((terminal_size::Width(w), _)) => w as usize,
-        None => 80, // Default to 80 if we can't detect
+        None => 80,
     };
 
-    println!("\x1b[2J\x1b[H"); // Clear screen and move to top
+    println!("\x1b[2J\x1b[H"); // Clear screen
     println!("\x1b[32m"); // Green text
 
-    // Iconic Matrix messages - typed character by character
+    // Iconic Matrix messages
     let messages = [
         "Wake up, Neo...",
         "The Matrix has you...",
@@ -39,53 +95,120 @@ pub fn matrix_mode(
     ];
 
     for message in &messages {
-        // Type out character by character
         for ch in message.chars() {
             print!("{}", ch);
             io::stdout().flush()?;
             thread::sleep(Duration::from_millis(100));
         }
-        thread::sleep(Duration::from_millis(800)); // Pause to read
-
-        // Clear the line
+        thread::sleep(Duration::from_millis(800));
         print!("\r\x1b[K");
         io::stdout().flush()?;
         thread::sleep(Duration::from_millis(200));
     }
 
-    // Small pause before starting the stream
     thread::sleep(Duration::from_millis(500));
 
-    // Cross-platform random source
+    // Setup for switching
+    let mut current_alphabet_name = match &switch_mode {
+        SwitchMode::RandomOnce => {
+            let name = select_random_dictionary(config, false)?;
+            eprintln!("dejavu: Matrix mode using {}", name);
+            name
+        }
+        _ => initial_alphabet.to_string(),
+    };
+
+    // For cycling: build sorted dictionary list
+    let sorted_dicts: Vec<String> = if matches!(switch_mode, SwitchMode::Cycle(_)) {
+        let mut names: Vec<String> = config.dictionaries.keys().cloned().collect();
+        names.sort();
+        names
+    } else {
+        Vec::new()
+    };
+
+    let mut cycle_index = sorted_dicts
+        .iter()
+        .position(|n| n == &current_alphabet_name)
+        .unwrap_or(0);
+
+    let mut last_switch = Instant::now();
     let mut rng = rand::thread_rng();
 
+    // Display current alphabet name
+    eprintln!("\x1b[32mAlphabet: {}\x1b[0m", current_alphabet_name);
+
     loop {
-        // Generate random bytes (one line worth)
-        // For base256 dictionaries: 1 byte = 1 character (8 bits perfectly matches log2(256))
-        // The base256_matrix dictionary uses half-width katakana (single-width chars)
+        // Load current dictionary
+        let alphabet_config = config
+            .get_dictionary(&current_alphabet_name)
+            .ok_or(format!("{} dictionary not found", current_alphabet_name))?;
+
+        let chars: Vec<char> = alphabet_config.chars.chars().collect();
+        let dictionary = Dictionary::new_with_mode(chars, alphabet_config.mode.clone(), None)?;
+
+        // Check if we need to switch (time-based)
+        let should_switch = match &switch_mode {
+            SwitchMode::Cycle(SwitchInterval::Time(d))
+            | SwitchMode::Random(SwitchInterval::Time(d)) => last_switch.elapsed() >= *d,
+            _ => false,
+        };
+
+        if should_switch {
+            match &switch_mode {
+                SwitchMode::Cycle(_) => {
+                    cycle_index = (cycle_index + 1) % sorted_dicts.len();
+                    current_alphabet_name = sorted_dicts[cycle_index].clone();
+                }
+                SwitchMode::Random(_) => {
+                    current_alphabet_name = select_random_dictionary(config, false)?;
+                }
+                _ => {}
+            }
+            eprintln!("\x1b[32mAlphabet: {}\x1b[0m", current_alphabet_name);
+            last_switch = Instant::now();
+            continue; // Reload dictionary
+        }
+
+        // Check for line-based switching
+        let switch_per_line = matches!(
+            &switch_mode,
+            SwitchMode::Cycle(SwitchInterval::PerLine)
+                | SwitchMode::Random(SwitchInterval::PerLine)
+        );
+
+        if switch_per_line {
+            match &switch_mode {
+                SwitchMode::Cycle(SwitchInterval::PerLine) => {
+                    cycle_index = (cycle_index + 1) % sorted_dicts.len();
+                    current_alphabet_name = sorted_dicts[cycle_index].clone();
+                }
+                SwitchMode::Random(SwitchInterval::PerLine) => {
+                    current_alphabet_name = select_random_dictionary(config, false)?;
+                }
+                _ => {}
+            }
+            eprintln!("\x1b[32mAlphabet: {}\x1b[0m", current_alphabet_name);
+            continue; // Reload for next line
+        }
+
+        // Generate and encode one line
         let bytes_per_line = if dictionary.base() == 256 {
-            term_width // Perfect 1:1 encoding for base256
+            term_width
         } else {
-            term_width / 2 // Conservative estimate for other bases
+            term_width / 2
         };
         let mut random_bytes = vec![0u8; bytes_per_line];
 
         use rand::RngCore;
         rng.fill_bytes(&mut random_bytes);
 
-        // Encode with Matrix dictionary
         let encoded = encode(&random_bytes, &dictionary);
-
-        // Trim to terminal width as a safeguard
         let display: String = encoded.chars().take(term_width).collect();
 
-        // Print the line
         println!("{}", display);
-
-        // Flush to ensure immediate display
         io::stdout().flush()?;
 
-        // Sleep for half a second
         thread::sleep(Duration::from_millis(500));
     }
 }

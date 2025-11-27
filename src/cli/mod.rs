@@ -80,6 +80,18 @@ struct Cli {
     /// When combined with --neo, uses random dictionary for Matrix mode
     #[arg(long, conflicts_with = "encode")]
     dejavu: bool,
+
+    /// Cycle through all dictionaries in Matrix mode (requires --neo --dejavu)
+    #[arg(long, requires = "dejavu")]
+    cycle: bool,
+
+    /// Random dictionary switching in Matrix mode (requires --neo --dejavu)
+    #[arg(long, requires = "dejavu")]
+    random: bool,
+
+    /// Interval for switching: duration (e.g., "5s", "500ms") or "line"
+    #[arg(long, value_name = "INTERVAL")]
+    interval: Option<String>,
 }
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -90,20 +102,35 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     // Handle --neo mode (Matrix effect)
     if let Some(alphabet_opt) = &cli.neo {
-        let alphabet_name = if cli.dejavu {
-            // Pick random dictionary for Matrix mode when --dejavu is used
-            use rand::seq::SliceRandom;
-            let mut rng = rand::thread_rng();
-            let dict_names: Vec<&String> = config.dictionaries.keys().collect();
-            let random_dict = dict_names
-                .choose(&mut rng)
-                .ok_or("No dictionaries available")?;
-            eprintln!("dejavu: Matrix mode using {}", random_dict);
-            random_dict.as_str()
+        // Validate conflicting flags
+        if cli.cycle && cli.random {
+            return Err("Cannot use both --cycle and --random together".into());
+        }
+        if cli.interval.is_some() && !cli.cycle && !cli.random {
+            return Err("--interval requires either --cycle or --random".into());
+        }
+
+        // Determine switch mode
+        let switch_mode = if cli.cycle {
+            let interval = commands::parse_interval(cli.interval.as_deref().unwrap_or("5s"))?;
+            commands::SwitchMode::Cycle(interval)
+        } else if cli.random {
+            let interval = commands::parse_interval(cli.interval.as_deref().unwrap_or("3s"))?;
+            commands::SwitchMode::Random(interval)
+        } else if cli.dejavu {
+            // Single random pick
+            commands::SwitchMode::RandomOnce
         } else {
-            alphabet_opt.as_deref().unwrap_or("base256_matrix")
+            // Static mode
+            commands::SwitchMode::Static
         };
-        return commands::matrix_mode(&config, alphabet_name);
+
+        let initial_alphabet = alphabet_opt
+            .as_deref()
+            .unwrap_or("base256_matrix")
+            .to_string();
+
+        return commands::matrix_mode(&config, &initial_alphabet, switch_mode);
     }
 
     // Handle --detect mode (auto-detect dictionary)
@@ -268,17 +295,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         io::stdout().write_all(&data)?;
     } else if cli.dejavu {
         // Random dictionary encoding
-        use rand::seq::SliceRandom;
-        let mut rng = rand::thread_rng();
-
-        let dict_names: Vec<&String> = config.dictionaries.keys().collect();
-        let random_dict = dict_names
-            .choose(&mut rng)
-            .ok_or("No dictionaries available")?;
-
-        eprintln!("dejavu: using {}", random_dict);
-
-        let encode_alphabet = create_dictionary(&config, random_dict)?;
+        let random_dict = commands::select_random_dictionary(&config, true)?;
+        let encode_alphabet = create_dictionary(&config, &random_dict)?;
         let encoded = encode(&data, &encode_alphabet);
         println!("{}", encoded);
     } else if let Some(encode_name) = &cli.encode {
