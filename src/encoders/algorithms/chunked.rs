@@ -1,6 +1,6 @@
 use crate::core::dictionary::Dictionary;
 
-pub use crate::encoders::math::DecodeError;
+pub use super::math::DecodeError;
 
 #[cfg(target_arch = "x86_64")]
 use crate::simd;

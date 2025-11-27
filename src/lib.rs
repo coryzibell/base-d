@@ -165,7 +165,7 @@ pub use core::config::{
 };
 pub use core::dictionary::Dictionary;
 pub use detection::{detect_dictionary, DictionaryDetector, DictionaryMatch};
-pub use encoders::math::DecodeError;
+pub use encoders::algorithms::DecodeError;
 pub use encoders::streaming::{StreamingDecoder, StreamingEncoder};
 pub use hashing::{hash, hash_with_config, HashAlgorithm, XxHashConfig};
 
@@ -197,9 +197,11 @@ pub use hashing::{hash, hash_with_config, HashAlgorithm, XxHashConfig};
 /// ```
 pub fn encode(data: &[u8], dictionary: &Dictionary) -> String {
     match dictionary.mode() {
-        EncodingMode::BaseConversion => encoders::math::encode(data, dictionary),
-        EncodingMode::Chunked => encoders::chunked::encode_chunked(data, dictionary),
-        EncodingMode::ByteRange => encoders::byte_range::encode_byte_range(data, dictionary),
+        EncodingMode::BaseConversion => encoders::algorithms::math::encode(data, dictionary),
+        EncodingMode::Chunked => encoders::algorithms::chunked::encode_chunked(data, dictionary),
+        EncodingMode::ByteRange => {
+            encoders::algorithms::byte_range::encode_byte_range(data, dictionary)
+        }
     }
 }
 
@@ -242,9 +244,11 @@ pub fn encode(data: &[u8], dictionary: &Dictionary) -> String {
 /// ```
 pub fn decode(encoded: &str, dictionary: &Dictionary) -> Result<Vec<u8>, DecodeError> {
     match dictionary.mode() {
-        EncodingMode::BaseConversion => encoders::math::decode(encoded, dictionary),
-        EncodingMode::Chunked => encoders::chunked::decode_chunked(encoded, dictionary),
-        EncodingMode::ByteRange => encoders::byte_range::decode_byte_range(encoded, dictionary),
+        EncodingMode::BaseConversion => encoders::algorithms::math::decode(encoded, dictionary),
+        EncodingMode::Chunked => encoders::algorithms::chunked::decode_chunked(encoded, dictionary),
+        EncodingMode::ByteRange => {
+            encoders::algorithms::byte_range::decode_byte_range(encoded, dictionary)
+        }
     }
 }
 
