@@ -1,0 +1,114 @@
+use base_d::{Dictionary, DictionaryRegistry};
+use std::fs;
+use std::io::{self, Read};
+
+/// Helper function to create dictionary from config
+pub fn create_dictionary(
+    config: &DictionaryRegistry,
+    name: &str,
+) -> Result<Dictionary, Box<dyn std::error::Error>> {
+    let alphabet_config = config.get_dictionary(name).ok_or_else(|| {
+        format!(
+            "Dictionary '{}' not found. Use --list to see available dictionaries.",
+            name
+        )
+    })?;
+
+    let dictionary = match alphabet_config.mode {
+        base_d::EncodingMode::ByteRange => {
+            let start = alphabet_config
+                .start_codepoint
+                .ok_or("ByteRange mode requires start_codepoint")?;
+            Dictionary::new_with_mode_and_range(
+                Vec::new(),
+                alphabet_config.mode.clone(),
+                None,
+                Some(start),
+            )
+            .map_err(|e| format!("Invalid dictionary: {}", e))?
+        }
+        _ => {
+            let chars: Vec<char> = alphabet_config.chars.chars().collect();
+            let padding = alphabet_config
+                .padding
+                .as_ref()
+                .and_then(|s| s.chars().next());
+            Dictionary::new_with_mode(chars, alphabet_config.mode.clone(), padding)
+                .map_err(|e| format!("Invalid dictionary: {}", e))?
+        }
+    };
+    Ok(dictionary)
+}
+
+/// Determine compression level from CLI args or config
+pub fn get_compression_level(
+    config: &DictionaryRegistry,
+    cli_level: Option<u32>,
+    algo: base_d::CompressionAlgorithm,
+) -> u32 {
+    if let Some(level) = cli_level {
+        level
+    } else if let Some(comp_config) = config.compression.get(algo.as_str()) {
+        comp_config.default_level
+    } else {
+        // Fallback defaults
+        match algo {
+            base_d::CompressionAlgorithm::Gzip => 6,
+            base_d::CompressionAlgorithm::Zstd => 3,
+            base_d::CompressionAlgorithm::Brotli => 6,
+            base_d::CompressionAlgorithm::Lz4 => 0,
+            base_d::CompressionAlgorithm::Snappy => 0,
+            base_d::CompressionAlgorithm::Lzma => 6,
+        }
+    }
+}
+
+/// Load xxHash configuration from CLI args and config file.
+pub fn load_xxhash_config(
+    cli_hash_seed: Option<u64>,
+    cli_hash_secret_stdin: bool,
+    config: &DictionaryRegistry,
+    hash_algo: Option<&base_d::HashAlgorithm>,
+) -> Result<base_d::XxHashConfig, Box<dyn std::error::Error>> {
+    let seed = cli_hash_seed
+        .or_else(|| {
+            let default_seed = config.settings.xxhash.default_seed;
+            if default_seed != 0 {
+                Some(default_seed)
+            } else {
+                None
+            }
+        })
+        .unwrap_or(0);
+
+    let secret = if cli_hash_secret_stdin {
+        let mut buf = Vec::new();
+        io::stdin().read_to_end(&mut buf)?;
+        Some(buf)
+    } else if let Some(ref path) = config.settings.xxhash.default_secret_file {
+        Some(fs::read(shellexpand::tilde(path).as_ref())?)
+    } else {
+        None
+    };
+
+    // Warn if secret provided for non-XXH3
+    if secret.is_some() {
+        if let Some(algo) = hash_algo {
+            if !matches!(
+                algo,
+                base_d::HashAlgorithm::XxHash3_64 | base_d::HashAlgorithm::XxHash3_128
+            ) {
+                eprintln!(
+                    "Warning: --hash-secret-stdin only applies to xxh3-64/xxh3-128, ignoring for {}",
+                    algo.as_str()
+                );
+                return Ok(base_d::XxHashConfig::with_seed(seed));
+            }
+        }
+    }
+
+    match secret {
+        Some(s) => base_d::XxHashConfig::with_secret(seed, s).map_err(|e| e.into()),
+        None => Ok(base_d::XxHashConfig::with_seed(seed)),
+    }
+}
