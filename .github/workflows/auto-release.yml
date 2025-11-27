@@ -48,9 +48,6 @@ jobs:
           # Update Cargo.toml
           sed -i "s/^version = \"$CURRENT_VERSION\"/version = \"$NEW_VERSION\"/" Cargo.toml
 
-          # Update Cargo.lock
-          cargo update -p base-d --precise "$NEW_VERSION"
-
           echo "Bumped version from $CURRENT_VERSION to $NEW_VERSION"
           echo "skip_bump=false" >> $GITHUB_OUTPUT
 
@@ -59,7 +56,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Cargo.toml Cargo.lock
+          git add Cargo.toml
           git commit -m "Bump version to $(grep '^version = ' Cargo.toml | head -1 | cut -d'"' -f2)"
           git push origin main
 
