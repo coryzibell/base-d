@@ -414,10 +414,10 @@ impl GenericSimdCodec {
         // Pattern: [0, 0, 1, 2, 3, 3, 4, 5, 6, 6, 7, 8, 9, 9, 10, 11]
         let shuffle_indices = vld1q_u8(
             [
-                0, 0, 1, 2,    // bytes 0-2 -> positions 0-3
-                3, 3, 4, 5,    // bytes 3-5 -> positions 4-7
-                6, 6, 7, 8,    // bytes 6-8 -> positions 8-11
-                9, 9, 10, 11,  // bytes 9-11 -> positions 12-15
+                0, 0, 1, 2, // bytes 0-2 -> positions 0-3
+                3, 3, 4, 5, // bytes 3-5 -> positions 4-7
+                6, 6, 7, 8, // bytes 6-8 -> positions 8-11
+                9, 9, 10, 11, // bytes 9-11 -> positions 12-15
             ]
             .as_ptr(),
         );
