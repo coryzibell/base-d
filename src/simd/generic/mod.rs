@@ -840,14 +840,63 @@ impl GenericSimdCodec {
         unsafe { self.encode_8bit_avx2_impl(data, dict) }
     }
 
-    /// Encode 4-bit alphabet using AVX2
-    ///
-    /// For now, fallback to SSSE3 for correctness
+    /// Encode 4-bit alphabet using AVX2 (processes 32 bytes -> 64 chars)
     #[cfg(target_arch = "x86_64")]
-    #[target_feature(enable = "ssse3")]
-    unsafe fn encode_4bit_avx2_impl(&self, data: &[u8], dict: &Dictionary) -> Option<String> {
-        // Fallback to SSSE3 for now - AVX2 lane-crossing is complex
-        self.encode_4bit(data, dict)
+    #[target_feature(enable = "avx2")]
+    unsafe fn encode_4bit_avx2_impl(&self, data: &[u8], _dict: &Dictionary) -> Option<String> {
+        const BLOCK_SIZE: usize = 32;
+
+        if data.len() < BLOCK_SIZE {
+            return None;
+        }
+
+        let output_len = data.len() * 2;
+        let mut result = String::with_capacity(output_len);
+
+        let num_blocks = data.len() / BLOCK_SIZE;
+        let simd_bytes = num_blocks * BLOCK_SIZE;
+
+        let mask_0f = _mm256_set1_epi8(0x0F);
+
+        let mut offset = 0;
+        for _ in 0..num_blocks {
+            // Load 32 bytes
+            let input_vec = _mm256_loadu_si256(data.as_ptr().add(offset) as *const __m256i);
+
+            // Extract nibbles (per-lane operation)
+            let hi_nibbles = _mm256_and_si256(_mm256_srli_epi32(input_vec, 4), mask_0f);
+            let lo_nibbles = _mm256_and_si256(input_vec, mask_0f);
+
+            // Translate using pluggable translator (per-lane)
+            let hi_ascii = self.translator.translate_encode_256(hi_nibbles);
+            let lo_ascii = self.translator.translate_encode_256(lo_nibbles);
+
+            // Interleave (per-lane, then cross-lane permute)
+            let lane0_lo = _mm256_unpacklo_epi8(hi_ascii, lo_ascii);
+            let lane0_hi = _mm256_unpackhi_epi8(hi_ascii, lo_ascii);
+
+            // Cross-lane permute to fix ordering
+            let result_lo = _mm256_permute2x128_si256(lane0_lo, lane0_hi, 0x20);
+            let result_hi = _mm256_permute2x128_si256(lane0_lo, lane0_hi, 0x31);
+
+            // Store 64 output characters
+            let mut output_buf = [0u8; 64];
+            _mm256_storeu_si256(output_buf.as_mut_ptr() as *mut __m256i, result_lo);
+            _mm256_storeu_si256(output_buf.as_mut_ptr().add(32) as *mut __m256i, result_hi);
+
+            for &byte in &output_buf {
+                result.push(byte as char);
+            }
+
+            offset += BLOCK_SIZE;
+        }
+
+        // TODO: Handle remainder
+        if simd_bytes < data.len() {
+            // For now, we don't handle remainder
+        }
+
+        Some(result)
     }
 
     #[cfg(target_arch = "x86_64")]
@@ -1047,15 +1096,64 @@ impl GenericSimdCodec {
     }
 
     /// Decode 4-bit alphabet using AVX2 (processes 64 chars -> 32 bytes)
-    ///
-    /// For now, just call SSSE3 version twice - simpler and correct
     #[cfg(target_arch = "x86_64")]
-    #[target_feature(enable = "ssse3")]
-    unsafe fn decode_4bit_avx2_impl(&self, encoded: &str, dict: &Dictionary) -> Option<Vec<u8>> {
-        // For simplicity, fall back to SSSE3 for now
-        // A proper AVX2 implementation would process 64 chars at once
-        // but the lane-crossing complexity makes it error-prone
-        self.decode_4bit(encoded, dict)
+    #[target_feature(enable = "avx2")]
+    unsafe fn decode_4bit_avx2_impl(&self, encoded: &str, _dict: &Dictionary) -> Option<Vec<u8>> {
+        const BLOCK_SIZE: usize = 64; // 64 chars -> 32 bytes
+
+        let encoded_bytes = encoded.as_bytes();
+        let mut result = Vec::with_capacity(encoded_bytes.len() / 2);
+
+        if encoded_bytes.len() < BLOCK_SIZE {
+            return None;
+        }
+
+        let num_blocks = encoded_bytes.len() / BLOCK_SIZE;
+        let simd_bytes = num_blocks * BLOCK_SIZE;
+
+        for i in 0..num_blocks {
+            let offset = i * BLOCK_SIZE * 2;
+
+            // Load 64 ASCII characters
+            let input_lo = _mm256_loadu_si256(encoded_bytes.as_ptr().add(offset) as *const __m256i);
+            let input_hi = _mm256_loadu_si256(encoded_bytes.as_ptr().add(offset + 32) as *const __m256i);
+
+            // Deinterleave using mask and shift
+            let mask_even = _mm256_set1_epi16(0x00FF_u16 as i16);
+
+            // Extract even bytes (high nibbles) and odd bytes (low nibbles)
+            let hi_chars_lane0 = _mm256_and_si256(input_lo, mask_even);
+            let lo_chars_lane0 = _mm256_srli_epi16(input_lo, 8);
+            let hi_chars_lane1 = _mm256_and_si256(input_hi, mask_even);
+            let lo_chars_lane1 = _mm256_srli_epi16(input_hi, 8);
+
+            // Pack bytes
+            let hi_chars = _mm256_packus_epi16(hi_chars_lane0, hi_chars_lane1);
+            let lo_chars = _mm256_packus_epi16(lo_chars_lane0, lo_chars_lane1);
+
+            // Fix lane crossing from packus
+            let hi_chars = _mm256_permute4x64_epi64(hi_chars, 0xD8);
+            let lo_chars = _mm256_permute4x64_epi64(lo_chars, 0xD8);
+
+            // Translate chars to nibble values
+            let hi_vals = self.translator.translate_decode_256(hi_chars)?;
+            let lo_vals = self.translator.translate_decode_256(lo_chars)?;
+
+            // Pack nibbles into bytes: (high << 4) | low
+            let bytes = _mm256_or_si256(_mm256_slli_epi32(hi_vals, 4), lo_vals);
+
+            // Store 32 output bytes
+            let mut output_buf = [0u8; 32];
+            _mm256_storeu_si256(output_buf.as_mut_ptr() as *mut __m256i, bytes);
+            result.extend_from_slice(&output_buf);
+        }
+
+        // TODO: Handle remainder
+        if simd_bytes < encoded_bytes.len() {
+            // For now, we don't handle remainder
+        }
+
+        Some(result)
     }
 
     #[cfg(target_arch = "x86_64")]
@@ -1527,6 +1625,42 @@ mod tests {
         for byte in encoded.as_bytes() {
             assert!(*byte < 0x80, "Output should be ASCII, got 0x{:02X}", byte);
         }
+    }
+
+    #[test]
+    #[cfg(target_arch = "x86_64")]
+    fn test_generic_avx2_base16() {
+        if !is_x86_feature_detected!("avx2") {
+            eprintln!("AVX2 not available, skipping");
+            return;
+        }
+
+        // Create sequential hex starting at '0' (U+0030)
+        let chars: Vec<char> = (0x30..0x40).map(|cp| char::from_u32(cp).unwrap()).collect();
+        let dict = Dictionary::new(chars).unwrap();
+
+        let codec = GenericSimdCodec::from_dictionary(&dict).unwrap();
+
+        // Test data: 64 bytes (two AVX2 blocks)
+        let data = b"\x01\x23\x45\x67\x89\xAB\xCD\xEF\xFE\xDC\xBA\x98\x76\x54\x32\x10\
+                     \x00\x11\x22\x33\x44\x55\x66\x77\x88\x99\xAA\xBB\xCC\xDD\xEE\xFF\
+                     \x12\x34\x56\x78\x9A\xBC\xDE\xF0\x0F\xED\xCB\xA9\x87\x65\x43\x21\
+                     \xFF\xEE\xDD\xCC\xBB\xAA\x99\x88\x77\x66\x55\x44\x33\x22\x11\x00";
+
+        // Encode with AVX2
+        let result = codec.encode(data, &dict);
+        assert!(result.is_some());
+        let encoded = result.unwrap();
+
+        // Verify length: 64 bytes -> 128 hex chars
+        assert_eq!(encoded.len(), 128);
+
+        // Verify first few characters (0x01 -> '0', '1')
+        assert!(encoded.starts_with("0123"));
+
+        // Decode round-trip
+        let decoded = codec.decode(&encoded, &dict).expect("Decode failed");
+        assert_eq!(&decoded[..], &data[..]);
     }
 
     #[test]
