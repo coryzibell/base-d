@@ -26,9 +26,10 @@ jobs:
       - name: Bump patch version
         id: bump
         run: |
-          # Check if Cargo.toml was changed in the last commit
-          if git diff HEAD~1 HEAD --name-only | grep -q "^Cargo.toml$"; then
-            echo "Cargo.toml was manually updated, skipping auto-bump"
+          # Check if the last commit was an auto-bump by checking the commit message
+          LAST_COMMIT_MSG=$(git log -1 --format=%s)
+          if [[ "$LAST_COMMIT_MSG" =~ ^Bump\ version\ to\ [0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Last commit was an auto-bump, skipping"
             echo "skip_bump=true" >> $GITHUB_OUTPUT
             exit 0
           fi
