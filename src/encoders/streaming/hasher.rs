@@ -1,4 +1,4 @@
-use crate::hashing::HashAlgorithm;
+use crate::features::hashing::HashAlgorithm;
 
 // Helper for managing hash state during streaming
 pub(super) enum HasherWriter {
@@ -149,7 +149,7 @@ impl HasherWriter {
 
 pub(super) fn create_hasher_writer(
     algo: HashAlgorithm,
-    config: &crate::hashing::XxHashConfig,
+    config: &crate::features::hashing::XxHashConfig,
 ) -> HasherWriter {
     use sha2::Digest;
 

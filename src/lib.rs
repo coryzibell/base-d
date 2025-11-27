@@ -151,23 +151,22 @@
 //! # }
 //! ```
 
-mod compression;
 mod core;
-mod detection;
 mod encoders;
-mod hashing;
+mod features;
 
 mod simd;
 
-pub use compression::{compress, decompress, CompressionAlgorithm};
 pub use core::config::{
     CompressionConfig, DictionaryConfig, DictionaryRegistry, EncodingMode, Settings,
 };
 pub use core::dictionary::Dictionary;
-pub use detection::{detect_dictionary, DictionaryDetector, DictionaryMatch};
 pub use encoders::algorithms::DecodeError;
 pub use encoders::streaming::{StreamingDecoder, StreamingEncoder};
-pub use hashing::{hash, hash_with_config, HashAlgorithm, XxHashConfig};
+pub use features::{
+    compress, decompress, detect_dictionary, hash, hash_with_config, CompressionAlgorithm,
+    DictionaryDetector, DictionaryMatch, HashAlgorithm, XxHashConfig,
+};
 
 /// Encodes binary data using the specified dictionary.
 ///
