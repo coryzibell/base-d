@@ -831,7 +831,7 @@ fn create_hasher_writer(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{DictionaryRegistry, Dictionary};
+    use crate::{Dictionary, DictionaryRegistry};
     use std::io::Cursor;
 
     fn get_dictionary(name: &str) -> Dictionary {

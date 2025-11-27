@@ -8,8 +8,8 @@
 //! (index → character) varies.
 
 use crate::core::dictionary::Dictionary;
-use crate::simd::variants::{AlphabetMetadata, TranslationStrategy};
 use crate::simd::translate::{SequentialTranslate, SimdTranslate};
+use crate::simd::variants::{AlphabetMetadata, TranslationStrategy};
 
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::*;
@@ -1116,7 +1116,8 @@ impl GenericSimdCodec {
 
             // Load 64 ASCII characters
             let input_lo = _mm256_loadu_si256(encoded_bytes.as_ptr().add(offset) as *const __m256i);
-            let input_hi = _mm256_loadu_si256(encoded_bytes.as_ptr().add(offset + 32) as *const __m256i);
+            let input_hi =
+                _mm256_loadu_si256(encoded_bytes.as_ptr().add(offset + 32) as *const __m256i);
 
             // Deinterleave using mask and shift
             let mask_even = _mm256_set1_epi16(0x00FF_u16 as i16);

@@ -407,12 +407,12 @@ impl SmallLutCodec {
 
             // Pack nibbles: Extract even bytes (high nibbles) and odd bytes (low nibbles)
             let shuffle_even = _mm256_setr_epi8(
-                0, 2, 4, 6, 8, 10, 12, 14, -1, -1, -1, -1, -1, -1, -1, -1,
-                0, 2, 4, 6, 8, 10, 12, 14, -1, -1, -1, -1, -1, -1, -1, -1,
+                0, 2, 4, 6, 8, 10, 12, 14, -1, -1, -1, -1, -1, -1, -1, -1, 0, 2, 4, 6, 8, 10, 12,
+                14, -1, -1, -1, -1, -1, -1, -1, -1,
             );
             let shuffle_odd = _mm256_setr_epi8(
-                1, 3, 5, 7, 9, 11, 13, 15, -1, -1, -1, -1, -1, -1, -1, -1,
-                1, 3, 5, 7, 9, 11, 13, 15, -1, -1, -1, -1, -1, -1, -1, -1,
+                1, 3, 5, 7, 9, 11, 13, 15, -1, -1, -1, -1, -1, -1, -1, -1, 1, 3, 5, 7, 9, 11, 13,
+                15, -1, -1, -1, -1, -1, -1, -1, -1,
             );
 
             let hi_nibbles = _mm256_shuffle_epi8(indices, shuffle_even);
@@ -477,8 +477,10 @@ impl SmallLutCodec {
             }
 
             // Pack nibbles: Extract even bytes (high nibbles) and odd bytes (low nibbles)
-            let shuffle_even = _mm_setr_epi8(0, 2, 4, 6, 8, 10, 12, 14, -1, -1, -1, -1, -1, -1, -1, -1);
-            let shuffle_odd = _mm_setr_epi8(1, 3, 5, 7, 9, 11, 13, 15, -1, -1, -1, -1, -1, -1, -1, -1);
+            let shuffle_even =
+                _mm_setr_epi8(0, 2, 4, 6, 8, 10, 12, 14, -1, -1, -1, -1, -1, -1, -1, -1);
+            let shuffle_odd =
+                _mm_setr_epi8(1, 3, 5, 7, 9, 11, 13, 15, -1, -1, -1, -1, -1, -1, -1, -1);
 
             let hi_nibbles = _mm_shuffle_epi8(indices, shuffle_even);
             let lo_nibbles = _mm_shuffle_epi8(indices, shuffle_odd);
@@ -535,8 +537,10 @@ impl SmallLutCodec {
             }
 
             // Pack nibbles (same shuffle strategy as x86)
-            let shuffle_even = vld1q_u8([0, 2, 4, 6, 8, 10, 12, 14, 0, 0, 0, 0, 0, 0, 0, 0].as_ptr());
-            let shuffle_odd = vld1q_u8([1, 3, 5, 7, 9, 11, 13, 15, 0, 0, 0, 0, 0, 0, 0, 0].as_ptr());
+            let shuffle_even =
+                vld1q_u8([0, 2, 4, 6, 8, 10, 12, 14, 0, 0, 0, 0, 0, 0, 0, 0].as_ptr());
+            let shuffle_odd =
+                vld1q_u8([1, 3, 5, 7, 9, 11, 13, 15, 0, 0, 0, 0, 0, 0, 0, 0].as_ptr());
 
             let hi_nibbles = vqtbl1q_u8(indices, shuffle_even);
             let lo_nibbles = vqtbl1q_u8(indices, shuffle_odd);
@@ -597,10 +601,7 @@ mod tests {
         let dict = Dictionary::new(chars).unwrap();
 
         let codec = SmallLutCodec::from_dictionary(&dict);
-        assert!(
-            codec.is_some(),
-            "Should create codec for arbitrary base16"
-        );
+        assert!(codec.is_some(), "Should create codec for arbitrary base16");
     }
 
     #[test]

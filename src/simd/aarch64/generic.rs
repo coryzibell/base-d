@@ -8,8 +8,8 @@
 //! (index → character) varies.
 
 use crate::core::dictionary::Dictionary;
-use crate::simd::variants::{AlphabetMetadata, TranslationStrategy};
 use crate::simd::translate::{SequentialTranslate, SimdTranslate};
+use crate::simd::variants::{AlphabetMetadata, TranslationStrategy};
 use std::arch::aarch64::*;
 
 /// SIMD-accelerated codec that works with any compatible alphabet

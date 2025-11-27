@@ -8,8 +8,8 @@ use crate::core::config::EncodingMode;
 use crate::core::dictionary::Dictionary;
 use std::sync::OnceLock;
 
-pub mod variants;
 pub mod lut;
+pub mod variants;
 
 #[cfg(target_arch = "x86_64")]
 pub mod generic;

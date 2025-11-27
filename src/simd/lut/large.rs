@@ -17,38 +17,38 @@ use crate::simd::variants::{AlphabetMetadata, LutStrategy, TranslationStrategy};
 /// Character range in alphabet (contiguous ASCII sequence)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct CharRange {
-    start_idx: u8,    // First index in this range
-    end_idx: u8,      // Last index (inclusive)
-    start_char: u8,   // First ASCII character
-    offset: i8,       // char = index + offset
+    start_idx: u8,  // First index in this range
+    end_idx: u8,    // Last index (inclusive)
+    start_char: u8, // First ASCII character
+    offset: i8,     // char = index + offset
 }
 
 /// Range-reduction strategy based on number of ranges
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RangeStrategy {
-    Simple,        // 1 range, direct offset
-    Small,         // 2 ranges, single subs
-    SmallMulti,    // 3-5 ranges, subs + 1 cmp + blend
-    Medium,        // 6-8 ranges, 2-3 thresholds
-    Large,         // 9-12 ranges, 3-4 thresholds
-    VeryLarge,     // 13-16 ranges, 4-5 thresholds
+    Simple,     // 1 range, direct offset
+    Small,      // 2 ranges, single subs
+    SmallMulti, // 3-5 ranges, subs + 1 cmp + blend
+    Medium,     // 6-8 ranges, 2-3 thresholds
+    Large,      // 9-12 ranges, 3-4 thresholds
+    VeryLarge,  // 13-16 ranges, 4-5 thresholds
 }
 
 /// Range-reduction metadata for SSE/AVX2 encoding
 #[derive(Debug, Clone)]
 struct RangeInfo {
     ranges: Vec<CharRange>,
-    offset_lut: [i8; 16],       // pshufb lookup table
-    strategy: RangeStrategy,     // Encoding strategy
+    offset_lut: [i8; 16],    // pshufb lookup table
+    strategy: RangeStrategy, // Encoding strategy
 
     // Single threshold (for 2 ranges)
-    subs_threshold: u8,          // For _mm_subs_epu8
-    cmp_value: Option<u8>,       // For _mm_cmplt_epi8 (if needed)
-    override_val: Option<u8>,    // For _mm_blendv_epi8 (if needed)
+    subs_threshold: u8,       // For _mm_subs_epu8
+    cmp_value: Option<u8>,    // For _mm_cmplt_epi8 (if needed)
+    override_val: Option<u8>, // For _mm_blendv_epi8 (if needed)
 
     // Multiple thresholds (for 6-16 ranges)
-    thresholds: Vec<u8>,         // Ordered thresholds for binary tree
-    cmp_values: Vec<u8>,         // Comparison values for each threshold
+    thresholds: Vec<u8>, // Ordered thresholds for binary tree
+    cmp_values: Vec<u8>, // Comparison values for each threshold
 }
 
 impl RangeInfo {
@@ -90,7 +90,7 @@ impl RangeInfo {
             ranges: ranges.to_vec(),
             offset_lut,
             strategy: RangeStrategy::Simple,
-            subs_threshold: 0,   // No subtraction needed
+            subs_threshold: 0, // No subtraction needed
             cmp_value: None,
             override_val: None,
             thresholds: Vec::new(),
@@ -126,8 +126,8 @@ impl RangeInfo {
             offset_lut,
             strategy: RangeStrategy::Small,
             subs_threshold,
-            cmp_value: None,      // No comparison needed for 2 ranges
-            override_val: None,   // No override needed for 2 ranges
+            cmp_value: None,    // No comparison needed for 2 ranges
+            override_val: None, // No override needed for 2 ranges
             thresholds: Vec::new(),
             cmp_values: Vec::new(),
         })
@@ -141,7 +141,8 @@ impl RangeInfo {
 
         // Find two largest ranges by length
         let mut sorted_ranges: Vec<_> = ranges.iter().enumerate().collect();
-        sorted_ranges.sort_by_key(|(_, r)| std::cmp::Reverse((r.end_idx - r.start_idx + 1) as usize));
+        sorted_ranges
+            .sort_by_key(|(_, r)| std::cmp::Reverse((r.end_idx - r.start_idx + 1) as usize));
 
         let (largest_idx, largest_range) = sorted_ranges[0];
         let (second_largest_idx, second_largest_range) = sorted_ranges[1];
@@ -214,7 +215,7 @@ impl RangeInfo {
             ranges: ranges.to_vec(),
             offset_lut,
             strategy: RangeStrategy::Medium,
-            subs_threshold: 0,  // Unused for multi-threshold
+            subs_threshold: 0, // Unused for multi-threshold
             cmp_value: None,
             override_val: None,
             thresholds,
@@ -716,7 +717,10 @@ impl LargeLutCodec {
     /// Based on specialized base64.rs reshuffle_neon
     #[cfg(target_arch = "aarch64")]
     #[target_feature(enable = "neon")]
-    unsafe fn reshuffle_neon_base64(&self, input: std::arch::aarch64::uint8x16_t) -> std::arch::aarch64::uint8x16_t {
+    unsafe fn reshuffle_neon_base64(
+        &self,
+        input: std::arch::aarch64::uint8x16_t,
+    ) -> std::arch::aarch64::uint8x16_t {
         use std::arch::aarch64::*;
 
         // Shuffle mask: Duplicate bytes to prepare for 6-bit extraction
@@ -1169,15 +1173,18 @@ impl LargeLutCodec {
     /// Based on specialized base64.rs reshuffle
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "ssse3")]
-    unsafe fn reshuffle_x86_base64(&self, input: std::arch::x86_64::__m128i) -> std::arch::x86_64::__m128i {
+    unsafe fn reshuffle_x86_base64(
+        &self,
+        input: std::arch::x86_64::__m128i,
+    ) -> std::arch::x86_64::__m128i {
         use std::arch::x86_64::*;
 
         // Shuffle mask: Duplicate bytes to prepare for 6-bit extraction
         let shuffle_indices = _mm_setr_epi8(
-            0, 0, 1, 2,    // bytes 0-2 -> positions 0-3
-            3, 3, 4, 5,    // bytes 3-5 -> positions 4-7
-            6, 6, 7, 8,    // bytes 6-8 -> positions 8-11
-            9, 9, 10, 11,  // bytes 9-11 -> positions 12-15
+            0, 0, 1, 2, // bytes 0-2 -> positions 0-3
+            3, 3, 4, 5, // bytes 3-5 -> positions 4-7
+            6, 6, 7, 8, // bytes 6-8 -> positions 8-11
+            9, 9, 10, 11, // bytes 9-11 -> positions 12-15
         );
 
         let shuffled = _mm_shuffle_epi8(input, shuffle_indices);
@@ -1406,7 +1413,8 @@ impl LargeLutCodec {
         const BLOCK_SIZE: usize = 16; // 16 chars → 12 bytes
 
         // Strip padding
-        let input_no_padding = if let Some(last_non_pad) = encoded.iter().rposition(|&b| b != b'=') {
+        let input_no_padding = if let Some(last_non_pad) = encoded.iter().rposition(|&b| b != b'=')
+        {
             &encoded[..=last_non_pad]
         } else {
             encoded
@@ -1460,7 +1468,8 @@ impl LargeLutCodec {
         for range in &range_info.ranges {
             // Range checks: char >= start_char && char <= end_char
             let start_vec = _mm_set1_epi8(range.start_char as i8);
-            let end_vec = _mm_set1_epi8((range.start_char + (range.end_idx - range.start_idx)) as i8);
+            let end_vec =
+                _mm_set1_epi8((range.start_char + (range.end_idx - range.start_idx)) as i8);
 
             let ge_start = _mm_cmpgt_epi8(chars, _mm_sub_epi8(start_vec, _mm_set1_epi8(1)));
             let le_end = _mm_cmplt_epi8(chars, _mm_add_epi8(end_vec, _mm_set1_epi8(1)));
@@ -1554,7 +1563,8 @@ impl LargeLutCodec {
 
             // === TRANSLATION (char → 5-bit index) ===
             let letter_indices = _mm_sub_epi8(input, _mm_set1_epi8(65)); // 'A' → 0
-            let digit_indices = _mm_add_epi8(_mm_sub_epi8(input, _mm_set1_epi8(50)), _mm_set1_epi8(26)); // '2' → 26
+            let digit_indices =
+                _mm_add_epi8(_mm_sub_epi8(input, _mm_set1_epi8(50)), _mm_set1_epi8(26)); // '2' → 26
             let indices = _mm_blendv_epi8(digit_indices, letter_indices, in_range1);
 
             // === UNPACKING (16×5-bit → 10 bytes) ===
@@ -1662,7 +1672,8 @@ impl LargeLutCodec {
         const BLOCK_SIZE: usize = 16; // 16 chars → 12 bytes
 
         // Strip padding
-        let input_no_padding = if let Some(last_non_pad) = encoded.iter().rposition(|&b| b != b'=') {
+        let input_no_padding = if let Some(last_non_pad) = encoded.iter().rposition(|&b| b != b'=')
+        {
             &encoded[..=last_non_pad]
         } else {
             encoded
@@ -1673,7 +1684,8 @@ impl LargeLutCodec {
 
         for i in 0..num_blocks {
             let offset = i * BLOCK_SIZE;
-            let input_vec = _mm_loadu_si128(input_no_padding.as_ptr().add(offset) as *const __m128i);
+            let input_vec =
+                _mm_loadu_si128(input_no_padding.as_ptr().add(offset) as *const __m128i);
 
             // === VALIDATION & TRANSLATION (char → 6-bit index) ===
             let mut char_buf = [0u8; 16];
@@ -1689,7 +1701,9 @@ impl LargeLutCodec {
                     let mut found = false;
                     for range in &range_info.ranges {
                         let range_start_char = range.start_char;
-                        let range_end_char = (range.start_char as i16 + (range.end_idx - range.start_idx) as i16) as u8;
+                        let range_end_char = (range.start_char as i16
+                            + (range.end_idx - range.start_idx) as i16)
+                            as u8;
 
                         if ch >= range_start_char && ch <= range_end_char {
                             // Decode: compressed_idx = char - range.start_char
@@ -1745,7 +1759,8 @@ impl LargeLutCodec {
 
         const BLOCK_SIZE: usize = 16;
 
-        let input_no_padding = if let Some(last_non_pad) = encoded.iter().rposition(|&b| b != b'=') {
+        let input_no_padding = if let Some(last_non_pad) = encoded.iter().rposition(|&b| b != b'=')
+        {
             &encoded[..=last_non_pad]
         } else {
             encoded
@@ -1798,7 +1813,10 @@ impl LargeLutCodec {
     /// Based on specialized/base64.rs reshuffle_decode
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "ssse3")]
-    unsafe fn reshuffle_decode_ssse3(&self, indices: std::arch::x86_64::__m128i) -> std::arch::x86_64::__m128i {
+    unsafe fn reshuffle_decode_ssse3(
+        &self,
+        indices: std::arch::x86_64::__m128i,
+    ) -> std::arch::x86_64::__m128i {
         use std::arch::x86_64::*;
 
         // Stage 1: Merge adjacent pairs using multiply-add
@@ -1811,10 +1829,10 @@ impl LargeLutCodec {
         _mm_shuffle_epi8(
             final_32bit,
             _mm_setr_epi8(
-                2, 1, 0,       // first group of 3 bytes (reversed)
-                6, 5, 4,       // second group of 3 bytes (reversed)
-                10, 9, 8,      // third group of 3 bytes (reversed)
-                14, 13, 12,    // fourth group of 3 bytes (reversed)
+                2, 1, 0, // first group of 3 bytes (reversed)
+                6, 5, 4, // second group of 3 bytes (reversed)
+                10, 9, 8, // third group of 3 bytes (reversed)
+                14, 13, 12, // fourth group of 3 bytes (reversed)
                 -1, -1, -1, -1, // unused
             ),
         )
@@ -1823,7 +1841,10 @@ impl LargeLutCodec {
     /// Reshuffle 6-bit indices to packed 8-bit bytes (ARM NEON)
     #[cfg(target_arch = "aarch64")]
     #[target_feature(enable = "neon")]
-    unsafe fn reshuffle_decode_neon(&self, indices: std::arch::aarch64::uint8x16_t) -> std::arch::aarch64::uint8x16_t {
+    unsafe fn reshuffle_decode_neon(
+        &self,
+        indices: std::arch::aarch64::uint8x16_t,
+    ) -> std::arch::aarch64::uint8x16_t {
         use std::arch::aarch64::*;
 
         // Stage 1: Merge adjacent pairs
@@ -1831,10 +1852,8 @@ impl LargeLutCodec {
             vget_low_s8(vreinterpretq_s8_u8(indices)),
             vdup_n_s8(1),
         ));
-        let merge_ab_and_bc_hi = vreinterpretq_u16_s16(vmull_high_s8(
-            vreinterpretq_s8_u8(indices),
-            vdupq_n_s8(1),
-        ));
+        let merge_ab_and_bc_hi =
+            vreinterpretq_u16_s16(vmull_high_s8(vreinterpretq_s8_u8(indices), vdupq_n_s8(1)));
 
         // Simplified for now - use scalar unpacking
         let mut idx_buf = [0u8; 16];
@@ -1871,7 +1890,8 @@ impl LargeLutCodec {
                 let mut found_idx = None;
                 for range in &range_info.ranges {
                     let range_start_char = range.start_char;
-                    let range_end_char = (range.start_char as i16 + (range.end_idx - range.start_idx) as i16) as u8;
+                    let range_end_char =
+                        (range.start_char as i16 + (range.end_idx - range.start_idx) as i16) as u8;
 
                     if ch_byte >= range_start_char && ch_byte <= range_end_char {
                         // Decode: compressed_idx = char - range.start_char
@@ -1923,7 +1943,6 @@ impl LargeLutCodec {
 mod tests {
     use super::*;
 
-
     #[test]
     fn test_creation_from_arbitrary_base32() {
         // Shuffled 32-char alphabet
@@ -1931,10 +1950,7 @@ mod tests {
         let dict = Dictionary::new(chars).unwrap();
 
         let codec = LargeLutCodec::from_dictionary(&dict);
-        assert!(
-            codec.is_some(),
-            "Should create codec for arbitrary base32"
-        );
+        assert!(codec.is_some(), "Should create codec for arbitrary base32");
     }
 
     #[test]
@@ -1946,10 +1962,7 @@ mod tests {
         let dict = Dictionary::new(chars).unwrap();
 
         let codec = LargeLutCodec::from_dictionary(&dict);
-        assert!(
-            codec.is_some(),
-            "Should create codec for arbitrary base64"
-        );
+        assert!(codec.is_some(), "Should create codec for arbitrary base64");
     }
 
     #[test]
@@ -2513,7 +2526,10 @@ mod tests {
         assert!(codec.is_some(), "Should create codec for arbitrary base64");
         let codec = codec.unwrap();
 
-        assert!(codec.range_info.is_some(), "Should build range info for base64");
+        assert!(
+            codec.range_info.is_some(),
+            "Should build range info for base64"
+        );
 
         // Test encoding
         let data = b"Hello, World!";
@@ -2551,11 +2567,17 @@ mod tests {
     fn test_multi_range_arbitrary_3range() {
         // Custom 3-range alphabet: '0-9', 'A-Z', 'a-f' (42 chars)
         // This is base42, but only 32 chars fit in power-of-2, so truncate to 32
-        let chars: Vec<char> = "0123456789ABCDEFGHIJKLMNOPQRSTUVabcdef".chars().take(32).collect();
+        let chars: Vec<char> = "0123456789ABCDEFGHIJKLMNOPQRSTUVabcdef"
+            .chars()
+            .take(32)
+            .collect();
         let dict = Dictionary::new(chars).unwrap();
 
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
-        assert!(codec.range_info.is_some(), "Should build range info for 3-range alphabet");
+        assert!(
+            codec.range_info.is_some(),
+            "Should build range info for 3-range alphabet"
+        );
 
         let data = b"Test data";
         let encoded = codec.encode(data, &dict).unwrap();
@@ -2576,7 +2598,10 @@ mod tests {
         #[cfg(target_arch = "x86_64")]
         {
             // Should fall back to scalar (range_info = None)
-            assert!(codec.range_info.is_none(), "Should not build range info for >16 ranges");
+            assert!(
+                codec.range_info.is_none(),
+                "Should not build range info for >16 ranges"
+            );
         }
 
         // Encoding should still work (scalar path)
@@ -2742,7 +2767,11 @@ mod tests {
         }
 
         // Ensure we have exactly the right number of chars
-        assert_eq!(alphabet.len(), total_size, "Generated alphabet has wrong size");
+        assert_eq!(
+            alphabet.len(),
+            total_size,
+            "Generated alphabet has wrong size"
+        );
 
         alphabet
     }
@@ -2770,12 +2799,18 @@ mod tests {
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
 
         // 6+ ranges use scalar fallback (range-reduction not supported)
-        assert!(codec.range_info.is_none(), "Range info should not exist for >5 ranges");
+        assert!(
+            codec.range_info.is_none(),
+            "Range info should not exist for >5 ranges"
+        );
 
         let data = b"Testing 6-range encoding with various data patterns!";
         let encoded = codec.encode(data, &dict);
         assert!(encoded.is_some(), "Encode should succeed for 6 ranges");
-        assert!(encoded.unwrap().len() > 0, "Encoded output should not be empty");
+        assert!(
+            encoded.unwrap().len() > 0,
+            "Encoded output should not be empty"
+        );
     }
 
     #[test]
@@ -2793,7 +2828,10 @@ mod tests {
 
         let encoded = codec.encode(&data, &dict);
         assert!(encoded.is_some(), "Encode should succeed");
-        assert!(encoded.unwrap().len() > 0, "Encoded output should not be empty");
+        assert!(
+            encoded.unwrap().len() > 0,
+            "Encoded output should not be empty"
+        );
     }
 
     #[test]
@@ -2803,11 +2841,17 @@ mod tests {
         let dict = Dictionary::new(alphabet.clone()).unwrap();
 
         let codec = LargeLutCodec::from_dictionary(&dict);
-        assert!(codec.is_some(), "Codec should be created for 8-range alphabet");
+        assert!(
+            codec.is_some(),
+            "Codec should be created for 8-range alphabet"
+        );
         let codec = codec.unwrap();
 
         // 6+ ranges use scalar fallback (range-reduction not supported)
-        assert!(codec.range_info.is_none(), "Range info should not exist for >5 ranges");
+        assert!(
+            codec.range_info.is_none(),
+            "Range info should not exist for >5 ranges"
+        );
 
         let data = b"Testing 8-range encoding!";
         let encoded = codec.encode(data, &dict);
@@ -2836,7 +2880,10 @@ mod tests {
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
 
         // 6+ ranges use scalar fallback (range-reduction not supported)
-        assert!(codec.range_info.is_none(), "Range info should not exist for >5 ranges");
+        assert!(
+            codec.range_info.is_none(),
+            "Range info should not exist for >5 ranges"
+        );
 
         let data = b"Testing 9-range encoding!";
         let encoded = codec.encode(data, &dict);
@@ -2852,7 +2899,10 @@ mod tests {
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
 
         // 6+ ranges use scalar fallback (range-reduction not supported)
-        assert!(codec.range_info.is_none(), "Range info should not exist for >5 ranges");
+        assert!(
+            codec.range_info.is_none(),
+            "Range info should not exist for >5 ranges"
+        );
 
         let data = b"Testing 12-range encoding!";
         let encoded = codec.encode(data, &dict);
@@ -2868,7 +2918,10 @@ mod tests {
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
 
         // 6+ ranges use scalar fallback (range-reduction not supported)
-        assert!(codec.range_info.is_none(), "Range info should not exist for >5 ranges");
+        assert!(
+            codec.range_info.is_none(),
+            "Range info should not exist for >5 ranges"
+        );
 
         let data = b"Testing 13-range encoding!";
         let encoded = codec.encode(data, &dict);
@@ -2884,7 +2937,10 @@ mod tests {
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
 
         // 6+ ranges use scalar fallback (range-reduction not supported)
-        assert!(codec.range_info.is_none(), "Range info should not exist for >5 ranges");
+        assert!(
+            codec.range_info.is_none(),
+            "Range info should not exist for >5 ranges"
+        );
 
         let data = b"Testing 16-range encoding!";
         let encoded = codec.encode(data, &dict);
@@ -2902,20 +2958,29 @@ mod tests {
         let dict_2 = Dictionary::new(alphabet_2).unwrap();
         let codec_2 = LargeLutCodec::from_dictionary(&dict_2).unwrap();
         assert!(codec_2.range_info.is_some());
-        assert_eq!(codec_2.range_info.as_ref().unwrap().strategy, RangeStrategy::Small);
+        assert_eq!(
+            codec_2.range_info.as_ref().unwrap().strategy,
+            RangeStrategy::Small
+        );
 
         // Test 3-range alphabet
         let alphabet_3 = generate_synthetic_alphabet(3, 32);
         let dict_3 = Dictionary::new(alphabet_3).unwrap();
         let codec_3 = LargeLutCodec::from_dictionary(&dict_3).unwrap();
         assert!(codec_3.range_info.is_some());
-        assert_eq!(codec_3.range_info.as_ref().unwrap().strategy, RangeStrategy::SmallMulti);
+        assert_eq!(
+            codec_3.range_info.as_ref().unwrap().strategy,
+            RangeStrategy::SmallMulti
+        );
 
         // 6+ ranges should not have range_info
         let alphabet_6 = generate_synthetic_alphabet(6, 64);
         let dict_6 = Dictionary::new(alphabet_6).unwrap();
         let codec_6 = LargeLutCodec::from_dictionary(&dict_6).unwrap();
-        assert!(codec_6.range_info.is_none(), "6+ ranges should use scalar fallback");
+        assert!(
+            codec_6.range_info.is_none(),
+            "6+ ranges should use scalar fallback"
+        );
     }
 
     // ========== Multi-range decode tests (6-16 ranges) ==========
@@ -2929,7 +2994,10 @@ mod tests {
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
 
         // 6-16 range support not implemented yet, so range_info should be None
-        assert!(codec.range_info.is_none(), "Range info should not exist for >5 ranges");
+        assert!(
+            codec.range_info.is_none(),
+            "Range info should not exist for >5 ranges"
+        );
 
         let data = b"Hello, World! Testing 6-range decode...";
         let encoded = codec.encode(data, &dict).unwrap();
@@ -2947,7 +3015,10 @@ mod tests {
         let dict = Dictionary::new(alphabet).unwrap();
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
 
-        assert!(codec.range_info.is_none(), "Range info should not exist for >5 ranges");
+        assert!(
+            codec.range_info.is_none(),
+            "Range info should not exist for >5 ranges"
+        );
 
         let data: Vec<u8> = (0..128).collect();
         let encoded = codec.encode(&data, &dict).unwrap();
@@ -2964,7 +3035,10 @@ mod tests {
         let dict = Dictionary::new(alphabet).unwrap();
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
 
-        assert!(codec.range_info.is_none(), "Range info should not exist for >5 ranges");
+        assert!(
+            codec.range_info.is_none(),
+            "Range info should not exist for >5 ranges"
+        );
 
         let data = b"Large multirange alphabet test!";
         let encoded = codec.encode(data, &dict).unwrap();
@@ -2981,7 +3055,10 @@ mod tests {
         let dict = Dictionary::new(alphabet).unwrap();
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
 
-        assert!(codec.range_info.is_none(), "Range info should not exist for >5 ranges");
+        assert!(
+            codec.range_info.is_none(),
+            "Range info should not exist for >5 ranges"
+        );
 
         let data: Vec<u8> = (0..255).collect();
         let encoded = codec.encode(&data, &dict).unwrap();
@@ -2998,7 +3075,10 @@ mod tests {
         let dict = Dictionary::new(alphabet).unwrap();
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
 
-        assert!(codec.range_info.is_none(), "Range info should not exist for >5 ranges");
+        assert!(
+            codec.range_info.is_none(),
+            "Range info should not exist for >5 ranges"
+        );
 
         let data = b"Base64 with 6 contiguous ranges for testing SIMD decode...";
         let encoded = codec.encode(data, &dict).unwrap();
@@ -3015,7 +3095,10 @@ mod tests {
         let dict = Dictionary::new(alphabet).unwrap();
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
 
-        assert!(codec.range_info.is_none(), "Range info should not exist for >5 ranges");
+        assert!(
+            codec.range_info.is_none(),
+            "Range info should not exist for >5 ranges"
+        );
 
         let data: Vec<u8> = (0..128).collect();
         let encoded = codec.encode(&data, &dict).unwrap();
@@ -3032,7 +3115,10 @@ mod tests {
         let dict = Dictionary::new(alphabet).unwrap();
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
 
-        assert!(codec.range_info.is_none(), "Range info should not exist for >5 ranges");
+        assert!(
+            codec.range_info.is_none(),
+            "Range info should not exist for >5 ranges"
+        );
 
         let data = b"Multi-range base64 decode test with 12 contiguous ranges!";
         let encoded = codec.encode(data, &dict).unwrap();
@@ -3049,7 +3135,10 @@ mod tests {
         let dict = Dictionary::new(alphabet).unwrap();
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
 
-        assert!(codec.range_info.is_none(), "Range info should not exist for >5 ranges");
+        assert!(
+            codec.range_info.is_none(),
+            "Range info should not exist for >5 ranges"
+        );
 
         let data: Vec<u8> = (0..255).collect();
         let encoded = codec.encode(&data, &dict).unwrap();
@@ -3066,13 +3155,20 @@ mod tests {
         let dict = Dictionary::new(alphabet).unwrap();
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
 
-        assert!(codec.range_info.is_none(), "Range info should not exist for >5 ranges");
+        assert!(
+            codec.range_info.is_none(),
+            "Range info should not exist for >5 ranges"
+        );
 
         let data: Vec<u8> = (0..=255).collect();
         let encoded = codec.encode(&data, &dict).unwrap();
         let decoded = codec.decode(&encoded, &dict).unwrap();
 
-        assert_eq!(&decoded[..], &data[..], "Round-trip failed for all byte values with 6 ranges");
+        assert_eq!(
+            &decoded[..],
+            &data[..],
+            "Round-trip failed for all byte values with 6 ranges"
+        );
     }
 
     #[test]
@@ -3095,7 +3191,10 @@ mod tests {
 
         // Decode should fail
         let result = codec.decode(&encoded, &dict);
-        assert!(result.is_none(), "Should reject invalid character in multi-range decode");
+        assert!(
+            result.is_none(),
+            "Should reject invalid character in multi-range decode"
+        );
     }
 
     #[test]
@@ -3111,7 +3210,12 @@ mod tests {
             let encoded = codec.encode(&data, &dict).unwrap();
             let decoded = codec.decode(&encoded, &dict).unwrap();
 
-            assert_eq!(&decoded[..], &data[..], "Round-trip failed at size {}", size);
+            assert_eq!(
+                &decoded[..],
+                &data[..],
+                "Round-trip failed at size {}",
+                size
+            );
         }
     }
 

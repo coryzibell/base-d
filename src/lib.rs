@@ -161,7 +161,7 @@ mod simd;
 
 pub use compression::{compress, decompress, CompressionAlgorithm};
 pub use core::config::{
-    CompressionConfig, DictionaryRegistry, DictionaryConfig, EncodingMode, Settings,
+    CompressionConfig, DictionaryConfig, DictionaryRegistry, EncodingMode, Settings,
 };
 pub use core::dictionary::Dictionary;
 pub use detection::{detect_dictionary, DictionaryDetector, DictionaryMatch};

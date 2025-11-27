@@ -1,4 +1,4 @@
-use base_d::{decode, encode, DictionaryRegistry, Dictionary};
+use base_d::{decode, encode, Dictionary, DictionaryRegistry};
 use clap::Parser;
 use std::fs;
 use std::io::{self, Read, Write};
