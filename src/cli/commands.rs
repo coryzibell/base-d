@@ -103,7 +103,10 @@ pub fn matrix_mode(
 
             // Check for ESC to skip intro
             if poll(Duration::from_millis(100))? {
-                if let Event::Key(KeyEvent { code: KeyCode::Esc, .. }) = read()? {
+                if let Event::Key(KeyEvent {
+                    code: KeyCode::Esc, ..
+                }) = read()?
+                {
                     print!("\r\x1b[K");
                     break 'intro_loop;
                 }
