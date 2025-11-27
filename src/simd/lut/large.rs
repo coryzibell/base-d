@@ -1873,22 +1873,23 @@ impl LargeLutCodec {
         let merge_ab_and_bc_hi =
             vreinterpretq_u16_s16(vmull_high_s8(vreinterpretq_s8_u8(indices), vdupq_n_s8(1)));
 
-        // Simplified for now - use scalar unpacking
+        // Unpack 6-bit indices to 8-bit bytes
+        // Base64: 4 chars (6 bits each) -> 3 bytes (8 bits each)
         let mut idx_buf = [0u8; 16];
         vst1q_u8(idx_buf.as_mut_ptr(), indices);
 
         let mut out_buf = [0u8; 16];
         for j in 0..4 {
             let base = j * 4;
-            let a = idx_buf[base] as u32;
-            let b = idx_buf[base + 1] as u32;
-            let c = idx_buf[base + 2] as u32;
-            let d = idx_buf[base + 3] as u32;
+            let a = idx_buf[base] as u8;
+            let b = idx_buf[base + 1] as u8;
+            let c = idx_buf[base + 2] as u8;
+            let d = idx_buf[base + 3] as u8;
 
-            let combined = (a << 18) | (b << 12) | (c << 6) | d;
-            out_buf[j * 3] = ((combined >> 16) & 0xFF) as u8;
-            out_buf[j * 3 + 1] = ((combined >> 8) & 0xFF) as u8;
-            out_buf[j * 3 + 2] = (combined & 0xFF) as u8;
+            // Unpack: [aaaaaa][bbbbbb][cccccc][dddddd] -> [aaaaaabb][bbbbcccc][ccdddddd]
+            out_buf[j * 3] = (a << 2) | (b >> 4);
+            out_buf[j * 3 + 1] = (b << 4) | (c >> 2);
+            out_buf[j * 3 + 2] = (c << 6) | d;
         }
 
         vld1q_u8(out_buf.as_ptr())
