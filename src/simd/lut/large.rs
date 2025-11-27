@@ -729,13 +729,15 @@ impl LargeLutCodec {
     ) -> std::arch::aarch64::uint8x16_t {
         use std::arch::aarch64::*;
 
-        // Shuffle mask: Duplicate bytes to prepare for 6-bit extraction
+        // Shuffle mask: Reshuffle bytes to prepare for 6-bit extraction
+        // For each group of 3 input bytes ABC (24 bits) -> 4 output indices (4 x 6 bits)
+        // Position needs: 0:[A], 1:[A+B], 2:[B+C], 3:[C]
         let shuffle_indices = vld1q_u8(
             [
-                0, 0, 1, 2, // bytes 0-2 -> positions 0-3
-                3, 3, 4, 5, // bytes 3-5 -> positions 4-7
-                6, 6, 7, 8, // bytes 6-8 -> positions 8-11
-                9, 9, 10, 11, // bytes 9-11 -> positions 12-15
+                0, 1, 1, 2, // bytes 0-2 -> positions 0-3
+                3, 4, 4, 5, // bytes 3-5 -> positions 4-7
+                6, 7, 7, 8, // bytes 6-8 -> positions 8-11
+                9, 10, 10, 11, // bytes 9-11 -> positions 12-15
             ]
             .as_ptr(),
         );
@@ -744,19 +746,20 @@ impl LargeLutCodec {
         let shuffled_u32 = vreinterpretq_u32_u8(shuffled);
 
         // Extract 6-bit groups using shifts and masks
+        // First extraction: positions 0 and 2 in each group (using mulhi emulation)
         let t0 = vandq_u32(shuffled_u32, vdupq_n_u32(0x0FC0FC00));
         let t0_u16 = vreinterpretq_u16_u32(t0);
-        let mult_hi = vmulq_n_u16(t0_u16, 0x0040);
+        let mult_hi = vmulq_n_u16(t0_u16, 0x0400);
         let t1 = vreinterpretq_u32_u16(vshrq_n_u16(mult_hi, 10));
 
+        // Second extraction: positions 1 and 3 in each group
         let t2 = vandq_u32(shuffled_u32, vdupq_n_u32(0x003F03F0));
         let t2_u16 = vreinterpretq_u16_u32(t2);
-        let mult_lo = vmulq_n_u16(t2_u16, 0x0010);
+        let mult_lo = vmulq_n_u16(t2_u16, 0x0100);
         let t3 = vreinterpretq_u32_u16(vshrq_n_u16(mult_lo, 6));
 
-        let result = vreinterpretq_u8_u32(vorrq_u32(t1, t3));
-        // Mask to ensure 6-bit indices (0-63)
-        vandq_u8(result, vdupq_n_u8(0x3F))
+        // Combine the two results
+        vreinterpretq_u8_u32(vorrq_u32(t1, t3))
     }
 
     /// Scalar fallback for base32 encoding
@@ -1187,28 +1190,28 @@ impl LargeLutCodec {
     ) -> std::arch::x86_64::__m128i {
         use std::arch::x86_64::*;
 
-        // Shuffle mask: Duplicate bytes to prepare for 6-bit extraction
+        // Shuffle mask: Reshuffle bytes to prepare for 6-bit extraction
+        // For each group of 3 input bytes ABC (24 bits) -> 4 output indices (4 x 6 bits)
+        // Position needs: 0:[A], 1:[A+B], 2:[B+C], 3:[C]
         let shuffle_indices = _mm_setr_epi8(
-            0, 0, 1, 2, // bytes 0-2 -> positions 0-3
-            3, 3, 4, 5, // bytes 3-5 -> positions 4-7
-            6, 6, 7, 8, // bytes 6-8 -> positions 8-11
-            9, 9, 10, 11, // bytes 9-11 -> positions 12-15
+            0, 1, 1, 2, // bytes 0-2 -> positions 0-3
+            3, 4, 4, 5, // bytes 3-5 -> positions 4-7
+            6, 7, 7, 8, // bytes 6-8 -> positions 8-11
+            9, 10, 10, 11, // bytes 9-11 -> positions 12-15
         );
 
         let shuffled = _mm_shuffle_epi8(input, shuffle_indices);
-        let shuffled_u32 = _mm_castps_si128(_mm_castsi128_ps(shuffled));
 
         // Extract 6-bit groups using shifts and masks
-        let t0 = _mm_and_si128(shuffled_u32, _mm_set1_epi32(0x0FC0FC00_u32 as i32));
-        let t0_u16 = _mm_castps_si128(_mm_castsi128_ps(t0));
-        let mult_hi = _mm_mullo_epi16(t0_u16, _mm_set1_epi16(0x0040));
-        let t1 = _mm_srli_epi16(mult_hi, 10);
+        // First extraction: positions 0 and 2 in each group (using mulhi)
+        let t0 = _mm_and_si128(shuffled, _mm_set1_epi32(0x0FC0FC00_u32 as i32));
+        let t1 = _mm_mulhi_epu16(t0, _mm_set1_epi32(0x04000040_u32 as i32));
 
-        let t2 = _mm_and_si128(shuffled_u32, _mm_set1_epi32(0x003F03F0_u32 as i32));
-        let t2_u16 = _mm_castps_si128(_mm_castsi128_ps(t2));
-        let mult_lo = _mm_mullo_epi16(t2_u16, _mm_set1_epi16(0x0010));
-        let t3 = _mm_srli_epi16(mult_lo, 6);
+        // Second extraction: positions 1 and 3 in each group
+        let t2 = _mm_and_si128(shuffled, _mm_set1_epi32(0x003F03F0_u32 as i32));
+        let t3 = _mm_mullo_epi16(t2, _mm_set1_epi32(0x01000010_u32 as i32));
 
+        // Combine the two results
         _mm_or_si128(t1, t3)
     }
 
