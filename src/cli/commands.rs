@@ -61,7 +61,13 @@ pub fn matrix_mode(
 
     loop {
         // Generate random bytes (one line worth)
-        let bytes_per_line = term_width / 2; // Approximate, Matrix chars may be wider
+        // For base256 dictionaries: 1 byte = 1 character (8 bits perfectly matches log2(256))
+        // The base256_matrix dictionary uses half-width katakana (single-width chars)
+        let bytes_per_line = if dictionary.base() == 256 {
+            term_width  // Perfect 1:1 encoding for base256
+        } else {
+            term_width / 2  // Conservative estimate for other bases
+        };
         let mut random_bytes = vec![0u8; bytes_per_line];
 
         use rand::RngCore;
@@ -70,7 +76,7 @@ pub fn matrix_mode(
         // Encode with Matrix dictionary
         let encoded = encode(&random_bytes, &dictionary);
 
-        // Trim to terminal width (Matrix chars can be double-width)
+        // Trim to terminal width as a safeguard
         let display: String = encoded.chars().take(term_width).collect();
 
         // Print the line
