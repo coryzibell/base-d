@@ -1,4 +1,4 @@
-use base_d::{decode, encode, DictionariesConfig, Dictionary};
+use base_d::{decode, encode, DictionaryRegistry, Dictionary};
 use clap::Parser;
 use std::fs;
 use std::io::{self, Read, Write};
@@ -78,7 +78,7 @@ struct Cli {
 /// Load xxHash configuration from CLI args and config file.
 fn load_xxhash_config(
     cli: &Cli,
-    config: &DictionariesConfig,
+    config: &DictionaryRegistry,
     hash_algo: Option<&base_d::HashAlgorithm>,
 ) -> Result<base_d::XxHashConfig, Box<dyn std::error::Error>> {
     let seed = cli
@@ -129,7 +129,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     // Load dictionaries configuration with user overrides
-    let config = DictionariesConfig::load_with_overrides()?;
+    let config = DictionaryRegistry::load_with_overrides()?;
 
     // Handle --neo mode (Matrix effect)
     if let Some(alphabet_opt) = &cli.neo {
@@ -439,7 +439,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn matrix_mode(
-    config: &DictionariesConfig,
+    config: &DictionaryRegistry,
     alphabet_name: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use std::thread;
@@ -516,7 +516,7 @@ fn matrix_mode(
     }
 }
 
-fn detect_mode(config: &DictionariesConfig, cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
+fn detect_mode(config: &DictionaryRegistry, cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
     use base_d::DictionaryDetector;
 
     // Read input

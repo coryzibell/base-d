@@ -11,7 +11,7 @@
 //! - Non-sequential alphabets only
 
 use crate::core::dictionary::Dictionary;
-use crate::simd::alphabets::{AlphabetMetadata, LutStrategy, TranslationStrategy};
+use crate::simd::variants::{AlphabetMetadata, LutStrategy, TranslationStrategy};
 
 /// SIMD codec for small arbitrary alphabets (≤16 characters)
 ///

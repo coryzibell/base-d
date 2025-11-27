@@ -13,7 +13,7 @@
 
 use super::super::common;
 use crate::core::dictionary::Dictionary;
-use crate::simd::alphabets::Base32Variant;
+use crate::simd::variants::Base32Variant;
 
 /// SIMD-accelerated base32 encoding with runtime dispatch
 ///

@@ -1,4 +1,4 @@
-use crate::core::config::{DictionariesConfig, EncodingMode};
+use crate::core::config::{DictionaryRegistry, EncodingMode};
 use crate::core::dictionary::Dictionary;
 use crate::decode;
 use std::collections::HashSet;
@@ -21,7 +21,7 @@ pub struct DictionaryDetector {
 
 impl DictionaryDetector {
     /// Creates a new detector from a configuration.
-    pub fn new(config: &DictionariesConfig) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(config: &DictionaryRegistry) -> Result<Self, Box<dyn std::error::Error>> {
         let mut dictionaries = Vec::new();
 
         for (name, dict_config) in &config.dictionaries {
@@ -309,7 +309,7 @@ impl DictionaryDetector {
 
 /// Convenience function to detect dictionary from input.
 pub fn detect_dictionary(input: &str) -> Result<Vec<DictionaryMatch>, Box<dyn std::error::Error>> {
-    let config = DictionariesConfig::load_with_overrides()?;
+    let config = DictionaryRegistry::load_with_overrides()?;
     let detector = DictionaryDetector::new(&config)?;
     Ok(detector.detect(input))
 }
@@ -321,7 +321,7 @@ mod tests {
 
     #[test]
     fn test_detect_base64() {
-        let config = DictionariesConfig::load_default().unwrap();
+        let config = DictionaryRegistry::load_default().unwrap();
         let detector = DictionaryDetector::new(&config).unwrap();
 
         // Standard base64 with padding
@@ -334,7 +334,7 @@ mod tests {
 
     #[test]
     fn test_detect_base32() {
-        let config = DictionariesConfig::load_default().unwrap();
+        let config = DictionaryRegistry::load_default().unwrap();
         let detector = DictionaryDetector::new(&config).unwrap();
 
         let matches = detector.detect("JBSWY3DPEBLW64TMMQ======");
@@ -346,7 +346,7 @@ mod tests {
 
     #[test]
     fn test_detect_hex() {
-        let config = DictionariesConfig::load_default().unwrap();
+        let config = DictionaryRegistry::load_default().unwrap();
         let detector = DictionaryDetector::new(&config).unwrap();
 
         let matches = detector.detect("48656c6c6f");
@@ -358,7 +358,7 @@ mod tests {
 
     #[test]
     fn test_detect_from_encoded() {
-        let config = DictionariesConfig::load_default().unwrap();
+        let config = DictionaryRegistry::load_default().unwrap();
 
         // Test with actual encoding
         let dict_config = config.get_dictionary("base64").unwrap();
@@ -379,7 +379,7 @@ mod tests {
 
     #[test]
     fn test_detect_empty_input() {
-        let config = DictionariesConfig::load_default().unwrap();
+        let config = DictionaryRegistry::load_default().unwrap();
         let detector = DictionaryDetector::new(&config).unwrap();
 
         let matches = detector.detect("");
@@ -388,7 +388,7 @@ mod tests {
 
     #[test]
     fn test_detect_invalid_input() {
-        let config = DictionariesConfig::load_default().unwrap();
+        let config = DictionaryRegistry::load_default().unwrap();
         let detector = DictionaryDetector::new(&config).unwrap();
 
         // Input with characters not in any dictionary

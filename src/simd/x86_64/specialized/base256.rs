@@ -285,11 +285,11 @@ unsafe fn decode_ssse3_impl_unicode(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::config::{DictionariesConfig, EncodingMode};
+    use crate::core::config::{DictionaryRegistry, EncodingMode};
 
     /// Get base256_matrix dictionary from config
     fn make_base256_dict() -> crate::core::dictionary::Dictionary {
-        let config = DictionariesConfig::load_default().unwrap();
+        let config = DictionaryRegistry::load_default().unwrap();
         let dict_config = config.get_dictionary("base256_matrix").unwrap();
         let chars: Vec<char> = dict_config.chars.chars().collect();
         crate::core::dictionary::Dictionary::new_with_mode(chars, EncodingMode::Chunked, None)

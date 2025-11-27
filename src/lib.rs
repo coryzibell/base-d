@@ -26,11 +26,11 @@
 //! ## Quick Start
 //!
 //! ```
-//! use base_d::{DictionariesConfig, Dictionary, encode, decode};
+//! use base_d::{DictionaryRegistry, Dictionary, encode, decode};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! // Load built-in dictionaries
-//! let config = DictionariesConfig::load_default()?;
+//! let config = DictionaryRegistry::load_default()?;
 //! let base64_config = config.get_dictionary("base64").unwrap();
 //!
 //! // Create dictionary
@@ -130,11 +130,11 @@
 //! For large files, use streaming to avoid loading entire file into memory:
 //!
 //! ```no_run
-//! use base_d::{DictionariesConfig, StreamingEncoder};
+//! use base_d::{DictionaryRegistry, StreamingEncoder};
 //! use std::fs::File;
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let config = DictionariesConfig::load_default()?;
+//! let config = DictionaryRegistry::load_default()?;
 //! let alphabet_config = config.get_dictionary("base64").unwrap();
 //!
 //! // ... create dictionary from config
@@ -161,11 +161,11 @@ mod simd;
 
 pub use compression::{compress, decompress, CompressionAlgorithm};
 pub use core::config::{
-    CompressionConfig, DictionariesConfig, DictionaryConfig, EncodingMode, Settings,
+    CompressionConfig, DictionaryRegistry, DictionaryConfig, EncodingMode, Settings,
 };
 pub use core::dictionary::Dictionary;
 pub use detection::{detect_dictionary, DictionaryDetector, DictionaryMatch};
-pub use encoders::encoding::DecodeError;
+pub use encoders::math::DecodeError;
 pub use encoders::streaming::{StreamingDecoder, StreamingEncoder};
 pub use hashing::{hash, hash_with_config, HashAlgorithm, XxHashConfig};
 
@@ -197,7 +197,7 @@ pub use hashing::{hash, hash_with_config, HashAlgorithm, XxHashConfig};
 /// ```
 pub fn encode(data: &[u8], dictionary: &Dictionary) -> String {
     match dictionary.mode() {
-        EncodingMode::BaseConversion => encoders::encoding::encode(data, dictionary),
+        EncodingMode::BaseConversion => encoders::math::encode(data, dictionary),
         EncodingMode::Chunked => encoders::chunked::encode_chunked(data, dictionary),
         EncodingMode::ByteRange => encoders::byte_range::encode_byte_range(data, dictionary),
     }
@@ -242,7 +242,7 @@ pub fn encode(data: &[u8], dictionary: &Dictionary) -> String {
 /// ```
 pub fn decode(encoded: &str, dictionary: &Dictionary) -> Result<Vec<u8>, DecodeError> {
     match dictionary.mode() {
-        EncodingMode::BaseConversion => encoders::encoding::decode(encoded, dictionary),
+        EncodingMode::BaseConversion => encoders::math::decode(encoded, dictionary),
         EncodingMode::Chunked => encoders::chunked::decode_chunked(encoded, dictionary),
         EncodingMode::ByteRange => encoders::byte_range::decode_byte_range(encoded, dictionary),
     }

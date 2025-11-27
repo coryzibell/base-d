@@ -7,7 +7,7 @@ pub(crate) mod common;
 mod specialized;
 
 use crate::core::dictionary::Dictionary;
-use crate::simd::alphabets::{identify_base32_variant, identify_base64_variant};
+use crate::simd::variants::{identify_base32_variant, identify_base64_variant};
 use specialized::base16::identify_hex_variant;
 use std::sync::OnceLock;
 

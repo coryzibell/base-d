@@ -8,7 +8,7 @@
 //! (index → character) varies.
 
 use crate::core::dictionary::Dictionary;
-use crate::simd::alphabets::{AlphabetMetadata, TranslationStrategy};
+use crate::simd::variants::{AlphabetMetadata, TranslationStrategy};
 use crate::simd::translate::{SequentialTranslate, SimdTranslate};
 use std::arch::aarch64::*;
 

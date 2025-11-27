@@ -44,7 +44,7 @@ pub struct DictionaryConfig {
 
 /// Collection of dictionary configurations loaded from TOML files.
 #[derive(Debug, Deserialize)]
-pub struct DictionariesConfig {
+pub struct DictionaryRegistry {
     /// Map of dictionary names to their configurations
     pub dictionaries: HashMap<String, DictionaryConfig>,
     /// Compression algorithm configurations
@@ -88,7 +88,7 @@ fn default_dictionary() -> String {
     "base64".to_string()
 }
 
-impl DictionariesConfig {
+impl DictionaryRegistry {
     /// Parses dictionary configurations from TOML content.
     pub fn from_toml(content: &str) -> Result<Self, toml::de::Error> {
         toml::from_str(content)
@@ -159,7 +159,7 @@ impl DictionariesConfig {
     /// Merges another configuration into this one.
     ///
     /// Alphabets from `other` override alphabets with the same name in `self`.
-    pub fn merge(&mut self, other: DictionariesConfig) {
+    pub fn merge(&mut self, other: DictionaryRegistry) {
         for (name, dictionary) in other.dictionaries {
             self.dictionaries.insert(name, dictionary);
         }
@@ -177,20 +177,20 @@ mod tests {
 
     #[test]
     fn test_load_default_config() {
-        let config = DictionariesConfig::load_default().unwrap();
+        let config = DictionaryRegistry::load_default().unwrap();
         assert!(config.dictionaries.contains_key("cards"));
     }
 
     #[test]
     fn test_cards_alphabet_length() {
-        let config = DictionariesConfig::load_default().unwrap();
+        let config = DictionaryRegistry::load_default().unwrap();
         let cards = config.get_dictionary("cards").unwrap();
         assert_eq!(cards.chars.chars().count(), 52);
     }
 
     #[test]
     fn test_base64_chunked_mode() {
-        let config = DictionariesConfig::load_default().unwrap();
+        let config = DictionaryRegistry::load_default().unwrap();
         let base64 = config.get_dictionary("base64").unwrap();
         assert_eq!(base64.mode, EncodingMode::Chunked);
         assert_eq!(base64.padding, Some("=".to_string()));
@@ -198,14 +198,14 @@ mod tests {
 
     #[test]
     fn test_base64_math_mode() {
-        let config = DictionariesConfig::load_default().unwrap();
+        let config = DictionaryRegistry::load_default().unwrap();
         let base64_math = config.get_dictionary("base64_math").unwrap();
         assert_eq!(base64_math.mode, EncodingMode::BaseConversion);
     }
 
     #[test]
     fn test_merge_configs() {
-        let mut config1 = DictionariesConfig {
+        let mut config1 = DictionaryRegistry {
             dictionaries: HashMap::new(),
             compression: HashMap::new(),
             settings: Settings::default(),
@@ -220,7 +220,7 @@ mod tests {
             },
         );
 
-        let mut config2 = DictionariesConfig {
+        let mut config2 = DictionaryRegistry {
             dictionaries: HashMap::new(),
             compression: HashMap::new(),
             settings: Settings::default(),
@@ -258,7 +258,7 @@ mod tests {
 chars = "0123456789"
 mode = "base_conversion"
 "#;
-        let config = DictionariesConfig::from_toml(toml_content).unwrap();
+        let config = DictionaryRegistry::from_toml(toml_content).unwrap();
         assert!(config.dictionaries.contains_key("custom"));
         assert_eq!(config.get_dictionary("custom").unwrap().chars, "0123456789");
     }

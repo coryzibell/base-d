@@ -1,6 +1,6 @@
 use crate::compression::CompressionAlgorithm;
 use crate::core::dictionary::Dictionary;
-use crate::encoders::encoding::DecodeError;
+use crate::encoders::math::DecodeError;
 use crate::hashing::HashAlgorithm;
 use std::io::{Read, Write};
 
@@ -83,7 +83,7 @@ impl<'a, W: Write> StreamingEncoder<'a, W> {
                     .hash_algo
                     .map(|algo| crate::hashing::hash(&buffer, algo));
 
-                let encoded = crate::encoders::encoding::encode(&buffer, self.dictionary);
+                let encoded = crate::encoders::math::encode(&buffer, self.dictionary);
                 self.writer.write_all(encoded.as_bytes())?;
                 hash
             }
@@ -115,7 +115,7 @@ impl<'a, W: Write> StreamingEncoder<'a, W> {
             }
             crate::core::config::EncodingMode::BaseConversion => {
                 let buffer = cursor.into_inner();
-                let encoded = crate::encoders::encoding::encode(&buffer, self.dictionary);
+                let encoded = crate::encoders::math::encode(&buffer, self.dictionary);
                 self.writer.write_all(encoded.as_bytes())?;
             }
         }
@@ -383,7 +383,7 @@ impl<'a, W: Write> StreamingDecoder<'a, W> {
                 reader
                     .read_to_string(&mut buffer)
                     .map_err(|_| DecodeError::InvalidCharacter('\0'))?;
-                let decoded = crate::encoders::encoding::decode(&buffer, self.dictionary)?;
+                let decoded = crate::encoders::math::decode(&buffer, self.dictionary)?;
 
                 let hash = self
                     .hash_algo
@@ -831,11 +831,11 @@ fn create_hasher_writer(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{DictionariesConfig, Dictionary};
+    use crate::{DictionaryRegistry, Dictionary};
     use std::io::Cursor;
 
     fn get_dictionary(name: &str) -> Dictionary {
-        let config = DictionariesConfig::load_default().unwrap();
+        let config = DictionaryRegistry::load_default().unwrap();
         let alphabet_config = config.get_dictionary(name).unwrap();
 
         match alphabet_config.mode {

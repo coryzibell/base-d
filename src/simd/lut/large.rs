@@ -12,7 +12,7 @@
 //! - Non-sequential alphabets only
 
 use crate::core::dictionary::Dictionary;
-use crate::simd::alphabets::{AlphabetMetadata, LutStrategy, TranslationStrategy};
+use crate::simd::variants::{AlphabetMetadata, LutStrategy, TranslationStrategy};
 
 /// Character range in alphabet (contiguous ASCII sequence)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

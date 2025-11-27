@@ -8,7 +8,7 @@ use crate::core::config::EncodingMode;
 use crate::core::dictionary::Dictionary;
 use std::sync::OnceLock;
 
-pub mod alphabets;
+pub mod variants;
 pub mod lut;
 
 #[cfg(target_arch = "x86_64")]
@@ -111,7 +111,7 @@ pub fn encode_with_simd(data: &[u8], dict: &Dictionary) -> Option<String> {
 
     // 1. Try specialized base64 for known variants
     if base == 64 {
-        if let Some(_variant) = alphabets::identify_base64_variant(dict) {
+        if let Some(_variant) = variants::identify_base64_variant(dict) {
             // Use existing specialized base64 implementation
             return encode_base64_simd(data, dict);
         }
@@ -119,7 +119,7 @@ pub fn encode_with_simd(data: &[u8], dict: &Dictionary) -> Option<String> {
 
     // 2. Try specialized base32 for known variants
     if base == 32 {
-        if let Some(_variant) = alphabets::identify_base32_variant(dict) {
+        if let Some(_variant) = variants::identify_base32_variant(dict) {
             return encode_base32_simd(data, dict);
         }
     }
@@ -172,14 +172,14 @@ pub fn encode_with_simd(data: &[u8], dict: &Dictionary) -> Option<String> {
 
     // 1. Try specialized base64 for known variants
     if base == 64 {
-        if let Some(_variant) = alphabets::identify_base64_variant(dict) {
+        if let Some(_variant) = variants::identify_base64_variant(dict) {
             return encode_base64_simd(data, dict);
         }
     }
 
     // 2. Try specialized base32 for known variants
     if base == 32 {
-        if let Some(_variant) = alphabets::identify_base32_variant(dict) {
+        if let Some(_variant) = variants::identify_base32_variant(dict) {
             return encode_base32_simd(data, dict);
         }
     }
@@ -247,7 +247,7 @@ pub fn decode_with_simd(encoded: &str, dict: &Dictionary) -> Option<Vec<u8>> {
 
     // 1. Try specialized base64 for known variants
     if base == 64 {
-        if alphabets::identify_base64_variant(dict).is_some() {
+        if variants::identify_base64_variant(dict).is_some() {
             // Use existing specialized base64 implementation
             return decode_base64_simd(encoded, dict);
         }
@@ -255,7 +255,7 @@ pub fn decode_with_simd(encoded: &str, dict: &Dictionary) -> Option<Vec<u8>> {
 
     // 2. Try specialized base32 for known variants
     if base == 32 {
-        if alphabets::identify_base32_variant(dict).is_some() {
+        if variants::identify_base32_variant(dict).is_some() {
             return decode_base32_simd(encoded, dict);
         }
     }
@@ -309,14 +309,14 @@ pub fn decode_with_simd(encoded: &str, dict: &Dictionary) -> Option<Vec<u8>> {
 
     // 1. Try specialized base64 for known variants
     if base == 64 {
-        if alphabets::identify_base64_variant(dict).is_some() {
+        if variants::identify_base64_variant(dict).is_some() {
             return decode_base64_simd(encoded, dict);
         }
     }
 
     // 2. Try specialized base32 for known variants
     if base == 32 {
-        if alphabets::identify_base32_variant(dict).is_some() {
+        if variants::identify_base32_variant(dict).is_some() {
             return decode_base32_simd(encoded, dict);
         }
     }

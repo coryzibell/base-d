@@ -4,7 +4,7 @@
 //! Processes 12 input bytes -> 16 output characters per iteration.
 
 use crate::core::dictionary::Dictionary;
-use crate::simd::alphabets::AlphabetVariant;
+use crate::simd::variants::AlphabetVariant;
 use std::arch::aarch64::uint8x16_t;
 
 /// NEON-accelerated base64 encoding

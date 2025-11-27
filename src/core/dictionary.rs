@@ -1,5 +1,5 @@
 use crate::core::config::EncodingMode;
-use crate::simd::alphabets::AlphabetMetadata;
+use crate::simd::variants::AlphabetMetadata;
 use std::collections::HashMap;
 
 const MAX_LOOKUP_TABLE_SIZE: usize = 256;

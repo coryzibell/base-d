@@ -7,7 +7,7 @@
 
 use super::super::common;
 use crate::core::dictionary::Dictionary;
-use crate::simd::alphabets::AlphabetVariant;
+use crate::simd::variants::AlphabetVariant;
 
 /// SIMD-accelerated base64 encoding with runtime dispatch
 ///

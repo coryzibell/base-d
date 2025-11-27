@@ -1,7 +1,7 @@
-use crate::{decode, encode, DictionariesConfig, Dictionary, EncodingMode};
+use crate::{decode, encode, DictionaryRegistry, Dictionary, EncodingMode};
 
 fn get_dictionary(name: &str) -> Dictionary {
-    let config = DictionariesConfig::load_default().unwrap();
+    let config = DictionaryRegistry::load_default().unwrap();
     let alphabet_config = config.get_dictionary(name).unwrap();
 
     match alphabet_config.mode {
@@ -272,7 +272,7 @@ fn test_base256_matrix_like_hex() {
     assert_eq!(alphabet_chunked.base(), 256);
 
     // Create mathematical mode version
-    let config = DictionariesConfig::load_default().unwrap();
+    let config = DictionaryRegistry::load_default().unwrap();
     let matrix_config = config.get_dictionary("base256_matrix").unwrap();
     let chars: Vec<char> = matrix_config.chars.chars().collect();
     let alphabet_math =
