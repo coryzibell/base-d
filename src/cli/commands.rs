@@ -4,6 +4,8 @@ use std::io::{self, Read, Write};
 use std::path::PathBuf;
 use std::time::Duration;
 
+use crossterm::event::{poll, read, Event, KeyCode, KeyEvent};
+
 use super::config::{create_dictionary, get_compression_level, load_xxhash_config};
 
 pub enum SwitchInterval {
@@ -94,11 +96,20 @@ pub fn matrix_mode(
         "Knock, knock, Neo.",
     ];
 
-    for message in &messages {
+    'intro_loop: for message in &messages {
         for ch in message.chars() {
             print!("{}", ch);
             io::stdout().flush()?;
-            thread::sleep(Duration::from_millis(100));
+
+            // Check for ESC to skip intro
+            if poll(Duration::from_millis(100))? {
+                if let Event::Key(KeyEvent { code: KeyCode::Esc, .. }) = read()? {
+                    print!("\r\x1b[K");
+                    break 'intro_loop;
+                }
+            } else {
+                thread::sleep(Duration::from_millis(100));
+            }
         }
         thread::sleep(Duration::from_millis(800));
         print!("\r\x1b[K");
@@ -134,6 +145,17 @@ pub fn matrix_mode(
 
     let mut last_switch = Instant::now();
     let mut rng = rand::thread_rng();
+
+    // Build sorted dictionary list for keyboard controls
+    let dict_names: Vec<String> = {
+        let mut names: Vec<_> = config.dictionaries.keys().cloned().collect();
+        names.sort();
+        names
+    };
+    let mut current_index = dict_names
+        .iter()
+        .position(|n| n == &current_alphabet_name)
+        .unwrap_or(0);
 
     // Display current alphabet name
     eprintln!("\x1b[32mAlphabet: {}\x1b[0m", current_alphabet_name);
@@ -208,6 +230,43 @@ pub fn matrix_mode(
 
         println!("{}", display);
         io::stdout().flush()?;
+
+        // Handle keyboard input (static mode only)
+        if matches!(switch_mode, SwitchMode::Static) && poll(Duration::from_millis(0))? {
+            if let Event::Key(key_event) = read()? {
+                match key_event.code {
+                    KeyCode::Char(' ') => {
+                        // Random switch
+                        current_alphabet_name = select_random_dictionary(config, false)?;
+                        current_index = dict_names
+                            .iter()
+                            .position(|n| n == &current_alphabet_name)
+                            .unwrap_or(0);
+                        eprintln!("\r\x1b[32m[Matrix: {}]\x1b[0m", current_alphabet_name);
+                        continue; // Reload dictionary
+                    }
+                    KeyCode::Left => {
+                        // Previous alphabet
+                        current_index = if current_index == 0 {
+                            dict_names.len() - 1
+                        } else {
+                            current_index - 1
+                        };
+                        current_alphabet_name = dict_names[current_index].clone();
+                        eprintln!("\r\x1b[32m[Matrix: {}]\x1b[0m", current_alphabet_name);
+                        continue; // Reload dictionary
+                    }
+                    KeyCode::Right => {
+                        // Next alphabet
+                        current_index = (current_index + 1) % dict_names.len();
+                        current_alphabet_name = dict_names[current_index].clone();
+                        eprintln!("\r\x1b[32m[Matrix: {}]\x1b[0m", current_alphabet_name);
+                        continue; // Reload dictionary
+                    }
+                    _ => {}
+                }
+            }
+        }
 
         thread::sleep(Duration::from_millis(500));
     }
