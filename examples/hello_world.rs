@@ -1,7 +1,7 @@
-use base_d::{decode, encode, DictionariesConfig, Dictionary};
+use base_d::{decode, encode, Dictionary, DictionaryRegistry};
 
 fn main() {
-    let config = DictionariesConfig::load_default().unwrap();
+    let config = DictionaryRegistry::load_default().unwrap();
     let alphabet_config = config
         .get_dictionary("cards")
         .expect("cards dictionary not found");

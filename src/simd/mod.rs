@@ -48,6 +48,7 @@ static HAS_AVX2: OnceLock<bool> = OnceLock::new();
 static HAS_SSSE3: OnceLock<bool> = OnceLock::new();
 
 #[cfg(target_arch = "x86_64")]
+#[allow(dead_code)]
 static HAS_AVX512_VBMI: OnceLock<bool> = OnceLock::new();
 
 /// Check if AVX2 is available (cached after first call)
@@ -64,6 +65,7 @@ pub fn has_ssse3() -> bool {
 
 /// Check if AVX-512 VBMI is available (cached after first call)
 #[cfg(target_arch = "x86_64")]
+#[allow(dead_code)]
 pub fn has_avx512_vbmi() -> bool {
     *HAS_AVX512_VBMI.get_or_init(|| is_x86_feature_detected!("avx512vbmi"))
 }

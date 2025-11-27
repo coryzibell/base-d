@@ -1,8 +1,8 @@
-use base_d::{decode, encode, DictionariesConfig, Dictionary};
+use base_d::{decode, encode, Dictionary, DictionaryRegistry};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load base1024 dictionary - a 1024-character dictionary using CJK ideographs
-    let config = DictionariesConfig::load_default()?;
+    let config = DictionaryRegistry::load_default()?;
     let base1024_config = config.get_dictionary("base1024").unwrap();
 
     let chars: Vec<char> = base1024_config.chars.chars().collect();

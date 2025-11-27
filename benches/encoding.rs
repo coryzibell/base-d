@@ -1,8 +1,8 @@
-use base_d::{decode, encode, DictionariesConfig, Dictionary, EncodingMode};
+use base_d::{decode, encode, Dictionary, DictionaryRegistry, EncodingMode};
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 
 fn get_alphabet(name: &str) -> Dictionary {
-    let config = DictionariesConfig::load_default().unwrap();
+    let config = DictionaryRegistry::load_default().unwrap();
     let alphabet_config = config.get_dictionary(name).unwrap();
 
     match alphabet_config.mode {

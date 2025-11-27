@@ -25,6 +25,7 @@ struct CharRange {
 
 /// Range-reduction strategy based on number of ranges
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 enum RangeStrategy {
     Simple,     // 1 range, direct offset
     Small,      // 2 ranges, single subs
@@ -163,11 +164,10 @@ impl RangeInfo {
 
         // Build offset LUT
         let mut offset_lut = [0i8; 16];
-        let mut compressed_idx = 0usize;
 
         // Second-largest range stays at compressed index 0
         offset_lut[0] = second_largest_range.offset;
-        compressed_idx = 1;
+        let mut compressed_idx = 1;
 
         // Map tail ranges (those after threshold)
         for range in ranges {
@@ -201,6 +201,7 @@ impl RangeInfo {
 
     /// Build for 6-8 ranges (medium multirange with 2-3 thresholds)
     #[cfg(target_arch = "x86_64")]
+    #[allow(dead_code)]
     fn build_medium_multirange(ranges: &[CharRange]) -> Option<Self> {
         assert!(ranges.len() >= 6 && ranges.len() <= 8);
 
@@ -225,6 +226,7 @@ impl RangeInfo {
 
     /// Select thresholds for 6-8 ranges (2-3 thresholds needed)
     #[cfg(target_arch = "x86_64")]
+    #[allow(dead_code)]
     fn select_thresholds_medium(ranges: &[CharRange]) -> Vec<u8> {
         let num_ranges = ranges.len();
         let mut thresholds = Vec::new();
@@ -257,7 +259,8 @@ impl RangeInfo {
 
     /// Build hierarchical LUT for 6-8 ranges
     #[cfg(target_arch = "x86_64")]
-    fn build_hierarchical_lut_medium(ranges: &[CharRange], thresholds: &[u8]) -> [i8; 16] {
+    #[allow(dead_code)]
+    fn build_hierarchical_lut_medium(ranges: &[CharRange], _thresholds: &[u8]) -> [i8; 16] {
         let mut lut = [0i8; 16];
         let mut compressed_idx = 0usize;
 
@@ -280,6 +283,7 @@ impl RangeInfo {
 
     /// Build for 9-12 ranges (large multirange with 3-4 thresholds)
     #[cfg(target_arch = "x86_64")]
+    #[allow(dead_code)]
     fn build_large_multirange(ranges: &[CharRange]) -> Option<Self> {
         assert!(ranges.len() >= 9 && ranges.len() <= 12);
 
@@ -302,8 +306,8 @@ impl RangeInfo {
 
     /// Select thresholds for 9-12 ranges (3-4 thresholds)
     #[cfg(target_arch = "x86_64")]
+    #[allow(dead_code)]
     fn select_thresholds_large(ranges: &[CharRange]) -> Vec<u8> {
-        let num_ranges = ranges.len();
         let mut thresholds = Vec::new();
 
         // Recursive balanced partitioning for 3-4 levels
@@ -328,7 +332,8 @@ impl RangeInfo {
 
     /// Build hierarchical LUT for 9-12 ranges
     #[cfg(target_arch = "x86_64")]
-    fn build_hierarchical_lut_large(ranges: &[CharRange], thresholds: &[u8]) -> [i8; 16] {
+    #[allow(dead_code)]
+    fn build_hierarchical_lut_large(ranges: &[CharRange], _thresholds: &[u8]) -> [i8; 16] {
         let mut lut = [0i8; 16];
         let mut compressed_idx = 0usize;
 
@@ -350,6 +355,7 @@ impl RangeInfo {
 
     /// Build for 13-16 ranges (very large multirange with 4-5 thresholds)
     #[cfg(target_arch = "x86_64")]
+    #[allow(dead_code)]
     fn build_very_large_multirange(ranges: &[CharRange]) -> Option<Self> {
         assert!(ranges.len() >= 13 && ranges.len() <= 16);
 
@@ -372,6 +378,7 @@ impl RangeInfo {
 
     /// Select thresholds for 13-16 ranges (4-5 thresholds)
     #[cfg(target_arch = "x86_64")]
+    #[allow(dead_code)]
     fn select_thresholds_very_large(ranges: &[CharRange]) -> Vec<u8> {
         let mut thresholds = Vec::new();
 
@@ -396,7 +403,8 @@ impl RangeInfo {
 
     /// Build hierarchical LUT for 13-16 ranges
     #[cfg(target_arch = "x86_64")]
-    fn build_hierarchical_lut_very_large(ranges: &[CharRange], thresholds: &[u8]) -> [i8; 16] {
+    #[allow(dead_code)]
+    fn build_hierarchical_lut_very_large(ranges: &[CharRange], _thresholds: &[u8]) -> [i8; 16] {
         let mut lut = [0i8; 16];
         let mut compressed_idx = 0usize;
 
@@ -564,7 +572,7 @@ impl LargeLutCodec {
         #[cfg(target_arch = "x86_64")]
         unsafe {
             self.encode_x86_impl(data, &mut result);
-            return Some(result);
+            Some(result)
         }
 
         #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
@@ -579,8 +587,6 @@ impl LargeLutCodec {
     #[cfg(target_arch = "aarch64")]
     #[target_feature(enable = "neon")]
     unsafe fn encode_neon_impl(&self, data: &[u8], result: &mut String) {
-        use std::arch::aarch64::*;
-
         if self.metadata.base == 32 {
             self.encode_neon_base32(data, result);
         } else if self.metadata.base == 64 {
@@ -723,7 +729,9 @@ impl LargeLutCodec {
     ) -> std::arch::aarch64::uint8x16_t {
         use std::arch::aarch64::*;
 
-        // Shuffle mask: Duplicate bytes to prepare for 6-bit extraction
+        // Shuffle mask: Reshuffle bytes to prepare for 6-bit extraction
+        // For each group of 3 input bytes ABC (24 bits) -> 4 output indices (4 x 6 bits)
+        // Matches specialized/base64.rs reshuffle pattern
         let shuffle_indices = vld1q_u8(
             [
                 0, 0, 1, 2, // bytes 0-2 -> positions 0-3
@@ -738,16 +746,21 @@ impl LargeLutCodec {
         let shuffled_u32 = vreinterpretq_u32_u8(shuffled);
 
         // Extract 6-bit groups using shifts and masks
+        // First extraction: positions 0 and 2 in each group
+        // Mask 0x0FC0FC00: isolate specific bit positions
         let t0 = vandq_u32(shuffled_u32, vdupq_n_u32(0x0FC0FC00));
         let t0_u16 = vreinterpretq_u16_u32(t0);
         let mult_hi = vmulq_n_u16(t0_u16, 0x0040);
         let t1 = vreinterpretq_u32_u16(vshrq_n_u16(mult_hi, 10));
 
+        // Second extraction: positions 1 and 3 in each group
+        // Mask 0x003F03F0: isolate different bit positions
         let t2 = vandq_u32(shuffled_u32, vdupq_n_u32(0x003F03F0));
         let t2_u16 = vreinterpretq_u16_u32(t2);
         let mult_lo = vmulq_n_u16(t2_u16, 0x0010);
         let t3 = vreinterpretq_u32_u16(vshrq_n_u16(mult_lo, 6));
 
+        // Combine the two results
         vreinterpretq_u8_u32(vorrq_u32(t1, t3))
     }
 
@@ -1179,7 +1192,9 @@ impl LargeLutCodec {
     ) -> std::arch::x86_64::__m128i {
         use std::arch::x86_64::*;
 
-        // Shuffle mask: Duplicate bytes to prepare for 6-bit extraction
+        // Shuffle mask: Reshuffle bytes to prepare for 6-bit extraction
+        // For each group of 3 input bytes ABC (24 bits) -> 4 output indices (4 x 6 bits)
+        // Matches specialized/base64.rs ARM64 pattern (which differs from x86_64)
         let shuffle_indices = _mm_setr_epi8(
             0, 0, 1, 2, // bytes 0-2 -> positions 0-3
             3, 3, 4, 5, // bytes 3-5 -> positions 4-7
@@ -1188,19 +1203,17 @@ impl LargeLutCodec {
         );
 
         let shuffled = _mm_shuffle_epi8(input, shuffle_indices);
-        let shuffled_u32 = _mm_castps_si128(_mm_castsi128_ps(shuffled));
 
         // Extract 6-bit groups using shifts and masks
-        let t0 = _mm_and_si128(shuffled_u32, _mm_set1_epi32(0x0FC0FC00_u32 as i32));
-        let t0_u16 = _mm_castps_si128(_mm_castsi128_ps(t0));
-        let mult_hi = _mm_mullo_epi16(t0_u16, _mm_set1_epi16(0x0040));
-        let t1 = _mm_srli_epi16(mult_hi, 10);
+        // First extraction: positions 0 and 2 in each group (using mulhi)
+        let t0 = _mm_and_si128(shuffled, _mm_set1_epi32(0x0FC0FC00_u32 as i32));
+        let t1 = _mm_mulhi_epu16(t0, _mm_set1_epi32(0x04000040_u32 as i32));
 
-        let t2 = _mm_and_si128(shuffled_u32, _mm_set1_epi32(0x003F03F0_u32 as i32));
-        let t2_u16 = _mm_castps_si128(_mm_castsi128_ps(t2));
-        let mult_lo = _mm_mullo_epi16(t2_u16, _mm_set1_epi16(0x0010));
-        let t3 = _mm_srli_epi16(mult_lo, 6);
+        // Second extraction: positions 1 and 3 in each group
+        let t2 = _mm_and_si128(shuffled, _mm_set1_epi32(0x003F03F0_u32 as i32));
+        let t3 = _mm_mullo_epi16(t2, _mm_set1_epi32(0x01000010_u32 as i32));
 
+        // Combine the two results
         _mm_or_si128(t1, t3)
     }
 
@@ -1274,13 +1287,20 @@ impl LargeLutCodec {
         let encoded_bytes = encoded.as_bytes();
 
         #[cfg(target_arch = "x86_64")]
-        unsafe {
-            if is_x86_feature_detected!("ssse3") {
-                if !self.decode_ssse3_impl(encoded_bytes, &mut result) {
-                    return None;
+        {
+            unsafe {
+                if is_x86_feature_detected!("ssse3") {
+                    if !self.decode_ssse3_impl(encoded_bytes, &mut result) {
+                        return None;
+                    }
+                    return Some(result);
                 }
-                return Some(result);
             }
+            // Scalar fallback for x86_64 without SSSE3
+            if !self.decode_scalar(encoded_bytes, &mut result) {
+                return None;
+            }
+            Some(result)
         }
 
         #[cfg(target_arch = "aarch64")]
@@ -1291,11 +1311,14 @@ impl LargeLutCodec {
             return Some(result);
         }
 
-        // Scalar fallback
-        if !self.decode_scalar(encoded_bytes, &mut result) {
-            return None;
+        #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+        {
+            // Scalar fallback
+            if !self.decode_scalar(encoded_bytes, &mut result) {
+                return None;
+            }
+            Some(result)
         }
-        Some(result)
     }
 
     /// Check if alphabet is RFC4648 base32
@@ -1547,9 +1570,9 @@ impl LargeLutCodec {
 
             // === VALIDATION (Range Checks) ===
             // Range 1: 'A'-'Z' (65-90)
-            let ge_A = _mm_cmpgt_epi8(input, _mm_set1_epi8(64)); // c > '@'
-            let le_Z = _mm_cmplt_epi8(input, _mm_set1_epi8(91)); // c < '['
-            let in_range1 = _mm_and_si128(ge_A, le_Z);
+            let ge_a = _mm_cmpgt_epi8(input, _mm_set1_epi8(64)); // c > '@'
+            let le_z = _mm_cmplt_epi8(input, _mm_set1_epi8(91)); // c < '['
+            let in_range1 = _mm_and_si128(ge_a, le_z);
 
             // Range 2: '2'-'7' (50-55)
             let ge_2 = _mm_cmpgt_epi8(input, _mm_set1_epi8(49)); // c > '1'
@@ -1615,9 +1638,9 @@ impl LargeLutCodec {
 
             // === VALIDATION (Range Checks) ===
             // Range 1: 'A'-'Z' (65-90)
-            let ge_A = vcgtq_u8(input_vec, vdupq_n_u8(64));
-            let le_Z = vcltq_u8(input_vec, vdupq_n_u8(91));
-            let in_range1 = vandq_u8(ge_A, le_Z);
+            let ge_a = vcgtq_u8(input_vec, vdupq_n_u8(64));
+            let le_z = vcltq_u8(input_vec, vdupq_n_u8(91));
+            let in_range1 = vandq_u8(ge_a, le_z);
 
             // Range 2: '2'-'7' (50-55)
             let ge_2 = vcgtq_u8(input_vec, vdupq_n_u8(49));
@@ -1855,22 +1878,23 @@ impl LargeLutCodec {
         let merge_ab_and_bc_hi =
             vreinterpretq_u16_s16(vmull_high_s8(vreinterpretq_s8_u8(indices), vdupq_n_s8(1)));
 
-        // Simplified for now - use scalar unpacking
+        // Unpack 6-bit indices to 8-bit bytes
+        // Base64: 4 chars (6 bits each) -> 3 bytes (8 bits each)
         let mut idx_buf = [0u8; 16];
         vst1q_u8(idx_buf.as_mut_ptr(), indices);
 
         let mut out_buf = [0u8; 16];
         for j in 0..4 {
             let base = j * 4;
-            let a = idx_buf[base] as u32;
-            let b = idx_buf[base + 1] as u32;
-            let c = idx_buf[base + 2] as u32;
-            let d = idx_buf[base + 3] as u32;
+            let a = idx_buf[base] as u8;
+            let b = idx_buf[base + 1] as u8;
+            let c = idx_buf[base + 2] as u8;
+            let d = idx_buf[base + 3] as u8;
 
-            let combined = (a << 18) | (b << 12) | (c << 6) | d;
-            out_buf[j * 3] = ((combined >> 16) & 0xFF) as u8;
-            out_buf[j * 3 + 1] = ((combined >> 8) & 0xFF) as u8;
-            out_buf[j * 3 + 2] = (combined & 0xFF) as u8;
+            // Unpack: [aaaaaa][bbbbbb][cccccc][dddddd] -> [aaaaaabb][bbbbcccc][ccdddddd]
+            out_buf[j * 3] = (a << 2) | (b >> 4);
+            out_buf[j * 3 + 1] = (b << 4) | (c >> 2);
+            out_buf[j * 3 + 2] = (c << 6) | d;
         }
 
         vld1q_u8(out_buf.as_ptr())
@@ -2808,7 +2832,7 @@ mod tests {
         let encoded = codec.encode(data, &dict);
         assert!(encoded.is_some(), "Encode should succeed for 6 ranges");
         assert!(
-            encoded.unwrap().len() > 0,
+            !encoded.unwrap().is_empty(),
             "Encoded output should not be empty"
         );
     }
@@ -2829,7 +2853,7 @@ mod tests {
         let encoded = codec.encode(&data, &dict);
         assert!(encoded.is_some(), "Encode should succeed");
         assert!(
-            encoded.unwrap().len() > 0,
+            !encoded.unwrap().is_empty(),
             "Encoded output should not be empty"
         );
     }
@@ -2856,7 +2880,7 @@ mod tests {
         let data = b"Testing 8-range encoding!";
         let encoded = codec.encode(data, &dict);
         assert!(encoded.is_some(), "Encode should succeed for 8 ranges");
-        assert!(encoded.unwrap().len() > 0);
+        assert!(!encoded.unwrap().is_empty());
     }
 
     #[test]
@@ -2869,7 +2893,7 @@ mod tests {
         let data: Vec<u8> = (0..=255).collect();
         let encoded = codec.encode(&data, &dict);
         assert!(encoded.is_some(), "Encode should succeed");
-        assert!(encoded.unwrap().len() > 0);
+        assert!(!encoded.unwrap().is_empty());
     }
 
     #[test]
@@ -2888,7 +2912,7 @@ mod tests {
         let data = b"Testing 9-range encoding!";
         let encoded = codec.encode(data, &dict);
         assert!(encoded.is_some(), "Encode should succeed for 9 ranges");
-        assert!(encoded.unwrap().len() > 0);
+        assert!(!encoded.unwrap().is_empty());
     }
 
     #[test]
@@ -2907,7 +2931,7 @@ mod tests {
         let data = b"Testing 12-range encoding!";
         let encoded = codec.encode(data, &dict);
         assert!(encoded.is_some(), "Encode should succeed for 12 ranges");
-        assert!(encoded.unwrap().len() > 0);
+        assert!(!encoded.unwrap().is_empty());
     }
 
     #[test]
@@ -2926,7 +2950,7 @@ mod tests {
         let data = b"Testing 13-range encoding!";
         let encoded = codec.encode(data, &dict);
         assert!(encoded.is_some(), "Encode should succeed for 13 ranges");
-        assert!(encoded.unwrap().len() > 0);
+        assert!(!encoded.unwrap().is_empty());
     }
 
     #[test]
@@ -2945,7 +2969,7 @@ mod tests {
         let data = b"Testing 16-range encoding!";
         let encoded = codec.encode(data, &dict);
         assert!(encoded.is_some(), "Encode should succeed for 16 ranges");
-        assert!(encoded.unwrap().len() > 0);
+        assert!(!encoded.unwrap().is_empty());
     }
 
     #[test]

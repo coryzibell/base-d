@@ -1,7 +1,7 @@
-use base_d::DictionariesConfig;
+use base_d::DictionaryRegistry;
 
 fn main() {
-    let config = DictionariesConfig::load_default().unwrap();
+    let config = DictionaryRegistry::load_default().unwrap();
 
     println!("Available dictionaries:\n");
 

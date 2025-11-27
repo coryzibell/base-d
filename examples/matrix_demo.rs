@@ -1,11 +1,11 @@
-use base_d::{decode, encode, DictionariesConfig, Dictionary};
+use base_d::{decode, encode, Dictionary, DictionaryRegistry};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("WELCOME TO THE MATRIX");
     println!("================================\n");
 
     // Load Matrix base256 dictionary
-    let config = DictionariesConfig::load_default()?;
+    let config = DictionaryRegistry::load_default()?;
     let matrix_config = config.get_dictionary("base256_matrix").unwrap();
 
     let chars: Vec<char> = matrix_config.chars.chars().collect();
