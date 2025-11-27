@@ -39,7 +39,7 @@ pub use aarch64::{
 #[cfg(target_arch = "x86_64")]
 pub use generic::GenericSimdCodec;
 
-pub use lut::SmallLutCodec;
+pub use lut::{LargeLutCodec, SmallLutCodec};
 
 // CPU feature detection cache
 static HAS_AVX2: OnceLock<bool> = OnceLock::new();
@@ -149,7 +149,14 @@ pub fn encode_with_simd(data: &[u8], dict: &Dictionary) -> Option<String> {
         }
     }
 
-    // 7. No SIMD optimization available
+    // 7. Try LargeLutCodec for large arbitrary alphabets (17-64 chars)
+    if (17..=64).contains(&base) && base.is_power_of_two() {
+        if let Some(codec) = LargeLutCodec::from_dictionary(dict) {
+            return codec.encode(data, dict);
+        }
+    }
+
+    // 8. No SIMD optimization available
     None
 }
 
@@ -201,7 +208,14 @@ pub fn encode_with_simd(data: &[u8], dict: &Dictionary) -> Option<String> {
         }
     }
 
-    // 7. No SIMD optimization available
+    // 7. Try LargeLutCodec for large arbitrary alphabets (17-64 chars)
+    if (17..=64).contains(&base) && base.is_power_of_two() {
+        if let Some(codec) = LargeLutCodec::from_dictionary(dict) {
+            return codec.encode(data, dict);
+        }
+    }
+
+    // 8. No SIMD optimization available
     None
 }
 
@@ -271,7 +285,14 @@ pub fn decode_with_simd(encoded: &str, dict: &Dictionary) -> Option<Vec<u8>> {
         }
     }
 
-    // 7. No SIMD optimization available
+    // 7. Try LargeLutCodec for large arbitrary alphabets (17-64 chars)
+    if (17..=64).contains(&base) && base.is_power_of_two() {
+        if let Some(codec) = LargeLutCodec::from_dictionary(dict) {
+            return codec.decode(encoded, dict);
+        }
+    }
+
+    // 8. No SIMD optimization available
     None
 }
 
@@ -324,7 +345,14 @@ pub fn decode_with_simd(encoded: &str, dict: &Dictionary) -> Option<Vec<u8>> {
         }
     }
 
-    // 7. No SIMD optimization available
+    // 7. Try LargeLutCodec for large arbitrary alphabets (17-64 chars)
+    if (17..=64).contains(&base) && base.is_power_of_two() {
+        if let Some(codec) = LargeLutCodec::from_dictionary(dict) {
+            return codec.decode(encoded, dict);
+        }
+    }
+
+    // 8. No SIMD optimization available
     None
 }
 
@@ -463,13 +491,13 @@ mod tests {
 
     #[test]
     #[cfg(target_arch = "x86_64")]
-    fn test_arbitrary_alphabet_falls_back() {
+    fn test_arbitrary_alphabet_uses_largelut() {
         if !has_ssse3() {
             eprintln!("SSSE3 not available, skipping test");
             return;
         }
 
-        // Arbitrary (shuffled) alphabet should return None (no SIMD)
+        // Arbitrary (shuffled) base64 alphabet should use LargeLutCodec
         let chars: Vec<char> = "ZYXWVUTSRQPONMLKJIHGFEDCBAzyxwvutsrqponmlkjihgfedcba9876543210+/"
             .chars()
             .collect();
@@ -479,8 +507,8 @@ mod tests {
         let result = encode_with_simd(data, &dict);
 
         assert!(
-            result.is_none(),
-            "Arbitrary alphabet should not get SIMD acceleration"
+            result.is_some(),
+            "Arbitrary base64 alphabet should get SIMD acceleration via LargeLutCodec"
         );
     }
 
