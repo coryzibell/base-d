@@ -2,7 +2,7 @@
 //!
 //! Demonstrates runtime CPU feature detection and SIMD availability
 
-use base_d::{encode, DictionariesConfig, Dictionary};
+use base_d::{encode, DictionaryRegistry, Dictionary};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== base-d SIMD Feature Detection ===\n");
@@ -32,7 +32,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Test encoding
     println!("\n=== Testing Base64 Encoding ===");
-    let config = DictionariesConfig::load_default()?;
+    let config = DictionaryRegistry::load_default()?;
     let base64_config = config.get_dictionary("base64").unwrap();
 
     let chars: Vec<char> = base64_config.chars.chars().collect();
