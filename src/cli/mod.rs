@@ -2,7 +2,7 @@ mod commands;
 mod config;
 
 use base_d::{decode, encode, DictionaryRegistry};
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
@@ -14,6 +14,9 @@ use config::{create_dictionary, get_compression_level, load_xxhash_config};
 #[command(version)]
 #[command(about = "Universal multi-dictionary encoder supporting RFC standards, emoji, ancient scripts, and numerous custom dictionaries", long_about = None)]
 struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+
     /// Encode using this dictionary
     #[arg(short = 'e', long)]
     encode: Option<String>,
@@ -96,11 +99,44 @@ struct Cli {
     interval: Option<String>,
 }
 
+#[derive(Subcommand)]
+enum Commands {
+    /// Query available algorithms and dictionaries
+    Config {
+        /// List available compression algorithms
+        #[arg(long)]
+        compression: bool,
+
+        /// List available dictionaries
+        #[arg(long)]
+        dictionaries: bool,
+
+        /// List available hash algorithms
+        #[arg(long)]
+        hash: bool,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+}
+
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     // Load dictionaries configuration with user overrides
     let config = DictionaryRegistry::load_with_overrides()?;
+
+    // Handle config subcommand
+    if let Some(Commands::Config {
+        compression,
+        dictionaries,
+        hash,
+        json,
+    }) = &cli.command
+    {
+        return handle_config(&config, *compression, *dictionaries, *hash, *json);
+    }
 
     // Handle --neo mode (Matrix effect)
     if let Some(dictionary_opt) = &cli.neo {
@@ -358,6 +394,60 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             io::stdout().write_all(&data)?;
         }
     }
+
+    Ok(())
+}
+
+/// Handle the config subcommand
+fn handle_config(
+    config: &DictionaryRegistry,
+    compression: bool,
+    dictionaries: bool,
+    hash: bool,
+    json: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Collect requested data
+    let compress_list: Vec<&str> = commands::COMPRESS_ALGORITHMS.to_vec();
+    let hash_list: Vec<&str> = commands::HASH_ALGORITHMS.to_vec();
+    let dict_list: Vec<String> = {
+        let mut names: Vec<String> = config.dictionaries.keys().cloned().collect();
+        names.sort();
+        names
+    };
+
+    // JSON output
+    if json {
+        let output = serde_json::json!({
+            "compression": compress_list,
+            "hash": hash_list,
+            "dictionaries": dict_list,
+        });
+        println!("{}", serde_json::to_string_pretty(&output)?);
+        return Ok(());
+    }
+
+    // Individual flag output (comma-separated for easy parsing)
+    if compression {
+        println!("{}", compress_list.join(","));
+        return Ok(());
+    }
+
+    if hash {
+        println!("{}", hash_list.join(","));
+        return Ok(());
+    }
+
+    if dictionaries {
+        println!("{}", dict_list.join(","));
+        return Ok(());
+    }
+
+    // No specific flag - show all in human-readable format
+    println!("Compression algorithms: {}", compress_list.join(", "));
+    println!("Hash algorithms: {}", hash_list.join(", "));
+    println!("Dictionaries: {} available", dict_list.len());
+    println!("\nUse --compression, --hash, or --dictionaries for machine-readable output");
+    println!("Use --json for structured output");
 
     Ok(())
 }
