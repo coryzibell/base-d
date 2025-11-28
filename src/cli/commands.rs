@@ -62,9 +62,8 @@ pub fn select_random_dictionary(
         .choose(&mut rng)
         .ok_or("No dictionaries available")?;
 
-    if print_message {
-        eprintln!("dejavu: using {}", random_dict);
-    }
+    // Silently select - the puzzle is figuring out which dictionary was used
+    let _ = print_message; // Reserved for future verbose mode
 
     Ok(random_dict.to_string())
 }

@@ -97,6 +97,7 @@
 - Compression options (Issue #12)
 - Checksum/error detection (Issue #13)
 - Multiple output formats (Issue #15)
+- `--verbose` flag for dejavu mode to show which dictionary was selected (currently silent for puzzle effect)
 
 ## Completed Milestones
 

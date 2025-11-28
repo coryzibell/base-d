@@ -126,7 +126,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         // If --dejavu is set and no explicit alphabet, pick random
         let initial_alphabet = if cli.dejavu && alphabet_opt.is_none() {
             let random_dict = commands::select_random_dictionary(&config, false)?;
-            eprintln!("dejavu: Matrix mode using {}", random_dict);
+            // Silently select - the puzzle is figuring out which dictionary was used
             random_dict
         } else {
             alphabet_opt
