@@ -8,7 +8,7 @@
 
 # Settings
 [settings]
-default_dictionary = "base64"
+default_dictionary = "cards"
 
 # Compression algorithms
 [compression.gzip]

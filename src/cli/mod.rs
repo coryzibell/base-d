@@ -273,18 +273,17 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         )?;
         let hash_output = base_d::hash_with_config(&data, hash_algo, &xxhash_config);
 
-        // If encoding specified, encode the hash; otherwise output as hex
-        if let Some(encode_name) = &cli.encode {
-            let encode_alphabet = create_dictionary(&config, encode_name)?;
-            let encoded = encode(&hash_output, &encode_alphabet);
-            println!("{}", encoded);
+        // Encode the hash - explicit dict, dejavu, or default
+        let dict_name = if let Some(encode_name) = &cli.encode {
+            encode_name.clone()
+        } else if cli.dejavu {
+            commands::select_random_dictionary(&config, false)?
         } else {
-            // Default to hex output for hashes
-            for byte in hash_output {
-                print!("{:02x}", byte);
-            }
-            println!();
-        }
+            config.settings.default_dictionary.clone()
+        };
+        let encode_alphabet = create_dictionary(&config, &dict_name)?;
+        let encoded = encode(&hash_output, &encode_alphabet);
+        println!("{}", encoded);
         return Ok(());
     }
 
@@ -318,8 +317,9 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         // No compression, no encoding - output as-is (or use default encoding)
         if cli.decode.is_none() {
-            // Encoding mode without explicit dictionary
-            let encode_alphabet = create_dictionary(&config, "cards")?;
+            // Encoding mode without explicit dictionary - use config default
+            let default_dict = &config.settings.default_dictionary;
+            let encode_alphabet = create_dictionary(&config, default_dict)?;
             let encoded = encode(&data, &encode_alphabet);
             println!("{}", encoded);
         } else {

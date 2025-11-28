@@ -85,7 +85,7 @@ pub struct Settings {
 }
 
 fn default_dictionary() -> String {
-    "base64".to_string()
+    "cards".to_string()
 }
 
 impl DictionaryRegistry {
