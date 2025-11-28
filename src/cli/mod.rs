@@ -191,7 +191,9 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     // Parse compression algorithm - if flag present but no value, pick random
     let compress_algo = match &cli.compress {
         Some(Some(algo)) => Some(base_d::CompressionAlgorithm::from_str(algo)?),
-        Some(None) => Some(base_d::CompressionAlgorithm::from_str(commands::select_random_compress())?),
+        Some(None) => Some(base_d::CompressionAlgorithm::from_str(
+            commands::select_random_compress(),
+        )?),
         None => None,
     };
 
