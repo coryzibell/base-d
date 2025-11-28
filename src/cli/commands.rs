@@ -15,7 +15,6 @@ pub enum SwitchInterval {
 
 pub enum SwitchMode {
     Static,
-    RandomOnce,
     Cycle(SwitchInterval),
     Random(SwitchInterval),
 }
@@ -123,14 +122,7 @@ pub fn matrix_mode(
     thread::sleep(Duration::from_millis(500));
 
     // Setup for switching
-    let mut current_alphabet_name = match &switch_mode {
-        SwitchMode::RandomOnce => {
-            let name = select_random_dictionary(config, false)?;
-            eprintln!("dejavu: Matrix mode using {}", name);
-            name
-        }
-        _ => initial_alphabet.to_string(),
-    };
+    let mut current_alphabet_name = initial_alphabet.to_string();
 
     // For cycling: build sorted dictionary list
     let sorted_dicts: Vec<String> = if matches!(switch_mode, SwitchMode::Cycle(_)) {
