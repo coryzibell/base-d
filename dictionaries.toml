@@ -210,13 +210,37 @@ mode = "chunked"  # Can also use 'base_conversion' - both produce identical outp
 # Unicode Block Dictionaries
 # ============================================================================
 
-[dictionaries.blocks]
+[dictionaries.blocks_full]
 chars = "▀▁▂▃▄▅▆▇█▉▊▋▌▍▎▏▐░▒▓▔▕▖▗▘▙▚▛▜▝▞▟"
 mode = "chunked"
 padding = "="
 # Block Elements dictionary (base-32)
 # 5 bits per character (2^5 = 32) - perfect bit alignment
 # Great for visual block-based encoding
+
+[dictionaries.volume]
+chars = "▁▂▃▄▅▆▇█"
+mode = "base_conversion"
+# 8-character volume bar dictionary (base-8)
+# Perfect for audio/progress visualization
+
+[dictionaries.barcode]
+chars = "▉▊▋▌▍▎▏▐"
+mode = "base_conversion"
+# 8-character barcode-style dictionary (base-8)
+# Varying width bars for barcode aesthetics
+
+[dictionaries.blocks]
+chars = "▙▚▛▜▞▟"
+mode = "base_conversion"
+# 6-character quadrant blocks dictionary
+# Diagonal/corner block patterns
+
+[dictionaries.gradient]
+chars = "░▒▓"
+mode = "base_conversion"
+# 3-character gradient/shading dictionary
+# Light to dark density progression
 
 [dictionaries.boxdraw]
 chars = "─━│┃┄┅┆┇┈┉┊┋┌┍┎┏┐┑┒┓└┕┖┗┘┙┚┛├┝┞┟┠┡┢┣┤┥┦┧┨┩┪┫┬┭┮┯┰┱┲┳┴┵┶┷┸┹┺┻┼┽┾┿╀╁╂╃╄╅╆╇╈╉╊╋╌╍╎╏═║╒╓╔╕╖╗╘╙╚╛╜╝╞╟╠╡╢╣╤╥╦╧╨╩╪╫╬╭╮╯╰╱╲╳╴╵╶╷╸╹╺╻╼╽╾╿"
