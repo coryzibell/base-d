@@ -12,13 +12,13 @@ Add the `--stream` (or `-s`) flag to enable streaming mode:
 
 ```bash
 # Stream encode a large file
-base-d --stream -a base64 large_file.bin > encoded.txt
+base-d --stream -e base64 large_file.bin > encoded.txt
 
 # Stream decode
-base-d --stream -a base64 -d encoded.txt > decoded.bin
+base-d --stream -d base64 encoded.txt > decoded.bin
 
 # Works with stdin/stdout
-cat large_file.bin | base-d --stream -a base64 | base-d --stream -a base64 -d > output.bin
+cat large_file.bin | base-d --stream -e base64 | base-d --stream -d base64 > output.bin
 ```
 
 ## Encoding Mode Support
@@ -29,7 +29,7 @@ RFC 4648 encodings (base64, base32, base16) fully support streaming:
 
 ```bash
 # Encode 1GB file with streaming
-base-d --stream -a base64 huge_file.dat > encoded.txt
+base-d --stream -e base64 huge_file.dat > encoded.txt
 ```
 
 Benefits:
@@ -43,7 +43,7 @@ Direct byte-to-character mapping also streams perfectly:
 
 ```bash
 # base100 with streaming
-base-d --stream -a base100 data.bin > emoji.txt
+base-d --stream -e base100 data.bin > emoji.txt
 ```
 
 Benefits:
@@ -57,7 +57,7 @@ Mathematical mode treats data as a single large number, so it requires the entir
 
 ```bash
 # This will still load the entire file into memory
-base-d --stream -a cards large_file.bin > output.txt
+base-d --stream -e cards large_file.bin > output.txt
 ```
 
 While the `--stream` flag is accepted, mathematical mode (used by cards, dna, etc.) will read the entire input before encoding.
@@ -81,10 +81,10 @@ Streaming mode has minimal performance overhead:
 
 ```bash
 # Benchmark encoding 100MB file
-$ time base-d -a base64 100mb.bin > /dev/null
+$ time base-d -e base64 100mb.bin > /dev/null
 real    0m0.45s
 
-$ time base-d --stream -a base64 100mb.bin > /dev/null
+$ time base-d --stream -e base64 100mb.bin > /dev/null
 real    0m0.47s
 ```
 
@@ -146,31 +146,31 @@ The hash is computed incrementally as data streams through, so memory usage rema
 
 ```bash
 # Encode a 5GB log file
-base-d --stream -a base64 access.log > access.b64
+base-d --stream -e base64 access.log > access.b64
 
 # Decode back
-base-d --stream -a base64 -d access.b64 > access.log
+base-d --stream -d base64 access.b64 > access.log
 ```
 
 ### Example 2: Pipeline with Other Tools
 
 ```bash
 # Compress, encode, and upload
-tar czf - /data | base-d --stream -a base64 | aws s3 cp - s3://bucket/backup.b64
+tar czf - /data | base-d --stream -e base64 | aws s3 cp - s3://bucket/backup.b64
 ```
 
 ### Example 3: Monitor Progress
 
 ```bash
 # Show progress while encoding
-pv huge_file.bin | base-d --stream -a base64 > encoded.txt
+pv huge_file.bin | base-d --stream -e base64 > encoded.txt
 ```
 
 ### Example 4: Split Large Encoded File
 
 ```bash
 # Encode and split into 100MB chunks
-base-d --stream -a base64 large.bin | split -b 100M - encoded_part_
+base-d --stream -e base64 large.bin | split -b 100M - encoded_part_
 ```
 
 ## Technical Details
@@ -194,7 +194,7 @@ For chunked mode, chunks are aligned to encoding group boundaries to avoid paddi
 Streaming mode provides the same error detection as standard mode:
 
 ```bash
-$ echo "invalid!@#" | base-d --stream -a base64 -d
+$ echo "invalid!@#" | base-d --stream -d base64
 Error: InvalidCharacter('!')
 ```
 
@@ -216,12 +216,12 @@ use std::fs::File;
 
 // Encode
 let config = DictionariesConfig::load_default()?;
-let alphabet_config = config.get_dictionary("base64").unwrap();
-let chars: Vec<char> = alphabet_config.chars.chars().collect();
+let dict_config = config.get_dictionary("base64").unwrap();
+let chars: Vec<char> = dict_config.chars.chars().collect();
 let dictionary = Dictionary::new_with_mode(
     chars,
-    alphabet_config.mode.clone(),
-    alphabet_config.padding.as_ref().and_then(|s| s.chars().next())
+    dict_config.mode.clone(),
+    dict_config.padding.as_ref().and_then(|s| s.chars().next())
 )?;
 
 let mut input = File::open("large_file.bin")?;

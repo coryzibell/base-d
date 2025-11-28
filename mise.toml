@@ -1,0 +1,2 @@
+[tools]
+"cargo:base-d" = "0.1.85"

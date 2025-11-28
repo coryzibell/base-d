@@ -7,7 +7,7 @@
 
 use super::super::common;
 use crate::core::dictionary::Dictionary;
-use crate::simd::variants::AlphabetVariant;
+use crate::simd::variants::DictionaryVariant;
 
 /// SIMD-accelerated base64 encoding with runtime dispatch
 ///
@@ -15,7 +15,7 @@ use crate::simd::variants::AlphabetVariant;
 /// - AVX2 (256-bit): Processes 24 bytes -> 32 chars per iteration
 /// - SSSE3 (128-bit): Processes 12 bytes -> 16 chars per iteration
 /// Falls back to scalar for remainder.
-pub fn encode(data: &[u8], dictionary: &Dictionary, variant: AlphabetVariant) -> Option<String> {
+pub fn encode(data: &[u8], dictionary: &Dictionary, variant: DictionaryVariant) -> Option<String> {
     // Pre-allocate output
     let output_len = ((data.len() + 2) / 3) * 4;
     let mut result = String::with_capacity(output_len);
@@ -44,7 +44,7 @@ pub fn encode(data: &[u8], dictionary: &Dictionary, variant: AlphabetVariant) ->
 /// - AVX2 (256-bit): Processes 32 chars -> 24 bytes per iteration
 /// - SSSE3 (128-bit): Processes 16 chars -> 12 bytes per iteration
 /// Falls back to scalar for remainder.
-pub fn decode(encoded: &str, variant: AlphabetVariant) -> Option<Vec<u8>> {
+pub fn decode(encoded: &str, variant: DictionaryVariant) -> Option<Vec<u8>> {
     let encoded_bytes = encoded.as_bytes();
 
     // Calculate output size
@@ -95,7 +95,7 @@ pub fn decode(encoded: &str, variant: AlphabetVariant) -> Option<Vec<u8>> {
 unsafe fn encode_avx2_impl(
     data: &[u8],
     dictionary: &Dictionary,
-    variant: AlphabetVariant,
+    variant: DictionaryVariant,
     result: &mut String,
 ) {
     use std::arch::x86_64::*;
@@ -183,17 +183,17 @@ unsafe fn reshuffle_avx2(input: std::arch::x86_64::__m256i) -> std::arch::x86_64
 #[target_feature(enable = "avx2")]
 unsafe fn translate_avx2(
     indices: std::arch::x86_64::__m256i,
-    variant: AlphabetVariant,
+    variant: DictionaryVariant,
 ) -> std::arch::x86_64::__m256i {
     use std::arch::x86_64::*;
 
     // Lookup table containing offsets (same as SSSE3, duplicated for both lanes)
     let lut = match variant {
-        AlphabetVariant::Base64Standard => _mm256_setr_epi8(
+        DictionaryVariant::Base64Standard => _mm256_setr_epi8(
             65, 71, -4, -4, -4, -4, -4, -4, -4, -4, -4, -4, -19, -16, 0, 0, // Lane 0
             65, 71, -4, -4, -4, -4, -4, -4, -4, -4, -4, -4, -19, -16, 0, 0, // Lane 1
         ),
-        AlphabetVariant::Base64Url => _mm256_setr_epi8(
+        DictionaryVariant::Base64Url => _mm256_setr_epi8(
             65, 71, -4, -4, -4, -4, -4, -4, -4, -4, -4, -4, -17, 32, 0, 0, // Lane 0
             65, 71, -4, -4, -4, -4, -4, -4, -4, -4, -4, -4, -17, 32, 0, 0, // Lane 1
         ),
@@ -218,7 +218,11 @@ unsafe fn translate_avx2(
 /// independent 16-char chunks as separate lanes.
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
-unsafe fn decode_avx2_impl(encoded: &[u8], variant: AlphabetVariant, result: &mut Vec<u8>) -> bool {
+unsafe fn decode_avx2_impl(
+    encoded: &[u8],
+    variant: DictionaryVariant,
+    result: &mut Vec<u8>,
+) -> bool {
     use std::arch::x86_64::*;
 
     const INPUT_BLOCK_SIZE: usize = 32;
@@ -389,7 +393,7 @@ unsafe fn reshuffle_decode_avx2(indices: std::arch::x86_64::__m256i) -> std::arc
 unsafe fn encode_ssse3_impl(
     data: &[u8],
     dictionary: &Dictionary,
-    variant: AlphabetVariant,
+    variant: DictionaryVariant,
     result: &mut String,
 ) {
     use std::arch::x86_64::*;
@@ -486,27 +490,27 @@ unsafe fn reshuffle(input: std::arch::x86_64::__m128i) -> std::arch::x86_64::__m
 /// Uses an offset-based lookup instead of direct table lookup,
 /// which is more efficient for SIMD.
 ///
-/// Standard base64 alphabet mapping:
+/// Standard base64 dictionary mapping:
 /// - [0..25]  -> 'A'..'Z' (ASCII 65..90)   offset: +65
 /// - [26..51] -> 'a'..'z' (ASCII 97..122)  offset: +71
 /// - [52..61] -> '0'..'9' (ASCII 48..57)   offset: -4
 /// - [62]     -> '+'      (ASCII 43)       offset: -19
 /// - [63]     -> '/'      (ASCII 47)       offset: -16
 ///
-/// URL-safe base64 alphabet differs only at positions 62-63:
+/// URL-safe base64 dictionary differs only at positions 62-63:
 /// - [62]     -> '-'      (ASCII 45)       offset: -17
 /// - [63]     -> '_'      (ASCII 95)       offset: +32
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "ssse3")]
 unsafe fn translate(
     indices: std::arch::x86_64::__m128i,
-    variant: AlphabetVariant,
+    variant: DictionaryVariant,
 ) -> std::arch::x86_64::__m128i {
     use std::arch::x86_64::*;
 
     // Lookup table containing offsets to add to each index
     let lut = match variant {
-        AlphabetVariant::Base64Standard => _mm_setr_epi8(
+        DictionaryVariant::Base64Standard => _mm_setr_epi8(
             65, // index 0: 'A' = 0 + 65
             71, // index 1: for values 26-51, add 71 (26 + 71 = 97 = 'a')
             -4, // indices 2-11: for values 52-61, add -4 (52 + -4 = 48 = '0')
@@ -516,7 +520,7 @@ unsafe fn translate(
             0,   // unused
             0,   // unused
         ),
-        AlphabetVariant::Base64Url => _mm_setr_epi8(
+        DictionaryVariant::Base64Url => _mm_setr_epi8(
             65, // index 0: 'A' = 0 + 65
             71, // index 1: for values 26-51, add 71 (26 + 71 = 97 = 'a')
             -4, // indices 2-11: for values 52-61, add -4 (52 + -4 = 48 = '0')
@@ -554,7 +558,7 @@ fn encode_scalar_remainder(data: &[u8], dictionary: &Dictionary, result: &mut St
 #[target_feature(enable = "ssse3")]
 unsafe fn decode_ssse3_impl(
     encoded: &[u8],
-    variant: AlphabetVariant,
+    variant: DictionaryVariant,
     result: &mut Vec<u8>,
 ) -> bool {
     use std::arch::x86_64::*;
@@ -609,10 +613,10 @@ unsafe fn decode_ssse3_impl(
                 b'A'..=b'Z' => Some((c - b'A') as u8),
                 b'a'..=b'z' => Some((c - b'a' + 26) as u8),
                 b'0'..=b'9' => Some((c - b'0' + 52) as u8),
-                b'+' if matches!(variant, AlphabetVariant::Base64Standard) => Some(62),
-                b'/' if matches!(variant, AlphabetVariant::Base64Standard) => Some(63),
-                b'-' if matches!(variant, AlphabetVariant::Base64Url) => Some(62),
-                b'_' if matches!(variant, AlphabetVariant::Base64Url) => Some(63),
+                b'+' if matches!(variant, DictionaryVariant::Base64Standard) => Some(62),
+                b'/' if matches!(variant, DictionaryVariant::Base64Standard) => Some(63),
+                b'-' if matches!(variant, DictionaryVariant::Base64Url) => Some(62),
+                b'_' if matches!(variant, DictionaryVariant::Base64Url) => Some(63),
                 _ => None,
             },
             result,
@@ -628,7 +632,7 @@ unsafe fn decode_ssse3_impl(
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "ssse3")]
 unsafe fn get_decode_luts(
-    variant: AlphabetVariant,
+    variant: DictionaryVariant,
 ) -> (
     std::arch::x86_64::__m128i,
     std::arch::x86_64::__m128i,
@@ -650,10 +654,10 @@ unsafe fn get_decode_luts(
 
     // Roll/offset lookup - converts ASCII to 6-bit indices
     let lut_roll = match variant {
-        AlphabetVariant::Base64Standard => {
+        DictionaryVariant::Base64Standard => {
             _mm_setr_epi8(0, 16, 19, 4, -65, -65, -71, -71, 0, 0, 0, 0, 0, 0, 0, 0)
         }
-        AlphabetVariant::Base64Url => {
+        DictionaryVariant::Base64Url => {
             _mm_setr_epi8(0, 17, -32, 4, -65, -65, -71, -71, 0, 0, 0, 0, 0, 0, 0, 0)
         }
     };
@@ -769,7 +773,8 @@ mod tests {
         let dictionary = make_base64_dict();
         let test_data = b"Hello, World! This is a test of SIMD base64 encoding.";
 
-        if let Some(simd_result) = encode(test_data, &dictionary, AlphabetVariant::Base64Standard) {
+        if let Some(simd_result) = encode(test_data, &dictionary, DictionaryVariant::Base64Standard)
+        {
             let scalar_result =
                 crate::encoders::algorithms::chunked::encode_chunked(test_data, &dictionary);
             assert_eq!(
@@ -796,7 +801,8 @@ mod tests {
         ];
 
         for (input, expected) in test_cases {
-            if let Some(simd_result) = encode(input, &dictionary, AlphabetVariant::Base64Standard) {
+            if let Some(simd_result) = encode(input, &dictionary, DictionaryVariant::Base64Standard)
+            {
                 assert_eq!(simd_result, expected, "Failed for input: {:?}", input);
             }
         }
@@ -809,8 +815,9 @@ mod tests {
         for len in 0..100 {
             let original: Vec<u8> = (0..len).map(|i| (i * 7) as u8).collect();
 
-            if let Some(encoded) = encode(&original, &dictionary, AlphabetVariant::Base64Standard) {
-                if let Some(decoded) = decode(&encoded, AlphabetVariant::Base64Standard) {
+            if let Some(encoded) = encode(&original, &dictionary, DictionaryVariant::Base64Standard)
+            {
+                if let Some(decoded) = decode(&encoded, DictionaryVariant::Base64Standard) {
                     assert_eq!(decoded, original, "Round-trip failed at length {}", len);
                 }
             }
@@ -825,7 +832,8 @@ mod tests {
         // 48 bytes = 2 AVX2 blocks (24 bytes each)
         let test_data: Vec<u8> = (0..48).map(|i| i).collect();
 
-        if let Some(simd_result) = encode(&test_data, &dictionary, AlphabetVariant::Base64Standard)
+        if let Some(simd_result) =
+            encode(&test_data, &dictionary, DictionaryVariant::Base64Standard)
         {
             let scalar_result =
                 crate::encoders::algorithms::chunked::encode_chunked(&test_data, &dictionary);
@@ -835,7 +843,7 @@ mod tests {
             );
 
             // Verify round-trip
-            if let Some(decoded) = decode(&simd_result, AlphabetVariant::Base64Standard) {
+            if let Some(decoded) = decode(&simd_result, DictionaryVariant::Base64Standard) {
                 assert_eq!(decoded, test_data, "AVX2 round-trip failed");
             }
         }
@@ -851,7 +859,7 @@ mod tests {
         ];
 
         for (input, expected) in test_cases {
-            if let Some(decoded) = decode(input, AlphabetVariant::Base64Url) {
+            if let Some(decoded) = decode(input, DictionaryVariant::Base64Url) {
                 assert_eq!(decoded, expected, "URL-safe decode failed for: {}", input);
             } else {
                 panic!("Failed to decode URL-safe input: {}", input);
@@ -866,9 +874,9 @@ mod tests {
         let dictionary = make_base64_dict();
         let test_data: Vec<u8> = (0..48).map(|i| (i * 3) as u8).collect();
 
-        if let Some(encoded) = encode(&test_data, &dictionary, AlphabetVariant::Base64Standard) {
+        if let Some(encoded) = encode(&test_data, &dictionary, DictionaryVariant::Base64Standard) {
             // Should use AVX2 for decoding
-            if let Some(decoded) = decode(&encoded, AlphabetVariant::Base64Standard) {
+            if let Some(decoded) = decode(&encoded, DictionaryVariant::Base64Standard) {
                 assert_eq!(decoded, test_data, "AVX2 decode failed");
             }
         }

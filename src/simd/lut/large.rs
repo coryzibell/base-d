@@ -1,4 +1,4 @@
-//! LargeLutCodec: SIMD codec for large arbitrary alphabets (17-64 characters)
+//! LargeLutCodec: SIMD codec for large arbitrary dictionaries (17-64 characters)
 //!
 //! Platform-specific strategies:
 //! - ARM NEON: vqtbl4q_u8 (64-byte direct lookup)
@@ -9,12 +9,12 @@
 //! - 17 <= Base <= 64
 //! - Power-of-2 base (32 or 64)
 //! - ASCII-only (char < 0x80)
-//! - Non-sequential alphabets only
+//! - Non-sequential dictionaries only
 
 use crate::core::dictionary::Dictionary;
-use crate::simd::variants::{AlphabetMetadata, LutStrategy, TranslationStrategy};
+use crate::simd::variants::{DictionaryMetadata, LutStrategy, TranslationStrategy};
 
-/// Character range in alphabet (contiguous ASCII sequence)
+/// Character range in dictionary (contiguous ASCII sequence)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct CharRange {
     start_idx: u8,  // First index in this range
@@ -155,7 +155,7 @@ impl RangeInfo {
         // After subtraction, both large ranges map to 0 or near-0
         // Comparison value: distinguish the two large ranges
         let cmp_value = if largest_idx < second_largest_idx {
-            // Largest comes first in alphabet
+            // Largest comes first in dictionary
             second_largest_range.start_idx
         } else {
             // Second-largest comes first
@@ -425,12 +425,12 @@ impl RangeInfo {
     }
 }
 
-/// SIMD codec for large arbitrary alphabets (17-64 characters)
+/// SIMD codec for large arbitrary dictionaries (17-64 characters)
 ///
 /// Uses platform-dependent lookup for encoding and a 256-byte sparse
 /// table for decoding with validation.
 pub struct LargeLutCodec {
-    metadata: AlphabetMetadata,
+    metadata: DictionaryMetadata,
 
     /// Encoding LUT: index → char (64 bytes, one per possible index)
     encode_lut: [u8; 64],
@@ -445,7 +445,7 @@ pub struct LargeLutCodec {
 }
 
 impl LargeLutCodec {
-    /// Detect contiguous ASCII ranges in alphabet
+    /// Detect contiguous ASCII ranges in dictionary
     #[cfg(target_arch = "x86_64")]
     fn detect_ranges(encode_lut: &[u8], base: usize) -> Vec<CharRange> {
         let mut ranges = Vec::new();
@@ -477,14 +477,14 @@ impl LargeLutCodec {
     /// Create codec from dictionary
     ///
     /// Returns None if:
-    /// - Alphabet not in range 17-64 chars
+    /// - Dictionary not in range 17-64 chars
     /// - Not power-of-2 base (32 or 64)
-    /// - Alphabet is sequential (should use GenericSimdCodec)
+    /// - Dictionary is sequential (should use GenericSimdCodec)
     /// - Any character > 0x7F (non-ASCII)
     pub fn from_dictionary(dict: &Dictionary) -> Option<Self> {
-        let metadata = AlphabetMetadata::from_dictionary(dict);
+        let metadata = DictionaryMetadata::from_dictionary(dict);
 
-        // Only for large arbitrary alphabets (17-64 chars)
+        // Only for large arbitrary dictionaries (17-64 chars)
         if metadata.base < 17 || metadata.base > 64 {
             return None;
         }
@@ -1321,7 +1321,7 @@ impl LargeLutCodec {
         }
     }
 
-    /// Check if alphabet is RFC4648 base32
+    /// Check if dictionary is RFC4648 base32
     fn is_rfc4648_base32(&self) -> bool {
         if self.metadata.base != 32 {
             return false;
@@ -1331,7 +1331,7 @@ impl LargeLutCodec {
         &self.encode_lut[..32] == expected
     }
 
-    /// Check if alphabet is standard base64
+    /// Check if dictionary is standard base64
     fn is_standard_base64(&self) -> bool {
         if self.metadata.base != 64 {
             return false;
@@ -1372,7 +1372,7 @@ impl LargeLutCodec {
         } else if self.is_standard_base64() {
             self.decode_neon_base64_standard(encoded, result)
         } else {
-            // Arbitrary alphabet - use scalar LUT
+            // Arbitrary dictionary - use scalar LUT
             self.decode_scalar(encoded, result)
         }
     }
@@ -1475,7 +1475,7 @@ impl LargeLutCodec {
         true
     }
 
-    /// Validate and translate chars to indices for multi-range alphabets
+    /// Validate and translate chars to indices for multi-range dictionaries
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "ssse3")]
     unsafe fn validate_and_translate_multi_range(
@@ -1716,7 +1716,7 @@ impl LargeLutCodec {
 
             let mut indices_buf = [0u8; 16];
 
-            // For range-reduced alphabets, reverse the transformation
+            // For range-reduced dictionaries, reverse the transformation
             if let Some(range_info) = &self.range_info {
                 for j in 0..16 {
                     let ch = char_buf[j];
@@ -1802,7 +1802,7 @@ impl LargeLutCodec {
 
             let mut indices_buf = [0u8; 16];
 
-            // For range-reduced alphabets, reverse the transformation
+            // For range-reduced dictionaries, reverse the transformation
             // Note: aarch64 doesn't have range_info, so always use decode_lut
             for j in 0..16 {
                 let idx = self.decode_lut[char_buf[j] as usize];
@@ -1907,7 +1907,7 @@ impl LargeLutCodec {
         let mut bits_in_buffer = 0;
 
         for &ch_byte in encoded {
-            // For range-reduced alphabets (6-16 ranges), reverse the transformation
+            // For range-reduced dictionaries (6-16 ranges), reverse the transformation
             #[cfg(target_arch = "x86_64")]
             let index = if let Some(range_info) = &self.range_info {
                 // Find which range this character belongs to
@@ -1969,7 +1969,7 @@ mod tests {
 
     #[test]
     fn test_creation_from_arbitrary_base32() {
-        // Shuffled 32-char alphabet
+        // Shuffled 32-char dictionary
         let chars: Vec<char> = "ZYXWVUTSRQPONMLKJIHGFEDCBA234567".chars().collect();
         let dict = Dictionary::new(chars).unwrap();
 
@@ -1979,7 +1979,7 @@ mod tests {
 
     #[test]
     fn test_creation_from_arbitrary_base64() {
-        // Shuffled 64-char alphabet
+        // Shuffled 64-char dictionary
         let chars: Vec<char> = "zyxwvutsrqponmlkjihgfedcbaZYXWVUTSRQPONMLKJIHGFEDCBA9876543210_-"
             .chars()
             .collect();
@@ -1990,8 +1990,8 @@ mod tests {
     }
 
     #[test]
-    fn test_rejects_sequential_alphabet() {
-        // Sequential alphabet should use GenericSimdCodec, not LUT
+    fn test_rejects_sequential_dictionary() {
+        // Sequential dictionary should use GenericSimdCodec, not LUT
         let chars: Vec<char> = (0x41..0x61).map(|c| char::from_u32(c).unwrap()).collect();
         let dict = Dictionary::new(chars).unwrap();
 
@@ -2003,8 +2003,8 @@ mod tests {
     }
 
     #[test]
-    fn test_rejects_small_alphabet() {
-        // 16-char alphabet too small for LargeLutCodec
+    fn test_rejects_small_dictionary() {
+        // 16-char dictionary too small for LargeLutCodec
         let chars: Vec<char> = "0123456789ABCDEF".chars().collect();
         let dict = Dictionary::new(chars).unwrap();
 
@@ -2014,7 +2014,7 @@ mod tests {
 
     #[test]
     fn test_rejects_non_power_of_two() {
-        // 40-char alphabet (non power-of-2)
+        // 40-char dictionary (non power-of-2)
         let chars: Vec<char> = (0x41..0x69).map(|c| char::from_u32(c).unwrap()).collect();
         let dict = Dictionary::new(chars).unwrap();
 
@@ -2024,13 +2024,13 @@ mod tests {
 
     #[test]
     fn test_lut_construction_base32() {
-        // Shuffled base32 alphabet (32 unique chars)
+        // Shuffled base32 dictionary (32 unique chars)
         let chars: Vec<char> = "76543ABCDEFGHIJKLMNOPQRSTUVWXYZ2".chars().collect();
         let dict = Dictionary::new(chars).unwrap();
 
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
 
-        // Verify encode_lut matches alphabet
+        // Verify encode_lut matches dictionary
         assert_eq!(codec.encode_lut[0], b'7');
         assert_eq!(codec.encode_lut[1], b'6');
         assert_eq!(codec.encode_lut[31], b'2');
@@ -2047,7 +2047,7 @@ mod tests {
 
     #[test]
     fn test_lut_construction_base64() {
-        // Shuffled base64 alphabet
+        // Shuffled base64 dictionary
         let chars: Vec<char> = "9876543210zyxwvutsrqponmlkjihgfedcbaZYXWVUTSRQPONMLKJIHGFEDCBA_-"
             .chars()
             .collect();
@@ -2055,7 +2055,7 @@ mod tests {
 
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
 
-        // Verify encode_lut matches alphabet
+        // Verify encode_lut matches dictionary
         assert_eq!(codec.encode_lut[0], b'9');
         assert_eq!(codec.encode_lut[1], b'8');
         assert_eq!(codec.encode_lut[63], b'-');
@@ -2073,7 +2073,7 @@ mod tests {
     #[test]
     #[cfg(target_arch = "aarch64")]
     fn test_encode_base32_round_trip() {
-        // Shuffled base32 alphabet
+        // Shuffled base32 dictionary
         let chars: Vec<char> = "ZYXWVUTSRQPONMLKJIHGFEDCBA234567".chars().collect();
         let dict = Dictionary::new(chars).unwrap();
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
@@ -2088,7 +2088,7 @@ mod tests {
     #[test]
     #[cfg(target_arch = "aarch64")]
     fn test_encode_base64_round_trip() {
-        // Shuffled base64 alphabet
+        // Shuffled base64 dictionary
         let chars: Vec<char> = "zyxwvutsrqponmlkjihgfedcbaZYXWVUTSRQPONMLKJIHGFEDCBA9876543210_-"
             .chars()
             .collect();
@@ -2174,7 +2174,7 @@ mod tests {
         let dict = Dictionary::new(chars).unwrap();
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
 
-        // 'a' is not in alphabet (lowercase not present)
+        // 'a' is not in dictionary (lowercase not present)
         let invalid = "ZYXa";
         let result = codec.decode(invalid, &dict);
 
@@ -2260,7 +2260,7 @@ mod tests {
     #[test]
     #[cfg(target_arch = "x86_64")]
     fn test_encode_base32_round_trip_x86() {
-        // Shuffled base32 alphabet
+        // Shuffled base32 dictionary
         let chars: Vec<char> = "ZYXWVUTSRQPONMLKJIHGFEDCBA234567".chars().collect();
         let dict = Dictionary::new(chars).unwrap();
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
@@ -2275,7 +2275,7 @@ mod tests {
     #[test]
     #[cfg(target_arch = "x86_64")]
     fn test_encode_base64_round_trip_x86() {
-        // Shuffled base64 alphabet
+        // Shuffled base64 dictionary
         let chars: Vec<char> = "zyxwvutsrqponmlkjihgfedcbaZYXWVUTSRQPONMLKJIHGFEDCBA9876543210_-"
             .chars()
             .collect();
@@ -2536,7 +2536,7 @@ mod tests {
     #[test]
     #[cfg(target_arch = "x86_64")]
     fn test_multi_range_base64_arbitrary() {
-        // Arbitrary (non-standard) base64 alphabet with 4 ranges
+        // Arbitrary (non-standard) base64 dictionary with 4 ranges
         // Shuffled within ranges: digits first, then lower, upper, symbols
         let chars: Vec<char> = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ+/"
             .chars()
@@ -2562,11 +2562,11 @@ mod tests {
         assert_eq!(&decoded[..], &data[..]);
     }
 
-    // TODO: Debug decode failure for large inputs with 4+ range alphabets
+    // TODO: Debug decode failure for large inputs with 4+ range dictionaries
     // #[test]
     // #[cfg(target_arch = "x86_64")]
     // fn test_multi_range_base64_all_byte_values() {
-    //     // Arbitrary base64 alphabet (digits, lower, upper, symbols)
+    //     // Arbitrary base64 dictionary (digits, lower, upper, symbols)
     //     let chars: Vec<char> = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ+/"
     //         .chars()
     //         .collect();
@@ -2589,7 +2589,7 @@ mod tests {
     #[test]
     #[cfg(target_arch = "x86_64")]
     fn test_multi_range_arbitrary_3range() {
-        // Custom 3-range alphabet: '0-9', 'A-Z', 'a-f' (42 chars)
+        // Custom 3-range dictionary: '0-9', 'A-Z', 'a-f' (42 chars)
         // This is base42, but only 32 chars fit in power-of-2, so truncate to 32
         let chars: Vec<char> = "0123456789ABCDEFGHIJKLMNOPQRSTUVabcdef"
             .chars()
@@ -2600,7 +2600,7 @@ mod tests {
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
         assert!(
             codec.range_info.is_some(),
-            "Should build range info for 3-range alphabet"
+            "Should build range info for 3-range dictionary"
         );
 
         let data = b"Test data";
@@ -2612,7 +2612,7 @@ mod tests {
     #[test]
     #[cfg(target_arch = "x86_64")]
     fn test_fallback_too_many_ranges() {
-        // Pathological alphabet with >16 ranges (alternating case)
+        // Pathological dictionary with >16 ranges (alternating case)
         // Each char is its own range
         let chars: Vec<char> = "AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPp".chars().collect();
         let dict = Dictionary::new(chars).unwrap();
@@ -2637,14 +2637,14 @@ mod tests {
 
     #[test]
     #[cfg(target_arch = "x86_64")]
-    fn test_single_range_alphabet() {
-        // Sequential 32-char alphabet (single range)
+    fn test_single_range_dictionary() {
+        // Sequential 32-char dictionary (single range)
         // This should be rejected by from_dictionary (uses GenericSimdCodec instead)
         let chars: Vec<char> = (0x30..0x50).map(|c| char::from_u32(c).unwrap()).collect();
         let dict = Dictionary::new(chars).unwrap();
 
         let codec = LargeLutCodec::from_dictionary(&dict);
-        assert!(codec.is_none(), "Should reject sequential alphabet");
+        assert!(codec.is_none(), "Should reject sequential dictionary");
     }
 
     // ========== SIMD decode-specific tests ==========
@@ -2652,7 +2652,7 @@ mod tests {
     #[test]
     #[cfg(target_arch = "x86_64")]
     fn test_decode_rfc4648_base32_simd() {
-        // RFC4648 base32 alphabet - triggers SIMD path
+        // RFC4648 base32 dictionary - triggers SIMD path
         let chars: Vec<char> = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567".chars().collect();
         let dict = Dictionary::new(chars).unwrap();
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
@@ -2673,7 +2673,7 @@ mod tests {
         let dict = Dictionary::new(chars).unwrap();
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
 
-        // Invalid char 'a' (lowercase not in alphabet)
+        // Invalid char 'a' (lowercase not in dictionary)
         let invalid = "ABCDEFGHIJKLMNOP1234567890ABCDEFGHIJKLMNOPabcd";
         let result = codec.decode(invalid, &dict);
 
@@ -2699,15 +2699,15 @@ mod tests {
 
     #[test]
     #[cfg(target_arch = "x86_64")]
-    fn test_decode_arbitrary_alphabet_fallback() {
-        // Arbitrary (non-standard) base64 alphabet - should use scalar LUT
+    fn test_decode_arbitrary_dictionary_fallback() {
+        // Arbitrary (non-standard) base64 dictionary - should use scalar LUT
         let chars: Vec<char> = "zyxwvutsrqponmlkjihgfedcbaZYXWVUTSRQPONMLKJIHGFEDCBA9876543210_-"
             .chars()
             .collect();
         let dict = Dictionary::new(chars).unwrap();
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
 
-        let data = b"Test arbitrary alphabet decode fallback to scalar LUT.";
+        let data = b"Test arbitrary dictionary decode fallback to scalar LUT.";
         let encoded = codec.encode(data, &dict).unwrap();
         let decoded = codec.decode(&encoded, &dict).unwrap();
 
@@ -2717,7 +2717,7 @@ mod tests {
     #[test]
     #[cfg(target_arch = "aarch64")]
     fn test_decode_rfc4648_base32_neon() {
-        // RFC4648 base32 alphabet - triggers NEON path
+        // RFC4648 base32 dictionary - triggers NEON path
         let chars: Vec<char> = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567".chars().collect();
         let dict = Dictionary::new(chars).unwrap();
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
@@ -2748,16 +2748,16 @@ mod tests {
 
     // ========== 6-16 Range Tests ==========
 
-    /// Generate synthetic alphabet with N contiguous ranges
+    /// Generate synthetic dictionary with N contiguous ranges
     #[cfg(test)]
-    fn generate_synthetic_alphabet(num_ranges: usize, total_size: usize) -> Vec<char> {
+    fn generate_synthetic_dictionary(num_ranges: usize, total_size: usize) -> Vec<char> {
         assert!(num_ranges > 0 && num_ranges <= 16);
         assert!(total_size == 32 || total_size == 64);
 
         let chars_per_range = total_size / num_ranges;
         let remainder = total_size % num_ranges;
 
-        let mut alphabet = Vec::new();
+        let mut dictionary = Vec::new();
 
         // Use printable ASCII: 0x21 '!' to 0x7E '~' (94 chars)
         // Calculate gap size to ensure we don't run out of chars
@@ -2779,7 +2779,7 @@ mod tests {
 
             for _ in 0..range_len {
                 if ascii_offset < printable_ascii.len() {
-                    alphabet.push(printable_ascii[ascii_offset] as char);
+                    dictionary.push(printable_ascii[ascii_offset] as char);
                     ascii_offset += 1;
                 }
             }
@@ -2792,24 +2792,24 @@ mod tests {
 
         // Ensure we have exactly the right number of chars
         assert_eq!(
-            alphabet.len(),
+            dictionary.len(),
             total_size,
-            "Generated alphabet has wrong size"
+            "Generated dictionary has wrong size"
         );
 
-        alphabet
+        dictionary
     }
 
     #[test]
     #[cfg(target_arch = "x86_64")]
-    fn test_generate_synthetic_alphabet_6_ranges() {
-        let alphabet = generate_synthetic_alphabet(6, 64);
-        assert_eq!(alphabet.len(), 64);
+    fn test_generate_synthetic_dictionary_6_ranges() {
+        let dictionary = generate_synthetic_dictionary(6, 64);
+        assert_eq!(dictionary.len(), 64);
 
         // Verify it creates 6 contiguous ranges
-        let alphabet_bytes: Vec<u8> = alphabet.iter().map(|&c| c as u8).collect();
+        let dictionary_bytes: Vec<u8> = dictionary.iter().map(|&c| c as u8).collect();
         let mut encode_lut = [0u8; 64];
-        encode_lut[..64].copy_from_slice(&alphabet_bytes);
+        encode_lut[..64].copy_from_slice(&dictionary_bytes);
 
         let ranges = LargeLutCodec::detect_ranges(&encode_lut, 64);
         assert_eq!(ranges.len(), 6, "Should detect exactly 6 ranges");
@@ -2818,8 +2818,8 @@ mod tests {
     #[test]
     #[cfg(target_arch = "x86_64")]
     fn test_encode_6_ranges() {
-        let alphabet = generate_synthetic_alphabet(6, 64);
-        let dict = Dictionary::new(alphabet).unwrap();
+        let dictionary = generate_synthetic_dictionary(6, 64);
+        let dict = Dictionary::new(dictionary).unwrap();
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
 
         // 6+ ranges use scalar fallback (range-reduction not supported)
@@ -2840,8 +2840,8 @@ mod tests {
     #[test]
     #[cfg(target_arch = "x86_64")]
     fn test_encode_6_ranges_all_indices() {
-        let alphabet = generate_synthetic_alphabet(6, 64);
-        let dict = Dictionary::new(alphabet).unwrap();
+        let dictionary = generate_synthetic_dictionary(6, 64);
+        let dict = Dictionary::new(dictionary).unwrap();
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
 
         // Test all 64 possible 6-bit values
@@ -2861,13 +2861,13 @@ mod tests {
     #[test]
     #[cfg(target_arch = "x86_64")]
     fn test_encode_8_ranges() {
-        let alphabet = generate_synthetic_alphabet(8, 64);
-        let dict = Dictionary::new(alphabet.clone()).unwrap();
+        let dictionary = generate_synthetic_dictionary(8, 64);
+        let dict = Dictionary::new(dictionary.clone()).unwrap();
 
         let codec = LargeLutCodec::from_dictionary(&dict);
         assert!(
             codec.is_some(),
-            "Codec should be created for 8-range alphabet"
+            "Codec should be created for 8-range dictionary"
         );
         let codec = codec.unwrap();
 
@@ -2886,8 +2886,8 @@ mod tests {
     #[test]
     #[cfg(target_arch = "x86_64")]
     fn test_encode_8_ranges_all_byte_values() {
-        let alphabet = generate_synthetic_alphabet(8, 64);
-        let dict = Dictionary::new(alphabet).unwrap();
+        let dictionary = generate_synthetic_dictionary(8, 64);
+        let dict = Dictionary::new(dictionary).unwrap();
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
 
         let data: Vec<u8> = (0..=255).collect();
@@ -2899,8 +2899,8 @@ mod tests {
     #[test]
     #[cfg(target_arch = "x86_64")]
     fn test_encode_9_ranges() {
-        let alphabet = generate_synthetic_alphabet(9, 64);
-        let dict = Dictionary::new(alphabet).unwrap();
+        let dictionary = generate_synthetic_dictionary(9, 64);
+        let dict = Dictionary::new(dictionary).unwrap();
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
 
         // 6+ ranges use scalar fallback (range-reduction not supported)
@@ -2918,8 +2918,8 @@ mod tests {
     #[test]
     #[cfg(target_arch = "x86_64")]
     fn test_encode_12_ranges() {
-        let alphabet = generate_synthetic_alphabet(12, 64);
-        let dict = Dictionary::new(alphabet).unwrap();
+        let dictionary = generate_synthetic_dictionary(12, 64);
+        let dict = Dictionary::new(dictionary).unwrap();
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
 
         // 6+ ranges use scalar fallback (range-reduction not supported)
@@ -2937,8 +2937,8 @@ mod tests {
     #[test]
     #[cfg(target_arch = "x86_64")]
     fn test_encode_13_ranges() {
-        let alphabet = generate_synthetic_alphabet(13, 64);
-        let dict = Dictionary::new(alphabet).unwrap();
+        let dictionary = generate_synthetic_dictionary(13, 64);
+        let dict = Dictionary::new(dictionary).unwrap();
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
 
         // 6+ ranges use scalar fallback (range-reduction not supported)
@@ -2956,8 +2956,8 @@ mod tests {
     #[test]
     #[cfg(target_arch = "x86_64")]
     fn test_encode_16_ranges() {
-        let alphabet = generate_synthetic_alphabet(16, 64);
-        let dict = Dictionary::new(alphabet).unwrap();
+        let dictionary = generate_synthetic_dictionary(16, 64);
+        let dict = Dictionary::new(dictionary).unwrap();
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
 
         // 6+ ranges use scalar fallback (range-reduction not supported)
@@ -2977,9 +2977,9 @@ mod tests {
     fn test_range_strategy_detection() {
         // Test strategy detection for 1-5 ranges (6+ ranges not supported yet)
 
-        // Test 2-range alphabet (RFC4648 base32)
-        let alphabet_2: Vec<char> = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567".chars().collect();
-        let dict_2 = Dictionary::new(alphabet_2).unwrap();
+        // Test 2-range dictionary (RFC4648 base32)
+        let dictionary_2: Vec<char> = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567".chars().collect();
+        let dict_2 = Dictionary::new(dictionary_2).unwrap();
         let codec_2 = LargeLutCodec::from_dictionary(&dict_2).unwrap();
         assert!(codec_2.range_info.is_some());
         assert_eq!(
@@ -2987,9 +2987,9 @@ mod tests {
             RangeStrategy::Small
         );
 
-        // Test 3-range alphabet
-        let alphabet_3 = generate_synthetic_alphabet(3, 32);
-        let dict_3 = Dictionary::new(alphabet_3).unwrap();
+        // Test 3-range dictionary
+        let dictionary_3 = generate_synthetic_dictionary(3, 32);
+        let dict_3 = Dictionary::new(dictionary_3).unwrap();
         let codec_3 = LargeLutCodec::from_dictionary(&dict_3).unwrap();
         assert!(codec_3.range_info.is_some());
         assert_eq!(
@@ -2998,8 +2998,8 @@ mod tests {
         );
 
         // 6+ ranges should not have range_info
-        let alphabet_6 = generate_synthetic_alphabet(6, 64);
-        let dict_6 = Dictionary::new(alphabet_6).unwrap();
+        let dictionary_6 = generate_synthetic_dictionary(6, 64);
+        let dict_6 = Dictionary::new(dictionary_6).unwrap();
         let codec_6 = LargeLutCodec::from_dictionary(&dict_6).unwrap();
         assert!(
             codec_6.range_info.is_none(),
@@ -3013,8 +3013,8 @@ mod tests {
     #[cfg(target_arch = "x86_64")]
     fn test_decode_6_ranges_base32() {
         // 6 ranges for base32 - uses scalar fallback (range-reduction not supported for >5 ranges)
-        let alphabet = generate_synthetic_alphabet(6, 32);
-        let dict = Dictionary::new(alphabet).unwrap();
+        let dictionary = generate_synthetic_dictionary(6, 32);
+        let dict = Dictionary::new(dictionary).unwrap();
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
 
         // 6-16 range support not implemented yet, so range_info should be None
@@ -3035,8 +3035,8 @@ mod tests {
     #[cfg(target_arch = "x86_64")]
     fn test_decode_8_ranges_base32() {
         // 8 ranges for base32 - uses scalar fallback (range-reduction not supported for >5 ranges)
-        let alphabet = generate_synthetic_alphabet(8, 32);
-        let dict = Dictionary::new(alphabet).unwrap();
+        let dictionary = generate_synthetic_dictionary(8, 32);
+        let dict = Dictionary::new(dictionary).unwrap();
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
 
         assert!(
@@ -3055,8 +3055,8 @@ mod tests {
     #[cfg(target_arch = "x86_64")]
     fn test_decode_12_ranges_base32() {
         // 12 ranges × 2-3 chars ≈ 32 chars - uses scalar fallback
-        let alphabet = generate_synthetic_alphabet(12, 32);
-        let dict = Dictionary::new(alphabet).unwrap();
+        let dictionary = generate_synthetic_dictionary(12, 32);
+        let dict = Dictionary::new(dictionary).unwrap();
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
 
         assert!(
@@ -3064,7 +3064,7 @@ mod tests {
             "Range info should not exist for >5 ranges"
         );
 
-        let data = b"Large multirange alphabet test!";
+        let data = b"Large multirange dictionary test!";
         let encoded = codec.encode(data, &dict).unwrap();
         let decoded = codec.decode(&encoded, &dict).unwrap();
 
@@ -3075,8 +3075,8 @@ mod tests {
     #[cfg(target_arch = "x86_64")]
     fn test_decode_16_ranges_base32() {
         // 16 ranges × 2 chars = 32 chars - uses scalar fallback
-        let alphabet = generate_synthetic_alphabet(16, 32);
-        let dict = Dictionary::new(alphabet).unwrap();
+        let dictionary = generate_synthetic_dictionary(16, 32);
+        let dict = Dictionary::new(dictionary).unwrap();
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
 
         assert!(
@@ -3095,8 +3095,8 @@ mod tests {
     #[cfg(target_arch = "x86_64")]
     fn test_decode_6_ranges_base64() {
         // 6 ranges × 10 chars = 60 chars, pad to 64 - uses scalar fallback
-        let alphabet = generate_synthetic_alphabet(6, 64);
-        let dict = Dictionary::new(alphabet).unwrap();
+        let dictionary = generate_synthetic_dictionary(6, 64);
+        let dict = Dictionary::new(dictionary).unwrap();
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
 
         assert!(
@@ -3115,8 +3115,8 @@ mod tests {
     #[cfg(target_arch = "x86_64")]
     fn test_decode_8_ranges_base64() {
         // 8 ranges × 8 chars = 64 chars - uses scalar fallback
-        let alphabet = generate_synthetic_alphabet(8, 64);
-        let dict = Dictionary::new(alphabet).unwrap();
+        let dictionary = generate_synthetic_dictionary(8, 64);
+        let dict = Dictionary::new(dictionary).unwrap();
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
 
         assert!(
@@ -3135,8 +3135,8 @@ mod tests {
     #[cfg(target_arch = "x86_64")]
     fn test_decode_12_ranges_base64() {
         // 12 ranges × 5 chars = 60 chars, pad to 64 - uses scalar fallback
-        let alphabet = generate_synthetic_alphabet(12, 64);
-        let dict = Dictionary::new(alphabet).unwrap();
+        let dictionary = generate_synthetic_dictionary(12, 64);
+        let dict = Dictionary::new(dictionary).unwrap();
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
 
         assert!(
@@ -3155,8 +3155,8 @@ mod tests {
     #[cfg(target_arch = "x86_64")]
     fn test_decode_16_ranges_base64() {
         // 16 ranges × 4 chars = 64 chars - uses scalar fallback
-        let alphabet = generate_synthetic_alphabet(16, 64);
-        let dict = Dictionary::new(alphabet).unwrap();
+        let dictionary = generate_synthetic_dictionary(16, 64);
+        let dict = Dictionary::new(dictionary).unwrap();
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
 
         assert!(
@@ -3174,9 +3174,9 @@ mod tests {
     #[test]
     #[cfg(target_arch = "x86_64")]
     fn test_decode_6_ranges_all_bytes() {
-        // Test all byte values with 6-range alphabet - uses scalar fallback
-        let alphabet = generate_synthetic_alphabet(6, 64);
-        let dict = Dictionary::new(alphabet).unwrap();
+        // Test all byte values with 6-range dictionary - uses scalar fallback
+        let dictionary = generate_synthetic_dictionary(6, 64);
+        let dict = Dictionary::new(dictionary).unwrap();
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
 
         assert!(
@@ -3199,8 +3199,8 @@ mod tests {
     #[cfg(target_arch = "x86_64")]
     fn test_decode_multi_range_invalid_char() {
         // Test that invalid characters are rejected
-        let alphabet = generate_synthetic_alphabet(6, 64);
-        let dict = Dictionary::new(alphabet).unwrap();
+        let dictionary = generate_synthetic_dictionary(6, 64);
+        let dict = Dictionary::new(dictionary).unwrap();
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
 
         // Encode valid data
@@ -3210,7 +3210,7 @@ mod tests {
         // Inject invalid character (use space, which is before the printable ASCII range)
         if encoded.len() > 8 {
             let encoded_bytes = unsafe { encoded.as_bytes_mut() };
-            encoded_bytes[8] = b' '; // Space (32) is not in the alphabet (starts at '!' = 33)
+            encoded_bytes[8] = b' '; // Space (32) is not in the dictionary (starts at '!' = 33)
         }
 
         // Decode should fail
@@ -3225,8 +3225,8 @@ mod tests {
     #[cfg(target_arch = "x86_64")]
     fn test_decode_multi_range_various_sizes() {
         // Test various input sizes (16, 32, 48, 64 chars for base64)
-        let alphabet = generate_synthetic_alphabet(8, 64);
-        let dict = Dictionary::new(alphabet).unwrap();
+        let dictionary = generate_synthetic_dictionary(8, 64);
+        let dict = Dictionary::new(dictionary).unwrap();
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
 
         for size in [12, 24, 36, 48, 60, 100] {
@@ -3246,8 +3246,8 @@ mod tests {
     #[test]
     #[cfg(target_arch = "x86_64")]
     fn test_decode_empty_multi_range() {
-        let alphabet = generate_synthetic_alphabet(6, 64);
-        let dict = Dictionary::new(alphabet).unwrap();
+        let dictionary = generate_synthetic_dictionary(6, 64);
+        let dict = Dictionary::new(dictionary).unwrap();
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
 
         let data: Vec<u8> = vec![];
@@ -3261,8 +3261,8 @@ mod tests {
     #[cfg(target_arch = "x86_64")]
     fn test_decode_single_block_base32() {
         // Exactly 16 chars (one SIMD block for base32)
-        let alphabet = generate_synthetic_alphabet(6, 32);
-        let dict = Dictionary::new(alphabet).unwrap();
+        let dictionary = generate_synthetic_dictionary(6, 32);
+        let dict = Dictionary::new(dictionary).unwrap();
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
 
         // 10 bytes → 16 chars (base32)
@@ -3280,8 +3280,8 @@ mod tests {
     #[cfg(target_arch = "x86_64")]
     fn test_decode_single_block_base64() {
         // Exactly 16 chars (one SIMD block for base64)
-        let alphabet = generate_synthetic_alphabet(8, 64);
-        let dict = Dictionary::new(alphabet).unwrap();
+        let dictionary = generate_synthetic_dictionary(8, 64);
+        let dict = Dictionary::new(dictionary).unwrap();
         let codec = LargeLutCodec::from_dictionary(&dict).unwrap();
 
         // 12 bytes → 16 chars (base64)

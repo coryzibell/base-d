@@ -267,28 +267,28 @@ use std::fs::File;
 fn stream_encode_file(
     input_path: &str,
     output_path: &str,
-    alphabet_name: &str
+    dict_name: &str
 ) -> Result<(), Box<dyn std::error::Error>> {
     let config = DictionariesConfig::load_default()?;
-    let alphabet_config = config.get_dictionary(alphabet_name)
+    let dict_config = config.get_dictionary(dict_name)
         .ok_or("Dictionary not found")?;
-    
-    let dictionary = create_alphabet_from_config(alphabet_config)?;
-    
+
+    let dictionary = create_dictionary_from_config(dict_config)?;
+
     let mut input = File::open(input_path)?;
     let output = File::create(output_path)?;
-    
+
     let mut encoder = StreamingEncoder::new(&dictionary, output);
     encoder.encode(&mut input)?;
-    
+
     Ok(())
 }
 
-fn create_alphabet_from_config(
+fn create_dictionary_from_config(
     config: &base_d::DictionaryConfig
 ) -> Result<Dictionary, Box<dyn std::error::Error>> {
     use base_d::EncodingMode;
-    
+
     match config.mode {
         EncodingMode::ByteRange => {
             let start = config.start_codepoint
@@ -342,26 +342,26 @@ fn safe_decode(
 ```rust
 use base_d::DictionariesConfig;
 
-fn list_available_alphabets() -> Result<(), Box<dyn std::error::Error>> {
+fn list_available_dictionaries() -> Result<(), Box<dyn std::error::Error>> {
     // Load with user overrides
     let config = DictionariesConfig::load_with_overrides()?;
-    
+
     println!("Available dictionaries:");
-    for (name, alphabet_config) in config.dictionaries.iter() {
-        let mode = match alphabet_config.mode {
+    for (name, dict_config) in config.dictionaries.iter() {
+        let mode = match dict_config.mode {
             base_d::EncodingMode::BaseConversion => "math",
             base_d::EncodingMode::Chunked => "chunked",
             base_d::EncodingMode::ByteRange => "range",
         };
-        
-        let size = match alphabet_config.mode {
+
+        let size = match dict_config.mode {
             base_d::EncodingMode::ByteRange => 256,
-            _ => alphabet_config.chars.chars().count(),
+            _ => dict_config.chars.chars().count(),
         };
-        
+
         println!("  {} (base-{}, {})", name, size, mode);
     }
-    
+
     Ok(())
 }
 ```
@@ -532,13 +532,13 @@ use std::fs::File;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = DictionariesConfig::load_default()?;
-    let alphabet_config = config.get_dictionary("base64").unwrap();
+    let dict_config = config.get_dictionary("base64").unwrap();
 
-    let chars: Vec<char> = alphabet_config.chars.chars().collect();
+    let chars: Vec<char> = dict_config.chars.chars().collect();
     let dictionary = Dictionary::new_with_mode(
         chars,
-        alphabet_config.mode.clone(),
-        alphabet_config.padding.as_ref().and_then(|s| s.chars().next())
+        dict_config.mode.clone(),
+        dict_config.padding.as_ref().and_then(|s| s.chars().next())
     )?;
 
     // Create xxHash config with custom seed

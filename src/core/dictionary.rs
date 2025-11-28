@@ -1,5 +1,5 @@
 use crate::core::config::EncodingMode;
-use crate::simd::variants::AlphabetMetadata;
+use crate::simd::variants::DictionaryMetadata;
 use std::collections::HashMap;
 
 const MAX_LOOKUP_TABLE_SIZE: usize = 256;
@@ -289,8 +289,8 @@ impl Dictionary {
     ///
     /// This provides information about whether SIMD acceleration is available
     /// for this dictionary and which implementation to use.
-    pub fn simd_metadata(&self) -> AlphabetMetadata {
-        AlphabetMetadata::from_dictionary(self)
+    pub fn simd_metadata(&self) -> DictionaryMetadata {
+        DictionaryMetadata::from_dictionary(self)
     }
 
     /// Returns whether SIMD acceleration is available for this dictionary.
@@ -315,7 +315,7 @@ mod tests {
     }
 
     #[test]
-    fn test_empty_alphabet() {
+    fn test_empty_dictionary() {
         let chars = vec![];
         let result = Dictionary::new(chars);
         assert!(result.is_err());
@@ -362,7 +362,7 @@ mod tests {
     }
 
     #[test]
-    fn test_padding_conflict_with_alphabet() {
+    fn test_padding_conflict_with_dictionary() {
         let chars = vec!['a', 'b', 'c', 'd'];
         let result = Dictionary::new_with_mode(chars, EncodingMode::BaseConversion, Some('b'));
         assert!(result.is_err());

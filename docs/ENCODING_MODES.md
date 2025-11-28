@@ -99,7 +99,7 @@ Result: SGk=
 Choose the mode in `dictionaries.toml`:
 
 ```toml
-[dictionaries.my_alphabet]
+[dictionaries.my_dictionary]
 chars = "ABC..."
 mode = "base_conversion"  # or "chunked"
 padding = "="  # optional, only for chunked mode
@@ -109,14 +109,14 @@ padding = "="  # optional, only for chunked mode
 
 ```bash
 # Mathematical mode (cards)
-echo "Data" | base-d -a cards
+echo "Data" | base-d -e cards
 # Output: 🃎🃊🃍🃖🂺
 
 # Chunked mode (RFC base64)
-echo "Data" | base-d -a base64  
+echo "Data" | base-d -e base64
 # Output: RGF0YQo=
 
 # Same dictionary, different mode
-echo "Data" | base-d -a base64_math
+echo "Data" | base-d -e base64_math
 # Output: BEF0YQo= (no padding, different encoding)
 ```

@@ -12,7 +12,7 @@
 use super::super::common;
 use crate::core::dictionary::Dictionary;
 
-/// Hex alphabet variant (uppercase vs lowercase)
+/// Hex dictionary variant (uppercase vs lowercase)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HexVariant {
     /// Uppercase: 0-9A-F

@@ -1,9 +1,9 @@
 //! SIMD translation abstractions for encoding/decoding
 //!
 //! This module provides the translation layer that converts between
-//! alphabet indices and characters during SIMD encoding/decoding.
+//! dictionary indices and characters during SIMD encoding/decoding.
 //!
-//! The key insight: for sequential alphabets (contiguous Unicode ranges),
+//! The key insight: for sequential dictionaries (contiguous Unicode ranges),
 //! translation is a single SIMD add/subtract instruction.
 
 #[cfg(target_arch = "x86_64")]
@@ -15,7 +15,7 @@ use std::arch::aarch64::*;
 /// SIMD translation operations for encoding/decoding
 ///
 /// This trait abstracts the translation layer, allowing different
-/// alphabet structures to plug into the same reshuffle algorithms.
+/// dictionary structures to plug into the same reshuffle algorithms.
 ///
 /// # Safety
 /// All methods in this trait require SIMD support (SSSE3 on x86_64, NEON on aarch64)
@@ -25,7 +25,7 @@ use std::arch::aarch64::*;
 pub trait SimdTranslate {
     /// Translate indices to characters (encoding)
     ///
-    /// Takes a vector of alphabet indices (e.g., 0-63 for base64)
+    /// Takes a vector of dictionary indices (e.g., 0-63 for base64)
     /// and converts them to their corresponding character codepoints.
     ///
     /// # Safety
@@ -35,7 +35,7 @@ pub trait SimdTranslate {
 
     /// Translate indices to characters (encoding) - NEON version
     ///
-    /// Takes a vector of alphabet indices (e.g., 0-63 for base64)
+    /// Takes a vector of dictionary indices (e.g., 0-63 for base64)
     /// and converts them to their corresponding character codepoints.
     ///
     /// # Safety
@@ -46,7 +46,7 @@ pub trait SimdTranslate {
     /// Translate characters to indices (decoding)
     ///
     /// Takes a vector of character bytes and converts them to
-    /// alphabet indices. Returns None if invalid characters detected.
+    /// dictionary indices. Returns None if invalid characters detected.
     ///
     /// # Safety
     /// Caller must verify SIMD support before calling
@@ -56,21 +56,21 @@ pub trait SimdTranslate {
     /// Translate characters to indices (decoding) - NEON version
     ///
     /// Takes a vector of character bytes and converts them to
-    /// alphabet indices. Returns None if invalid characters detected.
+    /// dictionary indices. Returns None if invalid characters detected.
     ///
     /// # Safety
     /// Caller must verify NEON support before calling
     #[cfg(target_arch = "aarch64")]
     unsafe fn translate_decode(&self, chars: uint8x16_t) -> Option<uint8x16_t>;
 
-    /// Validate that all characters are valid for this alphabet
+    /// Validate that all characters are valid for this dictionary
     ///
     /// # Safety
     /// Caller must verify SIMD support before calling
     #[cfg(target_arch = "x86_64")]
     unsafe fn validate(&self, chars: __m128i) -> bool;
 
-    /// Validate that all characters are valid for this alphabet - NEON version
+    /// Validate that all characters are valid for this dictionary - NEON version
     ///
     /// # Safety
     /// Caller must verify NEON support before calling
@@ -79,7 +79,7 @@ pub trait SimdTranslate {
 
     /// Translate indices to characters (encoding) - AVX2 version
     ///
-    /// Takes a 256-bit vector of alphabet indices and converts them
+    /// Takes a 256-bit vector of dictionary indices and converts them
     /// to their corresponding character codepoints.
     ///
     /// # Safety
@@ -90,7 +90,7 @@ pub trait SimdTranslate {
     /// Translate characters to indices (decoding) - AVX2 version
     ///
     /// Takes a 256-bit vector of character bytes and converts them to
-    /// alphabet indices. Returns None if invalid characters detected.
+    /// dictionary indices. Returns None if invalid characters detected.
     ///
     /// # Safety
     /// Caller must verify AVX2 support before calling
@@ -98,9 +98,9 @@ pub trait SimdTranslate {
     unsafe fn translate_decode_256(&self, chars: __m256i) -> Option<__m256i>;
 }
 
-/// SIMD translation for sequential alphabets (zero-cost)
+/// SIMD translation for sequential dictionaries (zero-cost)
 ///
-/// This is the ideal case: alphabets where characters are contiguous
+/// This is the ideal case: dictionaries where characters are contiguous
 /// in Unicode, enabling translation with a single add/subtract instruction.
 ///
 /// # Examples
@@ -113,7 +113,7 @@ pub trait SimdTranslate {
 /// Decoding: single `psubb` (subtract) + range check
 #[derive(Debug, Clone, Copy)]
 pub struct SequentialTranslate {
-    /// Starting codepoint of the alphabet
+    /// Starting codepoint of the dictionary
     start_codepoint: u32,
     /// Number of bits per symbol (determines valid range)
     bits_per_symbol: u8,
@@ -128,7 +128,7 @@ impl SequentialTranslate {
     ///
     /// # Example
     /// ```ignore
-    /// // Base64 alphabet starting at '@' (U+0040)
+    /// // Base64 dictionary starting at '@' (U+0040)
     /// let translator = SequentialTranslate::new(0x40, 6);
     /// ```
     #[allow(dead_code)]
@@ -151,7 +151,7 @@ impl SequentialTranslate {
         self.bits_per_symbol
     }
 
-    /// Maximum valid index for this alphabet
+    /// Maximum valid index for this dictionary
     #[allow(dead_code)]
     const fn max_index(&self) -> u8 {
         (1u8 << self.bits_per_symbol) - 1

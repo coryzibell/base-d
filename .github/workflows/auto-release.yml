@@ -14,6 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       skip_bump: ${{ steps.bump.outputs.skip_bump }}
+      new_version: ${{ steps.bump.outputs.new_version }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -33,6 +34,7 @@ jobs:
           if [ "$CURRENT_VERSION" != "$PREVIOUS_VERSION" ]; then
             echo "Version was manually updated from $PREVIOUS_VERSION to $CURRENT_VERSION, skipping auto-bump"
             echo "skip_bump=true" >> $GITHUB_OUTPUT
+            echo "new_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
             exit 0
           fi
 
@@ -52,6 +54,7 @@ jobs:
 
           echo "Bumped version from $CURRENT_VERSION to $NEW_VERSION"
           echo "skip_bump=false" >> $GITHUB_OUTPUT
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
       - name: Commit and push version bump
         if: steps.bump.outputs.skip_bump != 'true'
@@ -132,9 +135,9 @@ jobs:
       - name: Run tests
         run: cargo test --verbose
 
-  trigger-release:
-    name: Trigger Release
-    needs: test
+  create-tag:
+    name: Create Release Tag
+    needs: [bump-version, test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -143,11 +146,22 @@ jobs:
           ref: main
           token: ${{ secrets.PAT_TOKEN }}
 
-      - name: Force update release branch
+      - name: Create and push tag
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git fetch origin release || true
-          git checkout release || git checkout -b release
-          git reset --hard origin/main
-          git push -f origin release
+
+          # Get current version
+          VERSION="v$(grep '^version = ' Cargo.toml | head -1 | cut -d'"' -f2)"
+
+          # Check if tag already exists
+          if git rev-parse "$VERSION" >/dev/null 2>&1; then
+            echo "Tag $VERSION already exists, skipping"
+            exit 0
+          fi
+
+          # Create annotated tag
+          git tag -a "$VERSION" -m "Release $VERSION"
+          git push origin "$VERSION"
+
+          echo "Created and pushed tag $VERSION"

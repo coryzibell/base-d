@@ -33,10 +33,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .padding
         .as_ref()
         .and_then(|s| s.chars().next());
-    let base64_alphabet =
+    let base64_dictionary =
         Dictionary::new_with_mode(base64_chars, base64_config.mode.clone(), base64_padding)?;
 
-    let base64_encoded = encode(data, &base64_alphabet);
+    let base64_encoded = encode(data, &base64_dictionary);
 
     println!("Base64 comparison:");
     println!("  Base1024: {} characters", encoded.chars().count());

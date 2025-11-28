@@ -79,12 +79,12 @@ fn main() -> std::io::Result<()> {
     );
 
     // Create the dictionary string
-    let alphabet_str: String = chars.iter().collect();
+    let dictionary_str: String = chars.iter().collect();
 
     // Write to file
     let mut file = File::create("base256_matrix.txt")?;
-    writeln!(file, "[alphabets.base256_matrix]")?;
-    writeln!(file, "chars = \"{}\"", alphabet_str)?;
+    writeln!(file, "[dictionaries.base256_matrix]")?;
+    writeln!(file, "chars = \"{}\"", dictionary_str)?;
     writeln!(
         file,
         "mode = \"chunked\"  # Can also use 'base_conversion' - both produce identical output!"

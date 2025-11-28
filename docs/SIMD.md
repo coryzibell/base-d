@@ -12,10 +12,10 @@ base-d uses **runtime CPU feature detection** with cached results for zero-overh
 
 ```rust
 // First call: Detects CPU features (~1ns overhead)
-let encoded = encode(data, &base64_alphabet);
+let encoded = encode(data, &base64_dictionary);
 
 // Subsequent calls: Zero overhead (cached detection)
-let encoded2 = encode(more_data, &base64_alphabet);
+let encoded2 = encode(more_data, &base64_dictionary);
 ```
 
 ### Fallback Strategy
@@ -24,7 +24,7 @@ If SIMD is not available or not applicable, base-d automatically falls back to t
 
 ```
 ┌─────────────────────────────┐
-│ encode(data, alphabet)      │
+│ encode(data, dictionary)    │
 └──────────┬──────────────────┘
            │
            ├─ Is x86_64? ──No──> Scalar implementation
@@ -143,11 +143,11 @@ pub fn has_avx2() -> bool {
 **Current SIMD optimizations only apply to:**
 - ✅ x86_64 architecture
 - ✅ Standard base64 encoding (RFC 4648)
-- ✅ Alphabet: `A-Za-z0-9+/`
+- ✅ Dictionary: `A-Za-z0-9+/`
 
 **NOT optimized (uses scalar):**
-- ❌ base32, base58, custom alphabets
-- ❌ Base64url (different alphabet)
+- ❌ base32, base58, custom dictionaries
+- ❌ Base64url (different dictionary)
 - ❌ Mathematical base conversion mode
 - ❌ Byte range mode
 
@@ -251,7 +251,7 @@ vtune -collect hotspots -- cargo bench
 ### Known Limitations
 
 1. **Decoding**: SIMD decoding is not yet implemented (returns `None`, uses scalar)
-2. **Only Standard Base64**: Custom alphabets and base64url don't use SIMD yet
+2. **Only Standard Base64**: Custom dictionaries and base64url don't use SIMD yet
 3. **Minimum input size**: Inputs < 16 bytes use scalar code
 
 ## Contributing

@@ -4,7 +4,7 @@
 
 use crate::core::dictionary::Dictionary;
 
-/// Hex alphabet variants supported by specialized SIMD implementations
+/// Hex dictionary variants supported by specialized SIMD implementations
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HexVariant {
     /// Uppercase hex: 0-9A-F

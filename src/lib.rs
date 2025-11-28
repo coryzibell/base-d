@@ -53,10 +53,10 @@
 //!
 //! ## Features
 //!
-//! - **33 Built-in Alphabets**: RFC standards, emoji, ancient scripts, and more
+//! - **33 Built-in Dictionaries**: RFC standards, emoji, ancient scripts, and more
 //! - **3 Encoding Modes**: Mathematical, chunked (RFC-compliant), byte-range
 //! - **Streaming Support**: Memory-efficient processing for large files
-//! - **Custom Alphabets**: Define your own via TOML configuration
+//! - **Custom Dictionaries**: Define your own via TOML configuration
 //! - **User Configuration**: Load dictionaries from `~/.config/base-d/dictionaries.toml`
 //!
 //! ## Encoding Modes
@@ -135,12 +135,12 @@
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let config = DictionaryRegistry::load_default()?;
-//! let alphabet_config = config.get_dictionary("base64").unwrap();
+//! let dictionary_config = config.get_dictionary("base64").unwrap();
 //!
 //! // ... create dictionary from config
-//! # let chars: Vec<char> = alphabet_config.chars.chars().collect();
-//! # let padding = alphabet_config.padding.as_ref().and_then(|s| s.chars().next());
-//! # let dictionary = base_d::Dictionary::new_with_mode(chars, alphabet_config.mode.clone(), padding)?;
+//! # let chars: Vec<char> = dictionary_config.chars.chars().collect();
+//! # let padding = dictionary_config.padding.as_ref().and_then(|s| s.chars().next());
+//! # let dictionary = base_d::Dictionary::new_with_mode(chars, dictionary_config.mode.clone(), padding)?;
 //!
 //! let mut input = File::open("large_file.bin")?;
 //! let output = File::create("encoded.txt")?;

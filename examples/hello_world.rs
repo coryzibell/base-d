@@ -2,16 +2,16 @@ use base_d::{decode, encode, Dictionary, DictionaryRegistry};
 
 fn main() {
     let config = DictionaryRegistry::load_default().unwrap();
-    let alphabet_config = config
+    let dictionary_config = config
         .get_dictionary("cards")
         .expect("cards dictionary not found");
-    let chars: Vec<char> = alphabet_config.chars.chars().collect();
-    let padding = alphabet_config
+    let chars: Vec<char> = dictionary_config.chars.chars().collect();
+    let padding = dictionary_config
         .padding
         .as_ref()
         .and_then(|s| s.chars().next());
     let dictionary =
-        Dictionary::new_with_mode(chars, alphabet_config.mode.clone(), padding).unwrap();
+        Dictionary::new_with_mode(chars, dictionary_config.mode.clone(), padding).unwrap();
 
     let data = b"Hello, World!";
 

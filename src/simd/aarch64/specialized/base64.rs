@@ -4,7 +4,7 @@
 //! Processes 12 input bytes -> 16 output characters per iteration.
 
 use crate::core::dictionary::Dictionary;
-use crate::simd::variants::AlphabetVariant;
+use crate::simd::variants::DictionaryVariant;
 use std::arch::aarch64::uint8x16_t;
 
 /// NEON-accelerated base64 encoding
@@ -12,7 +12,7 @@ use std::arch::aarch64::uint8x16_t;
 /// Processes 12 input bytes -> 16 output characters per iteration.
 /// Falls back to scalar for remainder.
 #[cfg(target_arch = "aarch64")]
-pub fn encode(data: &[u8], dictionary: &Dictionary, variant: AlphabetVariant) -> Option<String> {
+pub fn encode(data: &[u8], dictionary: &Dictionary, variant: DictionaryVariant) -> Option<String> {
     let output_len = ((data.len() + 2) / 3) * 4;
     let mut result = String::with_capacity(output_len);
 
@@ -28,7 +28,7 @@ pub fn encode(data: &[u8], dictionary: &Dictionary, variant: AlphabetVariant) ->
 /// Processes 16 input characters -> 12 output bytes per iteration.
 /// Falls back to scalar for remainder.
 #[cfg(target_arch = "aarch64")]
-pub fn decode(encoded: &str, variant: AlphabetVariant) -> Option<Vec<u8>> {
+pub fn decode(encoded: &str, variant: DictionaryVariant) -> Option<Vec<u8>> {
     let encoded_bytes = encoded.as_bytes();
 
     let input_no_padding = encoded.trim_end_matches('=');
@@ -59,7 +59,7 @@ pub fn decode(encoded: &str, variant: AlphabetVariant) -> Option<Vec<u8>> {
 unsafe fn encode_neon_impl(
     data: &[u8],
     dictionary: &Dictionary,
-    variant: AlphabetVariant,
+    variant: DictionaryVariant,
     result: &mut String,
 ) {
     use std::arch::aarch64::*;
@@ -152,18 +152,18 @@ unsafe fn reshuffle_neon(input: uint8x16_t) -> uint8x16_t {
 /// Equivalent to x86_64 SSSE3 translate, using NEON vqtbl4q_u8 for 64-entry LUT.
 #[cfg(target_arch = "aarch64")]
 #[target_feature(enable = "neon")]
-unsafe fn translate_neon(indices: uint8x16_t, variant: AlphabetVariant) -> uint8x16_t {
+unsafe fn translate_neon(indices: uint8x16_t, variant: DictionaryVariant) -> uint8x16_t {
     use std::arch::aarch64::*;
 
     // Offset-based approach (same as x86_64)
     let lut = match variant {
-        AlphabetVariant::Base64Standard => vld1q_u8(
+        DictionaryVariant::Base64Standard => vld1q_u8(
             [
                 65, 71, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 237, 240, 0, 0,
             ]
             .as_ptr(),
         ),
-        AlphabetVariant::Base64Url => vld1q_u8(
+        DictionaryVariant::Base64Url => vld1q_u8(
             [
                 65, 71, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 239, 32, 0, 0,
             ]
@@ -185,7 +185,11 @@ unsafe fn translate_neon(indices: uint8x16_t, variant: AlphabetVariant) -> uint8
 /// Processes 16 input characters -> 12 output bytes per iteration.
 #[cfg(target_arch = "aarch64")]
 #[target_feature(enable = "neon")]
-unsafe fn decode_neon_impl(encoded: &[u8], variant: AlphabetVariant, result: &mut Vec<u8>) -> bool {
+unsafe fn decode_neon_impl(
+    encoded: &[u8],
+    variant: DictionaryVariant,
+    result: &mut Vec<u8>,
+) -> bool {
     use std::arch::aarch64::*;
 
     const INPUT_BLOCK_SIZE: usize = 16;
@@ -226,10 +230,10 @@ unsafe fn decode_neon_impl(encoded: &[u8], variant: AlphabetVariant, result: &mu
                 b'A'..=b'Z' => Some((c - b'A') as u8),
                 b'a'..=b'z' => Some((c - b'a' + 26) as u8),
                 b'0'..=b'9' => Some((c - b'0' + 52) as u8),
-                b'+' if matches!(variant, AlphabetVariant::Base64Standard) => Some(62),
-                b'/' if matches!(variant, AlphabetVariant::Base64Standard) => Some(63),
-                b'-' if matches!(variant, AlphabetVariant::Base64Url) => Some(62),
-                b'_' if matches!(variant, AlphabetVariant::Base64Url) => Some(63),
+                b'+' if matches!(variant, DictionaryVariant::Base64Standard) => Some(62),
+                b'/' if matches!(variant, DictionaryVariant::Base64Standard) => Some(63),
+                b'-' if matches!(variant, DictionaryVariant::Base64Url) => Some(62),
+                b'_' if matches!(variant, DictionaryVariant::Base64Url) => Some(63),
                 _ => None,
             },
             result,
@@ -244,7 +248,7 @@ unsafe fn decode_neon_impl(encoded: &[u8], variant: AlphabetVariant, result: &mu
 /// Get decode lookup tables for NEON
 #[cfg(target_arch = "aarch64")]
 #[target_feature(enable = "neon")]
-unsafe fn get_decode_luts_neon(variant: AlphabetVariant) -> (uint8x16_t, uint8x16_t, uint8x16_t) {
+unsafe fn get_decode_luts_neon(variant: DictionaryVariant) -> (uint8x16_t, uint8x16_t, uint8x16_t) {
     use std::arch::aarch64::*;
 
     let lut_lo = vld1q_u8(
@@ -264,10 +268,10 @@ unsafe fn get_decode_luts_neon(variant: AlphabetVariant) -> (uint8x16_t, uint8x1
     );
 
     let lut_roll = match variant {
-        AlphabetVariant::Base64Standard => {
+        DictionaryVariant::Base64Standard => {
             vld1q_u8([0, 16, 19, 4, 191, 191, 185, 185, 0, 0, 0, 0, 0, 0, 0, 0].as_ptr())
         }
-        AlphabetVariant::Base64Url => {
+        DictionaryVariant::Base64Url => {
             vld1q_u8([0, 17, 224, 4, 191, 191, 185, 185, 0, 0, 0, 0, 0, 0, 0, 0].as_ptr())
         }
     };

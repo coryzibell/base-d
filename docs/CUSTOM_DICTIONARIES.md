@@ -19,7 +19,7 @@ Later configurations override earlier ones, so you can:
 Custom dictionaries use the same TOML format as the built-in configuration:
 
 ```toml
-[dictionaries.my_alphabet]
+[dictionaries.my_dictionary]
 chars = "0123456789ABCDEF"
 mode = "base_conversion"  # or "chunked" or "byte_range"
 padding = "="  # optional, only for chunked mode
@@ -84,7 +84,7 @@ mode = "base_conversion"
 
 Usage:
 ```bash
-$ echo "Hi" | base-d -a happy_emoji
+$ echo "Hi" | base-d -e happy_emoji
 😍😁
 ```
 
@@ -130,7 +130,7 @@ base-d automatically validates custom dictionaries:
 Errors are reported with helpful messages:
 
 ```bash
-$ echo "test" | base-d -a invalid
+$ echo "test" | base-d -e invalid
 Error: Invalid dictionary: Duplicate character in dictionary: A
 ```
 
@@ -138,7 +138,7 @@ Error: Invalid dictionary: Duplicate character in dictionary: A
 
 1. **Test your dictionaries**: Always test encode/decode round-trips
    ```bash
-   echo "test" | base-d -a my_alphabet | base-d -a my_alphabet -d
+   echo "test" | base-d -e my_dictionary | base-d -d my_dictionary
    ```
 
 2. **Avoid ambiguous characters**: Don't use characters that look similar (0/O, 1/l/I)
@@ -167,7 +167,7 @@ dir %APPDATA%\base-d\dictionaries.toml
 
 List available dictionaries to verify it loaded:
 ```bash
-base-d --list | grep my_alphabet
+base-d --list | grep my_dictionary
 ```
 
 ### Invalid TOML syntax

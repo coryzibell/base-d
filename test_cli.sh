@@ -12,7 +12,7 @@ echo
 echo "✓ Testing --help"
 $BIN --help > /dev/null
 
-# Test 2: List alphabets
+# Test 2: List dictionaries
 echo "✓ Testing --list"
 $BIN --list | grep -q "cards"
 
@@ -21,21 +21,21 @@ echo "✓ Testing encode from stdin"
 result=$(echo "Test" | $BIN)
 [ -n "$result" ]
 
-# Test 4: Round-trip with default alphabet
+# Test 4: Round-trip with default dictionary
 echo "✓ Testing round-trip (cards)"
 original="Hello, World!"
 encoded=$(echo "$original" | $BIN)
 decoded=$(echo "$encoded" | $BIN -d)
 [ "$decoded" = "$original" ]
 
-# Test 5: DNA alphabet
-echo "✓ Testing DNA alphabet"
+# Test 5: DNA dictionary
+echo "✓ Testing DNA dictionary"
 result=$(echo "ACGT" | $BIN -a dna)
 decoded=$(echo "$result" | $BIN -a dna -d)
 [ "$decoded" = "ACGT" ]
 
-# Test 6: Binary alphabet
-echo "✓ Testing binary alphabet"
+# Test 6: Binary dictionary
+echo "✓ Testing binary dictionary"
 result=$(echo "A" | $BIN -a binary)
 decoded=$(echo "$result" | $BIN -a binary -d)
 [ "$decoded" = "A" ]

@@ -47,20 +47,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let test_data = b"Matrix";
 
     // Test with chunked mode
-    let chunked_alphabet = Dictionary::new_with_mode(
+    let chunked_dictionary = Dictionary::new_with_mode(
         matrix_config.chars.chars().collect(),
         base_d::EncodingMode::Chunked,
         None,
     )?;
-    let chunked_encoded = encode(test_data, &chunked_alphabet);
+    let chunked_encoded = encode(test_data, &chunked_dictionary);
 
     // Test with mathematical mode
-    let math_alphabet = Dictionary::new_with_mode(
+    let math_dictionary = Dictionary::new_with_mode(
         matrix_config.chars.chars().collect(),
         base_d::EncodingMode::BaseConversion,
         None,
     )?;
-    let math_encoded = encode(test_data, &math_alphabet);
+    let math_encoded = encode(test_data, &math_dictionary);
 
     println!("Input:       '{}'", String::from_utf8_lossy(test_data));
     println!("Chunked:     {}", chunked_encoded);
@@ -89,11 +89,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .padding
         .as_ref()
         .and_then(|s| s.chars().next());
-    let base64_alphabet =
+    let base64_dictionary =
         Dictionary::new_with_mode(base64_chars, base64_config.mode.clone(), base64_padding)?;
 
     let matrix_encoded = encode(long_message, &dictionary);
-    let base64_encoded = encode(long_message, &base64_alphabet);
+    let base64_encoded = encode(long_message, &base64_dictionary);
 
     println!("Message: {} bytes", long_message.len());
     println!();

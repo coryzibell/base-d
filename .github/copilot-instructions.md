@@ -118,7 +118,7 @@ When working with dictionaries:
 - Mode selection is automatic via `Dictionary.mode()` match statements
 - ASCII-only dictionaries automatically get fast lookup tables in `Dictionary::new_with_mode_and_range()`
 - Always validate dictionary size matches mode requirements (power-of-two for Chunked)
-- Use `create_alphabet()` helper pattern in CLI code
+- Use `create_dictionary()` helper pattern in CLI code
 
 ### Hashing Code
 

@@ -1,4 +1,4 @@
-//! SmallLutCodec: SIMD codec for small arbitrary alphabets (≤16 characters)
+//! SmallLutCodec: SIMD codec for small arbitrary dictionaries (≤16 characters)
 //!
 //! Uses direct single-instruction lookup:
 //! - x86: pshufb (_mm_shuffle_epi8)
@@ -8,17 +8,17 @@
 //! - Base ≤ 16
 //! - Power-of-2 base
 //! - ASCII-only (char < 0x80)
-//! - Non-sequential alphabets only
+//! - Non-sequential dictionaries only
 
 use crate::core::dictionary::Dictionary;
-use crate::simd::variants::{AlphabetMetadata, LutStrategy, TranslationStrategy};
+use crate::simd::variants::{DictionaryMetadata, LutStrategy, TranslationStrategy};
 
-/// SIMD codec for small arbitrary alphabets (≤16 characters)
+/// SIMD codec for small arbitrary dictionaries (≤16 characters)
 ///
 /// Uses direct shuffle-based lookup for encoding and a 256-byte sparse
 /// table for decoding with validation.
 pub struct SmallLutCodec {
-    metadata: AlphabetMetadata,
+    metadata: DictionaryMetadata,
 
     /// Encoding LUT: index → char (16 bytes, one per possible index)
     encode_lut: [u8; 16],
@@ -32,14 +32,14 @@ impl SmallLutCodec {
     /// Create codec from dictionary
     ///
     /// Returns None if:
-    /// - Alphabet > 16 chars
+    /// - Dictionary > 16 chars
     /// - Not power-of-2 base
-    /// - Alphabet is sequential (should use GenericSimdCodec)
+    /// - Dictionary is sequential (should use GenericSimdCodec)
     /// - Any character > 0x7F (non-ASCII)
     pub fn from_dictionary(dict: &Dictionary) -> Option<Self> {
-        let metadata = AlphabetMetadata::from_dictionary(dict);
+        let metadata = DictionaryMetadata::from_dictionary(dict);
 
-        // Only for small arbitrary alphabets
+        // Only for small arbitrary dictionaries
         if metadata.base > 16 || !metadata.base.is_power_of_two() {
             return None;
         }
@@ -596,7 +596,7 @@ mod tests {
 
     #[test]
     fn test_creation_from_arbitrary_base16() {
-        // Shuffled 16-char alphabet
+        // Shuffled 16-char dictionary
         let chars: Vec<char> = "zyxwvutsrqponmlk".chars().collect();
         let dict = Dictionary::new(chars).unwrap();
 
@@ -605,8 +605,8 @@ mod tests {
     }
 
     #[test]
-    fn test_rejects_sequential_alphabet() {
-        // Sequential alphabet should use GenericSimdCodec, not LUT
+    fn test_rejects_sequential_dictionary() {
+        // Sequential dictionary should use GenericSimdCodec, not LUT
         let chars: Vec<char> = (0x30..0x40).map(|c| char::from_u32(c).unwrap()).collect();
         let dict = Dictionary::new(chars).unwrap();
 
@@ -618,8 +618,8 @@ mod tests {
     }
 
     #[test]
-    fn test_rejects_large_alphabet() {
-        // 32-char alphabet too large for SmallLutCodec
+    fn test_rejects_large_dictionary() {
+        // 32-char dictionary too large for SmallLutCodec
         let chars: Vec<char> = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567".chars().collect();
         let dict = Dictionary::new(chars).unwrap();
 
@@ -629,7 +629,7 @@ mod tests {
 
     #[test]
     fn test_rejects_non_power_of_two() {
-        // 10-char alphabet (non power-of-2)
+        // 10-char dictionary (non power-of-2)
         let chars: Vec<char> = "0123456789".chars().collect();
         let dict = Dictionary::new(chars).unwrap();
 
@@ -639,13 +639,13 @@ mod tests {
 
     #[test]
     fn test_lut_construction() {
-        // Shuffled hex alphabet
+        // Shuffled hex dictionary
         let chars: Vec<char> = "9876543210ZYXWVU".chars().collect();
         let dict = Dictionary::new(chars).unwrap();
 
         let codec = SmallLutCodec::from_dictionary(&dict).unwrap();
 
-        // Verify encode_lut matches alphabet
+        // Verify encode_lut matches dictionary
         assert_eq!(codec.encode_lut[0], b'9');
         assert_eq!(codec.encode_lut[1], b'8');
         assert_eq!(codec.encode_lut[15], b'U');
@@ -663,7 +663,7 @@ mod tests {
 
     #[test]
     fn test_encode_shuffled_base16() {
-        // Shuffled hex alphabet: 0→z, 1→y, 2→x, etc.
+        // Shuffled hex dictionary: 0→z, 1→y, 2→x, etc.
         let chars: Vec<char> = "zyxwvutsrqponmlk".chars().collect();
         let dict = Dictionary::new(chars).unwrap();
         let codec = SmallLutCodec::from_dictionary(&dict).unwrap();
@@ -678,7 +678,7 @@ mod tests {
 
     #[test]
     fn test_encode_standard_hex_rejected() {
-        // Standard hex alphabet is sequential, so should be rejected
+        // Standard hex dictionary is sequential, so should be rejected
         // (Use GenericSimdCodec instead)
         let chars: Vec<char> = "0123456789ABCDEF".chars().collect();
         let dict = Dictionary::new(chars).unwrap();
@@ -692,7 +692,7 @@ mod tests {
 
     #[test]
     fn test_encode_various_sizes() {
-        // Test various input sizes with shuffled alphabet
+        // Test various input sizes with shuffled dictionary
         let chars: Vec<char> = "zyxwvutsrqponmlk".chars().collect();
         let dict = Dictionary::new(chars).unwrap();
         let codec = SmallLutCodec::from_dictionary(&dict).unwrap();
@@ -731,15 +731,15 @@ mod tests {
     }
 
     /// Integration test: verify SmallLutCodec is selected by encode_with_simd
-    /// for shuffled base16 alphabets
+    /// for shuffled base16 dictionaries
     #[test]
     #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
     fn test_integration_smalllut_selection() {
         use crate::simd::encode_with_simd;
 
-        // Shuffled 16-char alphabet (arbitrary, non-sequential)
-        let alphabet = "fedcba9876543210";
-        let chars: Vec<char> = alphabet.chars().collect();
+        // Shuffled 16-char dictionary (arbitrary, non-sequential)
+        let dictionary = "fedcba9876543210";
+        let chars: Vec<char> = dictionary.chars().collect();
         let dict = Dictionary::new(chars).unwrap();
 
         // Test data: 32 bytes (two SIMD blocks)
@@ -767,11 +767,11 @@ mod tests {
         assert_eq!(encoded.chars().nth(2).unwrap(), 'e');
         assert_eq!(encoded.chars().nth(3).unwrap(), 'e');
 
-        // Verify all chars are from the alphabet
+        // Verify all chars are from the dictionary
         for ch in encoded.chars() {
             assert!(
-                alphabet.contains(ch),
-                "Output char '{}' should be in alphabet",
+                dictionary.contains(ch),
+                "Output char '{}' should be in dictionary",
                 ch
             );
         }
@@ -794,7 +794,7 @@ mod tests {
             return;
         }
 
-        // Shuffled alphabet
+        // Shuffled dictionary
         let chars: Vec<char> = "9876543210zyxwvu".chars().collect();
         let dict = Dictionary::new(chars).unwrap();
 
@@ -834,7 +834,7 @@ mod tests {
 
     #[test]
     fn test_decode_round_trip() {
-        // Shuffled alphabet
+        // Shuffled dictionary
         let chars: Vec<char> = "9876543210ZYXWVU".chars().collect();
         let dict = Dictionary::new(chars).unwrap();
         let codec = SmallLutCodec::from_dictionary(&dict).unwrap();
@@ -848,12 +848,12 @@ mod tests {
 
     #[test]
     fn test_decode_invalid_character() {
-        // Alphabet: 0-9, Z-U
+        // Dictionary: 0-9, Z-U
         let chars: Vec<char> = "0123456789ZYXWVU".chars().collect();
         let dict = Dictionary::new(chars).unwrap();
         let codec = SmallLutCodec::from_dictionary(&dict).unwrap();
 
-        // 'A' is not in alphabet
+        // 'A' is not in dictionary
         let invalid = "01A3";
         let result = codec.decode(invalid, &dict);
 
@@ -935,9 +935,9 @@ mod tests {
     fn test_integration_decode_selection() {
         use crate::simd::{decode_with_simd, encode_with_simd};
 
-        // Shuffled 16-char alphabet (arbitrary, non-sequential)
-        let alphabet = "fedcba9876543210";
-        let chars: Vec<char> = alphabet.chars().collect();
+        // Shuffled 16-char dictionary (arbitrary, non-sequential)
+        let dictionary = "fedcba9876543210";
+        let chars: Vec<char> = dictionary.chars().collect();
         let dict = Dictionary::new(chars).unwrap();
 
         // Test data
@@ -961,7 +961,7 @@ mod tests {
             return;
         }
 
-        // Shuffled hex alphabet: 0→z, 1→y, 2→x, etc.
+        // Shuffled hex dictionary: 0→z, 1→y, 2→x, etc.
         let chars: Vec<char> = "zyxwvutsrqponmlk".chars().collect();
         let dict = Dictionary::new(chars).unwrap();
         let codec = SmallLutCodec::from_dictionary(&dict).unwrap();
@@ -981,7 +981,7 @@ mod tests {
     /// Test case sensitivity in decode (different chars)
     #[test]
     fn test_decode_case_sensitive() {
-        // Alphabet with both upper and lower case
+        // Dictionary with both upper and lower case
         let chars: Vec<char> = "zyxwvutsrqpABCDE".chars().collect();
         let dict = Dictionary::new(chars).unwrap();
         let codec = SmallLutCodec::from_dictionary(&dict).unwrap();
@@ -995,12 +995,12 @@ mod tests {
         let decoded = codec.decode(&encoded, &dict).unwrap();
         assert_eq!(&decoded[..], &data[..]);
 
-        // Wrong case should fail (if 'e' not in alphabet)
+        // Wrong case should fail (if 'e' not in dictionary)
         let wrong_case = "ez";
         let result = codec.decode(wrong_case, &dict);
         assert!(
             result.is_none(),
-            "Should reject wrong case (lowercase 'e' not in alphabet)"
+            "Should reject wrong case (lowercase 'e' not in dictionary)"
         );
     }
 }

@@ -5,10 +5,10 @@ fn main() {
 
     println!("Available dictionaries:\n");
 
-    for (name, alphabet_config) in config.dictionaries.iter() {
-        let (char_count, preview) = match alphabet_config.mode {
+    for (name, dictionary_config) in config.dictionaries.iter() {
+        let (char_count, preview) = match dictionary_config.mode {
             base_d::EncodingMode::ByteRange => {
-                if let Some(start) = alphabet_config.start_codepoint {
+                if let Some(start) = dictionary_config.start_codepoint {
                     let preview_chars: String = (0..10)
                         .filter_map(|i| std::char::from_u32(start + i))
                         .collect();
@@ -18,12 +18,12 @@ fn main() {
                 }
             }
             _ => {
-                let count = alphabet_config.chars.chars().count();
-                let preview: String = alphabet_config.chars.chars().take(10).collect();
+                let count = dictionary_config.chars.chars().count();
+                let preview: String = dictionary_config.chars.chars().take(10).collect();
                 (count, preview)
             }
         };
-        let mode_str = match alphabet_config.mode {
+        let mode_str = match dictionary_config.mode {
             base_d::EncodingMode::BaseConversion => "math",
             base_d::EncodingMode::Chunked => "chunk",
             base_d::EncodingMode::ByteRange => "range",

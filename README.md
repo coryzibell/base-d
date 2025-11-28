@@ -160,14 +160,14 @@ use base_d::{DictionariesConfig, Dictionary, encode, decode};
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load built-in dictionaries
     let config = DictionariesConfig::load_default()?;
-    let alphabet_config = config.get_dictionary("base64").unwrap();
-    
+    let dict_config = config.get_dictionary("base64").unwrap();
+
     // Create dictionary from config
-    let chars: Vec<char> = alphabet_config.chars.chars().collect();
-    let padding = alphabet_config.padding.as_ref().and_then(|s| s.chars().next());
+    let chars: Vec<char> = dict_config.chars.chars().collect();
+    let padding = dict_config.padding.as_ref().and_then(|s| s.chars().next());
     let dictionary = Dictionary::new_with_mode(
-        chars, 
-        alphabet_config.mode.clone(), 
+        chars,
+        dict_config.mode.clone(),
         padding
     )?;
     
@@ -192,8 +192,8 @@ use std::fs::File;
 
 fn stream_encode() -> Result<(), Box<dyn std::error::Error>> {
     let config = DictionariesConfig::load_default()?;
-    let alphabet_config = config.get_dictionary("base64").unwrap();
-    
+    let dict_config = config.get_dictionary("base64").unwrap();
+
     // ... create dictionary (same as above)
     
     let mut input = File::open("large_file.bin")?;
@@ -211,7 +211,7 @@ fn stream_encode() -> Result<(), Box<dyn std::error::Error>> {
 ```rust
 use base_d::{Dictionary, EncodingMode, encode};
 
-fn custom_alphabet() -> Result<(), Box<dyn std::error::Error>> {
+fn custom_dictionary() -> Result<(), Box<dyn std::error::Error>> {
     // Define a custom dictionary
     let chars: Vec<char> = "😀😁😂🤣😃😄😅😆😉😊😋😎😍😘🥰😗".chars().collect();
     let dictionary = Dictionary::new_with_mode(

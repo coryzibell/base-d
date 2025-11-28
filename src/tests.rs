@@ -2,26 +2,26 @@ use crate::{decode, encode, Dictionary, DictionaryRegistry, EncodingMode};
 
 fn get_dictionary(name: &str) -> Dictionary {
     let config = DictionaryRegistry::load_default().unwrap();
-    let alphabet_config = config.get_dictionary(name).unwrap();
+    let dictionary_config = config.get_dictionary(name).unwrap();
 
-    match alphabet_config.mode {
+    match dictionary_config.mode {
         EncodingMode::ByteRange => {
-            let start = alphabet_config.start_codepoint.unwrap();
+            let start = dictionary_config.start_codepoint.unwrap();
             Dictionary::new_with_mode_and_range(
                 Vec::new(),
-                alphabet_config.mode.clone(),
+                dictionary_config.mode.clone(),
                 None,
                 Some(start),
             )
             .unwrap()
         }
         _ => {
-            let chars: Vec<char> = alphabet_config.chars.chars().collect();
-            let padding = alphabet_config
+            let chars: Vec<char> = dictionary_config.chars.chars().collect();
+            let padding = dictionary_config
                 .padding
                 .as_ref()
                 .and_then(|s| s.chars().next());
-            Dictionary::new_with_mode(chars, alphabet_config.mode.clone(), padding).unwrap()
+            Dictionary::new_with_mode(chars, dictionary_config.mode.clone(), padding).unwrap()
         }
     }
 }
@@ -89,7 +89,7 @@ fn test_decode_invalid_character() {
 }
 
 #[test]
-fn test_alphabet_base() {
+fn test_dictionary_base() {
     let dictionary = get_dictionary("cards");
     assert_eq!(dictionary.base(), 52);
 }
@@ -195,7 +195,7 @@ fn test_base100_binary_data() {
 }
 
 #[test]
-fn test_base1024_large_alphabet() {
+fn test_base1024_large_dictionary() {
     // Test that we can load and use a 1024-character dictionary
     let dictionary = get_dictionary("base1024");
 
@@ -266,16 +266,16 @@ fn test_base1024_efficiency() {
 #[test]
 fn test_base256_matrix_like_hex() {
     // Test that base256_matrix works identically in both modes (like hexadecimal)
-    let alphabet_chunked = get_dictionary("base256_matrix");
+    let dictionary_chunked = get_dictionary("base256_matrix");
 
     // Verify it's a 256-character dictionary
-    assert_eq!(alphabet_chunked.base(), 256);
+    assert_eq!(dictionary_chunked.base(), 256);
 
     // Create mathematical mode version
     let config = DictionaryRegistry::load_default().unwrap();
     let matrix_config = config.get_dictionary("base256_matrix").unwrap();
     let chars: Vec<char> = matrix_config.chars.chars().collect();
-    let alphabet_math =
+    let dictionary_math =
         Dictionary::new_with_mode(chars, EncodingMode::BaseConversion, None).unwrap();
 
     // Test various data sizes
@@ -288,8 +288,8 @@ fn test_base256_matrix_like_hex() {
     ];
 
     for data in test_data {
-        let chunked_encoded = encode(&data, &alphabet_chunked);
-        let math_encoded = encode(&data, &alphabet_math);
+        let chunked_encoded = encode(&data, &dictionary_chunked);
+        let math_encoded = encode(&data, &dictionary_math);
 
         // Both modes should produce IDENTICAL output (like hexadecimal)
         assert_eq!(
@@ -300,7 +300,7 @@ fn test_base256_matrix_like_hex() {
         );
 
         // Verify round-trip
-        let decoded = decode(&chunked_encoded, &alphabet_chunked).unwrap();
+        let decoded = decode(&chunked_encoded, &dictionary_chunked).unwrap();
         assert_eq!(decoded, data);
 
         // Verify 1:1 mapping (256 = 2^8 = 1 byte per char)

@@ -13,26 +13,26 @@ mod tests {
 
     fn get_dictionary(name: &str) -> Dictionary {
         let config = DictionaryRegistry::load_default().unwrap();
-        let alphabet_config = config.get_dictionary(name).unwrap();
+        let dictionary_config = config.get_dictionary(name).unwrap();
 
-        match alphabet_config.mode {
+        match dictionary_config.mode {
             crate::core::config::EncodingMode::ByteRange => {
-                let start = alphabet_config.start_codepoint.unwrap();
+                let start = dictionary_config.start_codepoint.unwrap();
                 Dictionary::new_with_mode_and_range(
                     Vec::new(),
-                    alphabet_config.mode.clone(),
+                    dictionary_config.mode.clone(),
                     None,
                     Some(start),
                 )
                 .unwrap()
             }
             _ => {
-                let chars: Vec<char> = alphabet_config.chars.chars().collect();
-                let padding = alphabet_config
+                let chars: Vec<char> = dictionary_config.chars.chars().collect();
+                let padding = dictionary_config
                     .padding
                     .as_ref()
                     .and_then(|s| s.chars().next());
-                Dictionary::new_with_mode(chars, alphabet_config.mode.clone(), padding).unwrap()
+                Dictionary::new_with_mode(chars, dictionary_config.mode.clone(), padding).unwrap()
             }
         }
     }

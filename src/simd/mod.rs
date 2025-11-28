@@ -98,7 +98,7 @@ pub fn has_neon() -> bool {
 /// 1. Known base64 variants (standard/url) → specialized base64 SIMD
 /// 2. Known hex variants (base16) → specialized base16 SIMD
 /// 3. Base256 ByteRange → specialized base256 SIMD
-/// 4. Sequential power-of-2 alphabet → GenericSimdCodec
+/// 4. Sequential power-of-2 dictionary → GenericSimdCodec
 /// 5. None → caller falls back to scalar
 ///
 /// Returns `None` if no SIMD optimization is available for this dictionary.
@@ -139,19 +139,19 @@ pub fn encode_with_simd(data: &[u8], dict: &Dictionary) -> Option<String> {
         return encode_base256_simd(data, dict);
     }
 
-    // 5. Try GenericSimdCodec for sequential power-of-2 alphabets
+    // 5. Try GenericSimdCodec for sequential power-of-2 dictionaries
     if let Some(codec) = GenericSimdCodec::from_dictionary(dict) {
         return codec.encode(data, dict);
     }
 
-    // 6. Try SmallLutCodec for small arbitrary alphabets (≤16 chars)
+    // 6. Try SmallLutCodec for small arbitrary dictionaries (≤16 chars)
     if base <= 16 && base.is_power_of_two() {
         if let Some(codec) = SmallLutCodec::from_dictionary(dict) {
             return codec.encode(data, dict);
         }
     }
 
-    // 7. Try LargeLutCodec for large arbitrary alphabets (17-64 chars)
+    // 7. Try LargeLutCodec for large arbitrary dictionaries (17-64 chars)
     if (17..=64).contains(&base) && base.is_power_of_two() {
         if let Some(codec) = LargeLutCodec::from_dictionary(dict) {
             return codec.encode(data, dict);
@@ -198,19 +198,19 @@ pub fn encode_with_simd(data: &[u8], dict: &Dictionary) -> Option<String> {
         return encode_base256_simd(data, dict);
     }
 
-    // 5. Try GenericSimdCodec for sequential power-of-2 alphabets
+    // 5. Try GenericSimdCodec for sequential power-of-2 dictionaries
     if let Some(codec) = GenericSimdCodec::from_dictionary(dict) {
         return codec.encode(data, dict);
     }
 
-    // 6. Try SmallLutCodec for small arbitrary alphabets (≤16 chars)
+    // 6. Try SmallLutCodec for small arbitrary dictionaries (≤16 chars)
     if base <= 16 && base.is_power_of_two() {
         if let Some(codec) = SmallLutCodec::from_dictionary(dict) {
             return codec.encode(data, dict);
         }
     }
 
-    // 7. Try LargeLutCodec for large arbitrary alphabets (17-64 chars)
+    // 7. Try LargeLutCodec for large arbitrary dictionaries (17-64 chars)
     if (17..=64).contains(&base) && base.is_power_of_two() {
         if let Some(codec) = LargeLutCodec::from_dictionary(dict) {
             return codec.encode(data, dict);
@@ -233,7 +233,7 @@ pub fn encode_with_simd(_data: &[u8], _dict: &Dictionary) -> Option<String> {
 /// 1. Known base64 variants (standard/url) → specialized base64 SIMD
 /// 2. Known hex variants (base16) → specialized base16 SIMD
 /// 3. Base256 ByteRange → specialized base256 SIMD
-/// 4. Sequential power-of-2 alphabet → GenericSimdCodec
+/// 4. Sequential power-of-2 dictionary → GenericSimdCodec
 /// 5. None → caller falls back to scalar
 ///
 /// Returns `None` if no SIMD optimization is available for this dictionary.
@@ -275,19 +275,19 @@ pub fn decode_with_simd(encoded: &str, dict: &Dictionary) -> Option<Vec<u8>> {
         return decode_base256_simd(encoded, dict);
     }
 
-    // 5. Try GenericSimdCodec for sequential power-of-2 alphabets
+    // 5. Try GenericSimdCodec for sequential power-of-2 dictionaries
     if let Some(codec) = GenericSimdCodec::from_dictionary(dict) {
         return codec.decode(encoded, dict);
     }
 
-    // 6. Try SmallLutCodec for small arbitrary alphabets (≤16 chars)
+    // 6. Try SmallLutCodec for small arbitrary dictionaries (≤16 chars)
     if base <= 16 && base.is_power_of_two() {
         if let Some(codec) = SmallLutCodec::from_dictionary(dict) {
             return codec.decode(encoded, dict);
         }
     }
 
-    // 7. Try LargeLutCodec for large arbitrary alphabets (17-64 chars)
+    // 7. Try LargeLutCodec for large arbitrary dictionaries (17-64 chars)
     if (17..=64).contains(&base) && base.is_power_of_two() {
         if let Some(codec) = LargeLutCodec::from_dictionary(dict) {
             return codec.decode(encoded, dict);
@@ -335,19 +335,19 @@ pub fn decode_with_simd(encoded: &str, dict: &Dictionary) -> Option<Vec<u8>> {
         return decode_base256_simd(encoded, dict);
     }
 
-    // 5. Try GenericSimdCodec for sequential power-of-2 alphabets
+    // 5. Try GenericSimdCodec for sequential power-of-2 dictionaries
     if let Some(codec) = GenericSimdCodec::from_dictionary(dict) {
         return codec.decode(encoded, dict);
     }
 
-    // 6. Try SmallLutCodec for small arbitrary alphabets (≤16 chars)
+    // 6. Try SmallLutCodec for small arbitrary dictionaries (≤16 chars)
     if base <= 16 && base.is_power_of_two() {
         if let Some(codec) = SmallLutCodec::from_dictionary(dict) {
             return codec.decode(encoded, dict);
         }
     }
 
-    // 7. Try LargeLutCodec for large arbitrary alphabets (17-64 chars)
+    // 7. Try LargeLutCodec for large arbitrary dictionaries (17-64 chars)
     if (17..=64).contains(&base) && base.is_power_of_two() {
         if let Some(codec) = LargeLutCodec::from_dictionary(dict) {
             return codec.decode(encoded, dict);
@@ -403,13 +403,13 @@ mod tests {
 
     #[test]
     #[cfg(target_arch = "x86_64")]
-    fn test_custom_alphabet_auto_simd() {
+    fn test_custom_dictionary_auto_simd() {
         if !has_ssse3() {
             eprintln!("SSSE3 not available, skipping test");
             return;
         }
 
-        // Create custom base16 alphabet starting at ASCII '!' (0x21)
+        // Create custom base16 dictionary starting at ASCII '!' (0x21)
         // This should automatically use GenericSimdCodec
         let chars: Vec<char> = (0x21..0x31).map(|cp| char::from_u32(cp).unwrap()).collect();
         let dict = Dictionary::new(chars).unwrap();
@@ -422,7 +422,7 @@ mod tests {
         let result = encode_with_simd(data, &dict);
         assert!(
             result.is_some(),
-            "Custom alphabet should get SIMD acceleration"
+            "Custom dictionary should get SIMD acceleration"
         );
 
         let encoded = result.unwrap();
@@ -430,12 +430,12 @@ mod tests {
         // Verify output length: 32 bytes -> 64 hex chars
         assert_eq!(encoded.len(), 64, "32 bytes should produce 64 hex chars");
 
-        // Verify that output uses custom alphabet characters
+        // Verify that output uses custom dictionary characters
         for c in encoded.chars() {
             let codepoint = c as u32;
             assert!(
                 codepoint >= 0x21 && codepoint < 0x31,
-                "Output char U+{:04X} '{}' should be in custom alphabet range U+0021..U+0031",
+                "Output char U+{:04X} '{}' should be in custom dictionary range U+0021..U+0031",
                 codepoint,
                 c
             );
@@ -455,7 +455,7 @@ mod tests {
             return;
         }
 
-        // Standard base64 alphabet should use specialized implementation
+        // Standard base64 dictionary should use specialized implementation
         let chars: Vec<char> = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
             .chars()
             .collect();
@@ -478,7 +478,7 @@ mod tests {
             return;
         }
 
-        // Standard hex alphabet should use specialized implementation
+        // Standard hex dictionary should use specialized implementation
         let chars: Vec<char> = "0123456789abcdef".chars().collect();
         let dict = Dictionary::new(chars).unwrap();
 
@@ -493,13 +493,13 @@ mod tests {
 
     #[test]
     #[cfg(target_arch = "x86_64")]
-    fn test_arbitrary_alphabet_uses_largelut() {
+    fn test_arbitrary_dictionary_uses_largelut() {
         if !has_ssse3() {
             eprintln!("SSSE3 not available, skipping test");
             return;
         }
 
-        // Arbitrary (shuffled) base64 alphabet should use LargeLutCodec
+        // Arbitrary (shuffled) base64 dictionary should use LargeLutCodec
         let chars: Vec<char> = "ZYXWVUTSRQPONMLKJIHGFEDCBAzyxwvutsrqponmlkjihgfedcba9876543210+/"
             .chars()
             .collect();
@@ -510,7 +510,7 @@ mod tests {
 
         assert!(
             result.is_some(),
-            "Arbitrary base64 alphabet should get SIMD acceleration via LargeLutCodec"
+            "Arbitrary base64 dictionary should get SIMD acceleration via LargeLutCodec"
         );
     }
 
@@ -545,7 +545,7 @@ mod tests {
             return;
         }
 
-        // Standard base64 alphabet
+        // Standard base64 dictionary
         let chars: Vec<char> = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
             .chars()
             .collect();
@@ -579,7 +579,7 @@ mod tests {
             return;
         }
 
-        // Standard hex alphabet
+        // Standard hex dictionary
         let chars: Vec<char> = "0123456789ABCDEF".chars().collect();
         let dict = Dictionary::new_with_mode(chars, EncodingMode::Chunked, None).unwrap();
 
@@ -607,7 +607,7 @@ mod tests {
             return;
         }
 
-        // Custom base16 alphabet starting at ASCII '!' (0x21)
+        // Custom base16 dictionary starting at ASCII '!' (0x21)
         let chars: Vec<char> = (0x21..0x31).map(|cp| char::from_u32(cp).unwrap()).collect();
         let dict = Dictionary::new(chars).unwrap();
 

@@ -89,7 +89,7 @@ pub fn select_random_compress() -> &'static str {
 /// Matrix mode: Stream random data as Matrix-style falling code
 pub fn matrix_mode(
     config: &DictionaryRegistry,
-    initial_alphabet: &str,
+    initial_dictionary: &str,
     switch_mode: SwitchMode,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use std::thread;
@@ -139,7 +139,7 @@ pub fn matrix_mode(
     thread::sleep(Duration::from_millis(500));
 
     // Setup for switching
-    let mut current_alphabet_name = initial_alphabet.to_string();
+    let mut current_dictionary_name = initial_dictionary.to_string();
 
     // For cycling: build sorted dictionary list
     let sorted_dicts: Vec<String> = if matches!(switch_mode, SwitchMode::Cycle(_)) {
@@ -152,7 +152,7 @@ pub fn matrix_mode(
 
     let mut cycle_index = sorted_dicts
         .iter()
-        .position(|n| n == &current_alphabet_name)
+        .position(|n| n == &current_dictionary_name)
         .unwrap_or(0);
 
     let mut last_switch = Instant::now();
@@ -166,20 +166,20 @@ pub fn matrix_mode(
     };
     let mut current_index = dict_names
         .iter()
-        .position(|n| n == &current_alphabet_name)
+        .position(|n| n == &current_dictionary_name)
         .unwrap_or(0);
 
-    // Display current alphabet name
-    eprintln!("\x1b[32mAlphabet: {}\x1b[0m", current_alphabet_name);
+    // Display current dictionary name
+    eprintln!("\x1b[32mDictionary: {}\x1b[0m", current_dictionary_name);
 
     loop {
         // Load current dictionary
-        let alphabet_config = config
-            .get_dictionary(&current_alphabet_name)
-            .ok_or(format!("{} dictionary not found", current_alphabet_name))?;
+        let dictionary_config = config
+            .get_dictionary(&current_dictionary_name)
+            .ok_or(format!("{} dictionary not found", current_dictionary_name))?;
 
-        let chars: Vec<char> = alphabet_config.chars.chars().collect();
-        let dictionary = Dictionary::new_with_mode(chars, alphabet_config.mode.clone(), None)?;
+        let chars: Vec<char> = dictionary_config.chars.chars().collect();
+        let dictionary = Dictionary::new_with_mode(chars, dictionary_config.mode.clone(), None)?;
 
         // Check if we need to switch (time-based)
         let should_switch = match &switch_mode {
@@ -192,14 +192,14 @@ pub fn matrix_mode(
             match &switch_mode {
                 SwitchMode::Cycle(_) => {
                     cycle_index = (cycle_index + 1) % sorted_dicts.len();
-                    current_alphabet_name = sorted_dicts[cycle_index].clone();
+                    current_dictionary_name = sorted_dicts[cycle_index].clone();
                 }
                 SwitchMode::Random(_) => {
-                    current_alphabet_name = select_random_dictionary(config, false)?;
+                    current_dictionary_name = select_random_dictionary(config, false)?;
                 }
                 _ => {}
             }
-            eprintln!("\x1b[32mAlphabet: {}\x1b[0m", current_alphabet_name);
+            eprintln!("\x1b[32mDictionary: {}\x1b[0m", current_dictionary_name);
             last_switch = Instant::now();
             continue; // Reload dictionary
         }
@@ -215,14 +215,14 @@ pub fn matrix_mode(
             match &switch_mode {
                 SwitchMode::Cycle(SwitchInterval::PerLine) => {
                     cycle_index = (cycle_index + 1) % sorted_dicts.len();
-                    current_alphabet_name = sorted_dicts[cycle_index].clone();
+                    current_dictionary_name = sorted_dicts[cycle_index].clone();
                 }
                 SwitchMode::Random(SwitchInterval::PerLine) => {
-                    current_alphabet_name = select_random_dictionary(config, false)?;
+                    current_dictionary_name = select_random_dictionary(config, false)?;
                 }
                 _ => {}
             }
-            eprintln!("\x1b[32mAlphabet: {}\x1b[0m", current_alphabet_name);
+            eprintln!("\x1b[32mDictionary: {}\x1b[0m", current_dictionary_name);
             continue; // Reload for next line
         }
 
@@ -249,30 +249,30 @@ pub fn matrix_mode(
                 match key_event.code {
                     KeyCode::Char(' ') => {
                         // Random switch
-                        current_alphabet_name = select_random_dictionary(config, false)?;
+                        current_dictionary_name = select_random_dictionary(config, false)?;
                         current_index = dict_names
                             .iter()
-                            .position(|n| n == &current_alphabet_name)
+                            .position(|n| n == &current_dictionary_name)
                             .unwrap_or(0);
-                        eprintln!("\r\x1b[32m[Matrix: {}]\x1b[0m", current_alphabet_name);
+                        eprintln!("\r\x1b[32m[Matrix: {}]\x1b[0m", current_dictionary_name);
                         continue; // Reload dictionary
                     }
                     KeyCode::Left => {
-                        // Previous alphabet
+                        // Previous dictionary
                         current_index = if current_index == 0 {
                             dict_names.len() - 1
                         } else {
                             current_index - 1
                         };
-                        current_alphabet_name = dict_names[current_index].clone();
-                        eprintln!("\r\x1b[32m[Matrix: {}]\x1b[0m", current_alphabet_name);
+                        current_dictionary_name = dict_names[current_index].clone();
+                        eprintln!("\r\x1b[32m[Matrix: {}]\x1b[0m", current_dictionary_name);
                         continue; // Reload dictionary
                     }
                     KeyCode::Right => {
-                        // Next alphabet
+                        // Next dictionary
                         current_index = (current_index + 1) % dict_names.len();
-                        current_alphabet_name = dict_names[current_index].clone();
-                        eprintln!("\r\x1b[32m[Matrix: {}]\x1b[0m", current_alphabet_name);
+                        current_dictionary_name = dict_names[current_index].clone();
+                        eprintln!("\r\x1b[32m[Matrix: {}]\x1b[0m", current_dictionary_name);
                         continue; // Reload dictionary
                     }
                     _ => {}
@@ -372,8 +372,8 @@ pub fn streaming_decode(
 ) -> Result<(), Box<dyn std::error::Error>> {
     use base_d::StreamingDecoder;
 
-    let decode_alphabet = create_dictionary(config, decode_name)?;
-    let mut decoder = StreamingDecoder::new(&decode_alphabet, io::stdout());
+    let decode_dictionary = create_dictionary(config, decode_name)?;
+    let mut decoder = StreamingDecoder::new(&decode_dictionary, io::stdout());
 
     // Add decompression if specified
     if let Some(algo_name) = decompress {
@@ -406,8 +406,8 @@ pub fn streaming_decode(
     // Print hash if computed
     if let Some(hash_bytes) = hash_result {
         if let Some(encode_name) = encode {
-            let encode_alphabet = create_dictionary(config, &encode_name)?;
-            let hash_encoded = base_d::encode(&hash_bytes, &encode_alphabet);
+            let encode_dictionary = create_dictionary(config, &encode_name)?;
+            let hash_encoded = base_d::encode(&hash_bytes, &encode_dictionary);
             eprintln!("Hash: {}", hash_encoded);
         } else {
             eprintln!("Hash: {}", hex::encode(hash_bytes));
@@ -431,8 +431,8 @@ pub fn streaming_encode(
 ) -> Result<(), Box<dyn std::error::Error>> {
     use base_d::StreamingEncoder;
 
-    let encode_alphabet = create_dictionary(config, encode_name)?;
-    let mut encoder = StreamingEncoder::new(&encode_alphabet, io::stdout());
+    let encode_dictionary = create_dictionary(config, encode_name)?;
+    let mut encoder = StreamingEncoder::new(&encode_dictionary, io::stdout());
 
     // Add compression if specified
     if let Some(algo_name) = compress {

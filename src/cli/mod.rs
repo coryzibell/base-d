@@ -103,7 +103,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let config = DictionaryRegistry::load_with_overrides()?;
 
     // Handle --neo mode (Matrix effect)
-    if let Some(alphabet_opt) = &cli.neo {
+    if let Some(dictionary_opt) = &cli.neo {
         // Validate conflicting flags
         if cli.cycle && cli.random {
             return Err("Cannot use both --cycle and --random together".into());
@@ -124,20 +124,20 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             commands::SwitchMode::Static
         };
 
-        // Determine initial alphabet
-        // If --dejavu is set and no explicit alphabet, pick random
-        let initial_alphabet = if cli.dejavu && alphabet_opt.is_none() {
+        // Determine initial dictionary
+        // If --dejavu is set and no explicit dictionary, pick random
+        let initial_dictionary = if cli.dejavu && dictionary_opt.is_none() {
             let random_dict = commands::select_random_dictionary(&config, false)?;
             // Silently select - the puzzle is figuring out which dictionary was used
             random_dict
         } else {
-            alphabet_opt
+            dictionary_opt
                 .as_deref()
                 .unwrap_or("base256_matrix")
                 .to_string()
         };
 
-        return commands::matrix_mode(&config, &initial_alphabet, switch_mode);
+        return commands::matrix_mode(&config, &initial_dictionary, switch_mode);
     }
 
     // Handle --detect mode (auto-detect dictionary)
@@ -153,13 +153,13 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     // Handle list command
     if cli.list {
         println!("Available dictionaries:\n");
-        let mut alphabets: Vec<_> = config.dictionaries.iter().collect();
-        alphabets.sort_by_key(|(name, _)| *name);
+        let mut dictionaries: Vec<_> = config.dictionaries.iter().collect();
+        dictionaries.sort_by_key(|(name, _)| *name);
 
-        for (name, alphabet_config) in alphabets {
-            let (char_count, preview) = match alphabet_config.mode {
+        for (name, dictionary_config) in dictionaries {
+            let (char_count, preview) = match dictionary_config.mode {
                 base_d::EncodingMode::ByteRange => {
-                    if let Some(start) = alphabet_config.start_codepoint {
+                    if let Some(start) = dictionary_config.start_codepoint {
                         let preview_chars: String = (0..20)
                             .filter_map(|i| std::char::from_u32(start + i))
                             .collect();
@@ -169,13 +169,13 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
                 _ => {
-                    let count = alphabet_config.chars.chars().count();
-                    let preview: String = alphabet_config.chars.chars().take(20).collect();
+                    let count = dictionary_config.chars.chars().count();
+                    let preview: String = dictionary_config.chars.chars().take(20).collect();
                     (count, preview)
                 }
             };
             let suffix = if char_count > 20 { "..." } else { "" };
-            let mode_str = match alphabet_config.mode {
+            let mode_str = match dictionary_config.mode {
                 base_d::EncodingMode::BaseConversion => "math",
                 base_d::EncodingMode::Chunked => "chunk",
                 base_d::EncodingMode::ByteRange => "range",
@@ -267,10 +267,10 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     // Step 1: Decode if requested
     if let Some(decode_name) = &cli.decode {
-        let decode_alphabet = create_dictionary(&config, decode_name)?;
+        let decode_dictionary = create_dictionary(&config, decode_name)?;
         let text = String::from_utf8(data)
             .map_err(|_| "Input data is not valid UTF-8 text for decoding")?;
-        data = decode(text.trim(), &decode_alphabet)?;
+        data = decode(text.trim(), &decode_dictionary)?;
     }
 
     // Step 2: Decompress if requested
@@ -304,8 +304,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             // No default configured - use random
             commands::select_random_dictionary(&config, false)?
         };
-        let encode_alphabet = create_dictionary(&config, &dict_name)?;
-        let encoded = encode(&hash_output, &encode_alphabet);
+        let encode_dictionary = create_dictionary(&config, &dict_name)?;
+        let encoded = encode(&hash_output, &encode_dictionary);
         println!("{}", encoded);
         return Ok(());
     }
@@ -323,13 +323,13 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     } else if cli.dejavu {
         // Random dictionary encoding
         let random_dict = commands::select_random_dictionary(&config, true)?;
-        let encode_alphabet = create_dictionary(&config, &random_dict)?;
-        let encoded = encode(&data, &encode_alphabet);
+        let encode_dictionary = create_dictionary(&config, &random_dict)?;
+        let encoded = encode(&data, &encode_dictionary);
         println!("{}", encoded);
     } else if let Some(encode_name) = &cli.encode {
         // Explicit encoding
-        let encode_alphabet = create_dictionary(&config, encode_name)?;
-        let encoded = encode(&data, &encode_alphabet);
+        let encode_dictionary = create_dictionary(&config, encode_name)?;
+        let encoded = encode(&data, &encode_dictionary);
         println!("{}", encoded);
     } else if compress_algo.is_some() {
         // Compressed but no explicit encoding - use default or random
@@ -338,8 +338,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         } else {
             commands::select_random_dictionary(&config, false)?
         };
-        let encode_alphabet = create_dictionary(&config, &dict_name)?;
-        let encoded = encode(&data, &encode_alphabet);
+        let encode_dictionary = create_dictionary(&config, &dict_name)?;
+        let encoded = encode(&data, &encode_dictionary);
         println!("{}", encoded);
     } else {
         // No compression, no encoding - output as-is (or use default encoding)
@@ -350,8 +350,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 commands::select_random_dictionary(&config, false)?
             };
-            let encode_alphabet = create_dictionary(&config, &dict_name)?;
-            let encoded = encode(&data, &encode_alphabet);
+            let encode_dictionary = create_dictionary(&config, &dict_name)?;
+            let encoded = encode(&data, &encode_dictionary);
             println!("{}", encoded);
         } else {
             // Decode-only mode

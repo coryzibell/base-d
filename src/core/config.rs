@@ -92,7 +92,7 @@ impl DictionaryRegistry {
 
     /// Loads the built-in dictionary configurations.
     ///
-    /// Returns the default alphabets bundled with the library.
+    /// Returns the default dictionaries bundled with the library.
     pub fn load_default() -> Result<Self, Box<dyn std::error::Error>> {
         let content = include_str!("../../dictionaries.toml");
         Ok(Self::from_toml(content)?)
@@ -154,7 +154,7 @@ impl DictionaryRegistry {
 
     /// Merges another configuration into this one.
     ///
-    /// Alphabets from `other` override alphabets with the same name in `self`.
+    /// Dictionaries from `other` override dictionaries with the same name in `self`.
     pub fn merge(&mut self, other: DictionaryRegistry) {
         for (name, dictionary) in other.dictionaries {
             self.dictionaries.insert(name, dictionary);
@@ -178,7 +178,7 @@ mod tests {
     }
 
     #[test]
-    fn test_cards_alphabet_length() {
+    fn test_cards_dictionary_length() {
         let config = DictionaryRegistry::load_default().unwrap();
         let cards = config.get_dictionary("cards").unwrap();
         assert_eq!(cards.chars.chars().count(), 52);

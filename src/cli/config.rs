@@ -7,33 +7,33 @@ pub fn create_dictionary(
     config: &DictionaryRegistry,
     name: &str,
 ) -> Result<Dictionary, Box<dyn std::error::Error>> {
-    let alphabet_config = config.get_dictionary(name).ok_or_else(|| {
+    let dictionary_config = config.get_dictionary(name).ok_or_else(|| {
         format!(
             "Dictionary '{}' not found. Use --list to see available dictionaries.",
             name
         )
     })?;
 
-    let dictionary = match alphabet_config.mode {
+    let dictionary = match dictionary_config.mode {
         base_d::EncodingMode::ByteRange => {
-            let start = alphabet_config
+            let start = dictionary_config
                 .start_codepoint
                 .ok_or("ByteRange mode requires start_codepoint")?;
             Dictionary::new_with_mode_and_range(
                 Vec::new(),
-                alphabet_config.mode.clone(),
+                dictionary_config.mode.clone(),
                 None,
                 Some(start),
             )
             .map_err(|e| format!("Invalid dictionary: {}", e))?
         }
         _ => {
-            let chars: Vec<char> = alphabet_config.chars.chars().collect();
-            let padding = alphabet_config
+            let chars: Vec<char> = dictionary_config.chars.chars().collect();
+            let padding = dictionary_config
                 .padding
                 .as_ref()
                 .and_then(|s| s.chars().next());
-            Dictionary::new_with_mode(chars, alphabet_config.mode.clone(), padding)
+            Dictionary::new_with_mode(chars, dictionary_config.mode.clone(), padding)
                 .map_err(|e| format!("Invalid dictionary: {}", e))?
         }
     };

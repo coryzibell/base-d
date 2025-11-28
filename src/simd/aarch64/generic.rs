@@ -1,28 +1,28 @@
-//! Generic SIMD encoder for aarch64/NEON that works with any compatible alphabet
+//! Generic SIMD encoder for aarch64/NEON that works with any compatible dictionary
 //!
 //! This module provides a unified SIMD encoder that abstracts over
-//! different alphabet structures using pluggable translation.
+//! different dictionary structures using pluggable translation.
 //!
 //! Key insight: The reshuffle (bit packing) algorithms are the same
-//! across alphabets of the same bit width. Only the translation layer
+//! across dictionaries of the same bit width. Only the translation layer
 //! (index → character) varies.
 
 use crate::core::dictionary::Dictionary;
 use crate::simd::translate::{SequentialTranslate, SimdTranslate};
-use crate::simd::variants::{AlphabetMetadata, TranslationStrategy};
+use crate::simd::variants::{DictionaryMetadata, TranslationStrategy};
 use std::arch::aarch64::*;
 
-/// SIMD-accelerated codec that works with any compatible alphabet
+/// SIMD-accelerated codec that works with any compatible dictionary
 ///
 /// This codec uses pluggable translation to enable SIMD for sequential
-/// alphabets (contiguous Unicode ranges) and known ranged patterns.
+/// dictionaries (contiguous Unicode ranges) and known ranged patterns.
 ///
 /// # Architecture
-/// - Metadata: Analyzed alphabet structure
+/// - Metadata: Analyzed dictionary structure
 /// - Translator: Converts indices ↔ characters
 /// - Codec: Reuses reshuffle logic from specialized implementations
 pub struct GenericSimdCodec {
-    metadata: AlphabetMetadata,
+    metadata: DictionaryMetadata,
     translator: Box<dyn SimdTranslate>,
 }
 
@@ -31,7 +31,7 @@ impl GenericSimdCodec {
     ///
     /// Returns None if the dictionary is not SIMD-compatible.
     pub fn from_dictionary(dict: &Dictionary) -> Option<Self> {
-        let metadata = AlphabetMetadata::from_dictionary(dict);
+        let metadata = DictionaryMetadata::from_dictionary(dict);
 
         if !metadata.simd_compatible {
             return None;
@@ -59,7 +59,7 @@ impl GenericSimdCodec {
 
     /// Encode data using SIMD acceleration
     ///
-    /// Returns None if encoding fails or alphabet is incompatible.
+    /// Returns None if encoding fails or dictionary is incompatible.
     pub fn encode(&self, data: &[u8], dict: &Dictionary) -> Option<String> {
         // Dispatch to appropriate bit-width encoder
         match self.metadata.bits_per_symbol {
@@ -72,7 +72,7 @@ impl GenericSimdCodec {
 
     /// Decode string using SIMD acceleration
     ///
-    /// Returns None if decoding fails or alphabet is incompatible.
+    /// Returns None if decoding fails or dictionary is incompatible.
     #[allow(dead_code)]
     pub fn decode(&self, encoded: &str, dict: &Dictionary) -> Option<Vec<u8>> {
         // Dispatch to appropriate bit-width decoder
@@ -84,7 +84,7 @@ impl GenericSimdCodec {
         }
     }
 
-    /// Encode 6-bit alphabet (base64-like)
+    /// Encode 6-bit dictionary (base64-like)
     ///
     /// Reuses the reshuffle logic from base64.rs, replacing only the translation.
     #[cfg(target_arch = "aarch64")]
@@ -141,7 +141,7 @@ impl GenericSimdCodec {
         Some(result)
     }
 
-    /// Encode 4-bit alphabet (hex-like)
+    /// Encode 4-bit dictionary (hex-like)
     ///
     /// Reuses the nibble extraction from base16.rs, replacing only the translation.
     #[cfg(target_arch = "aarch64")]
@@ -203,9 +203,9 @@ impl GenericSimdCodec {
         Some(result)
     }
 
-    /// Encode 8-bit alphabet (base256-like)
+    /// Encode 8-bit dictionary (base256-like)
     ///
-    /// Direct mapping with translator for sequential alphabets.
+    /// Direct mapping with translator for sequential dictionaries.
     #[cfg(target_arch = "aarch64")]
     fn encode_8bit(&self, data: &[u8], _dict: &Dictionary) -> Option<String> {
         const BLOCK_SIZE: usize = 16;
@@ -251,7 +251,7 @@ impl GenericSimdCodec {
         Some(result)
     }
 
-    /// Decode 4-bit alphabet (hex-like)
+    /// Decode 4-bit dictionary (hex-like)
     ///
     /// Reverses the nibble extraction from encode_4bit.
     #[cfg(target_arch = "aarch64")]
@@ -308,7 +308,7 @@ impl GenericSimdCodec {
         Some(result)
     }
 
-    /// Decode 6-bit alphabet (base64-like)
+    /// Decode 6-bit dictionary (base64-like)
     ///
     /// Uses the same maddubs/madd trick as specialized base64 decode.
     #[cfg(target_arch = "aarch64")]
@@ -354,7 +354,7 @@ impl GenericSimdCodec {
         Some(result)
     }
 
-    /// Decode 8-bit alphabet (base256-like)
+    /// Decode 8-bit dictionary (base256-like)
     ///
     /// Direct translation, no bit unpacking needed.
     #[cfg(target_arch = "aarch64")]
@@ -545,7 +545,7 @@ mod tests {
 
     #[test]
     fn test_sequential_base64_creation() {
-        // Create a sequential base64 alphabet starting at Latin Extended-A (U+0100)
+        // Create a sequential base64 dictionary starting at Latin Extended-A (U+0100)
         let chars: Vec<char> = (0x100..0x140)
             .map(|cp| char::from_u32(cp).unwrap())
             .collect();
@@ -566,7 +566,7 @@ mod tests {
 
     #[test]
     fn test_sequential_hex_creation() {
-        // Create a sequential hex alphabet starting at '!' (U+0021)
+        // Create a sequential hex dictionary starting at '!' (U+0021)
         let chars: Vec<char> = (0x21..0x31).map(|cp| char::from_u32(cp).unwrap()).collect();
         let dict = Dictionary::new(chars).unwrap();
 
@@ -585,7 +585,7 @@ mod tests {
 
     #[test]
     fn test_sequential_base256_creation() {
-        // Create a sequential base256 alphabet using Latin Extended-A range
+        // Create a sequential base256 dictionary using Latin Extended-A range
         let chars: Vec<char> = (0x100..0x200)
             .map(|cp| char::from_u32(cp).unwrap())
             .collect();
@@ -608,15 +608,15 @@ mod tests {
     }
 
     #[test]
-    fn test_arbitrary_alphabet_rejected() {
-        // Create an arbitrary (shuffled) alphabet
+    fn test_arbitrary_dictionary_rejected() {
+        // Create an arbitrary (shuffled) dictionary
         let chars: Vec<char> = "ZYXWVUTSRQPONMLKJIHGFEDCBAzyxwvutsrqponmlkjihgfedcba9876543210+/"
             .chars()
             .collect();
         let dict = Dictionary::new_with_mode(chars, EncodingMode::Chunked, None).unwrap();
 
         let codec = GenericSimdCodec::from_dictionary(&dict);
-        assert!(codec.is_none(), "Should reject arbitrary alphabet");
+        assert!(codec.is_none(), "Should reject arbitrary dictionary");
     }
 
     #[test]
@@ -683,21 +683,21 @@ mod tests {
 
     #[test]
     #[cfg(target_arch = "aarch64")]
-    fn test_custom_alphabet_integration() {
-        // Demonstrate that a user-defined sequential alphabet gets SIMD acceleration
-        // Note: Currently only works for ASCII-range alphabets (< 0x80)
+    fn test_custom_dictionary_integration() {
+        // Demonstrate that a user-defined sequential dictionary gets SIMD acceleration
+        // Note: Currently only works for ASCII-range dictionaries (< 0x80)
         // TODO: Add UTF-8 encoding support for higher Unicode ranges
 
-        // Create custom base16 alphabet starting at ASCII '!' (0x21)
+        // Create custom base16 dictionary starting at ASCII '!' (0x21)
         // This gives us '!' through '0' (0x21..0x31)
         let chars: Vec<char> = (0x21..0x31).map(|cp| char::from_u32(cp).unwrap()).collect();
         let dict = Dictionary::new(chars).unwrap();
 
         // Verify it's detected as SIMD-compatible
-        let metadata = AlphabetMetadata::from_dictionary(&dict);
+        let metadata = DictionaryMetadata::from_dictionary(&dict);
         assert!(
             metadata.simd_compatible,
-            "Custom alphabet should be SIMD-compatible"
+            "Custom dictionary should be SIMD-compatible"
         );
         assert!(matches!(
             metadata.strategy,
@@ -708,24 +708,24 @@ mod tests {
 
         // Create codec
         let codec = GenericSimdCodec::from_dictionary(&dict)
-            .expect("Should create codec for custom alphabet");
+            .expect("Should create codec for custom dictionary");
 
         // Encode data: 16 bytes
         let data = b"\x01\x23\x45\x67\x89\xAB\xCD\xEF\xFE\xDC\xBA\x98\x76\x54\x32\x10";
         let result = codec.encode_4bit(data, &dict);
 
-        assert!(result.is_some(), "Should encode with custom alphabet");
+        assert!(result.is_some(), "Should encode with custom dictionary");
         let encoded = result.unwrap();
 
         // Verify output length: 16 bytes -> 32 hex chars
         assert_eq!(encoded.len(), 32, "16 bytes should produce 32 hex chars");
 
-        // Verify that output uses custom alphabet characters
+        // Verify that output uses custom dictionary characters
         for c in encoded.chars() {
             let codepoint = c as u32;
             assert!(
                 codepoint >= 0x21 && codepoint < 0x31,
-                "Output char U+{:04X} '{}' should be in custom alphabet range U+0021..U+0031",
+                "Output char U+{:04X} '{}' should be in custom dictionary range U+0021..U+0031",
                 codepoint,
                 c
             );

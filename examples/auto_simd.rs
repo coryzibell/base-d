@@ -1,7 +1,7 @@
 //! Demonstration of automatic SIMD selection
 //!
 //! This example shows how the library automatically uses SIMD acceleration
-//! for compatible alphabets without requiring manual configuration.
+//! for compatible dictionaries without requiring manual configuration.
 
 use base_d::{encode, Dictionary};
 
@@ -40,7 +40,7 @@ fn main() {
     println!("Custom base64 at U+0100 (GenericSimdCodec):");
     println!("  {}\n", encoded);
 
-    // 5. Arbitrary alphabet - falls back to scalar
+    // 5. Arbitrary dictionary - falls back to scalar
     let arbitrary = "ZYXWVUTSRQPONMLKJIHGFEDCBAzyxwvutsrqponmlkjihgfedcba9876543210+/";
     let dict = Dictionary::new(arbitrary.chars().collect()).unwrap();
     let encoded = encode(data, &dict);
@@ -51,6 +51,6 @@ fn main() {
     println!("1. Known base64 variants (standard/url) → specialized base64 SIMD");
     println!("2. Known hex variants → specialized base16 SIMD");
     println!("3. Base256 ByteRange → specialized base256 SIMD");
-    println!("4. Sequential power-of-2 alphabet → GenericSimdCodec");
+    println!("4. Sequential power-of-2 dictionary → GenericSimdCodec");
     println!("5. None → scalar fallback");
 }
