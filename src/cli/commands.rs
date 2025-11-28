@@ -68,6 +68,24 @@ pub fn select_random_dictionary(
     Ok(random_dict.to_string())
 }
 
+/// Available hash algorithms for random selection
+pub const HASH_ALGORITHMS: &[&str] = &["md5", "sha256", "sha512", "blake3", "xxh64", "xxh3"];
+
+/// Available compression algorithms for random selection
+pub const COMPRESS_ALGORITHMS: &[&str] = &["gzip", "zstd", "brotli", "lz4"];
+
+/// Select a random hash algorithm
+pub fn select_random_hash() -> &'static str {
+    use rand::seq::SliceRandom;
+    HASH_ALGORITHMS.choose(&mut rand::thread_rng()).unwrap()
+}
+
+/// Select a random compression algorithm
+pub fn select_random_compress() -> &'static str {
+    use rand::seq::SliceRandom;
+    COMPRESS_ALGORITHMS.choose(&mut rand::thread_rng()).unwrap()
+}
+
 /// Matrix mode: Stream random data as Matrix-style falling code
 pub fn matrix_mode(
     config: &DictionaryRegistry,

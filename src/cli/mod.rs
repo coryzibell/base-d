@@ -23,8 +23,9 @@ struct Cli {
     decode: Option<String>,
 
     /// Compress data before encoding (gzip, zstd, brotli, lz4)
-    #[arg(short = 'c', long)]
-    compress: Option<String>,
+    /// If no algorithm specified, picks randomly
+    #[arg(short = 'c', long, value_name = "ALGORITHM")]
+    compress: Option<Option<String>>,
 
     /// Decompress data after decoding (gzip, zstd, brotli, lz4, snappy, lzma)
     #[arg(long)]
@@ -35,8 +36,9 @@ struct Cli {
     level: Option<u32>,
 
     /// Compute hash of input data (md5, sha256, sha512, blake3, etc.)
-    #[arg(long)]
-    hash: Option<String>,
+    /// If no algorithm specified, picks randomly
+    #[arg(long, value_name = "ALGORITHM")]
+    hash: Option<Option<String>>,
 
     /// Seed for xxHash algorithms (u64, default: 0)
     #[arg(long)]
@@ -186,12 +188,12 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    // Parse compression algorithms if provided
-    let compress_algo = cli
-        .compress
-        .as_ref()
-        .map(|s| base_d::CompressionAlgorithm::from_str(s))
-        .transpose()?;
+    // Parse compression algorithm - if flag present but no value, pick random
+    let compress_algo = match &cli.compress {
+        Some(Some(algo)) => Some(base_d::CompressionAlgorithm::from_str(algo)?),
+        Some(None) => Some(base_d::CompressionAlgorithm::from_str(commands::select_random_compress())?),
+        None => None,
+    };
 
     let decompress_algo = cli
         .decompress
@@ -206,13 +208,25 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     // Handle streaming mode separately (now with compression/hashing support)
     if cli.stream {
+        // Resolve optional hash/compress to concrete values for streaming
+        let resolved_hash = match &cli.hash {
+            Some(Some(name)) => Some(name.clone()),
+            Some(None) => Some(commands::select_random_hash().to_string()),
+            None => None,
+        };
+        let resolved_compress = match &cli.compress {
+            Some(Some(name)) => Some(name.clone()),
+            Some(None) => Some(commands::select_random_compress().to_string()),
+            None => None,
+        };
+
         if let Some(decode_name) = &cli.decode {
             return commands::streaming_decode(
                 &config,
                 decode_name,
                 cli.file.as_ref(),
                 cli.decompress,
-                cli.hash,
+                resolved_hash,
                 cli.hash_seed,
                 cli.hash_secret_stdin,
                 cli.encode,
@@ -222,9 +236,9 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 &config,
                 encode_name,
                 cli.file.as_ref(),
-                cli.compress,
+                resolved_compress,
                 cli.level,
-                cli.hash,
+                resolved_hash,
                 cli.hash_seed,
                 cli.hash_secret_stdin,
             );
@@ -262,9 +276,13 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         data = base_d::decompress(&data, algo)?;
     }
 
-    // Step 3: Hash if requested
-    if let Some(hash_name) = &cli.hash {
-        let hash_algo = base_d::HashAlgorithm::from_str(hash_name)?;
+    // Step 3: Hash if requested - if flag present but no value, pick random
+    if let Some(hash_opt) = &cli.hash {
+        let hash_name = match hash_opt {
+            Some(name) => name.clone(),
+            None => commands::select_random_hash().to_string(),
+        };
+        let hash_algo = base_d::HashAlgorithm::from_str(&hash_name)?;
         let xxhash_config = load_xxhash_config(
             cli.hash_seed,
             cli.hash_secret_stdin,
@@ -273,13 +291,16 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         )?;
         let hash_output = base_d::hash_with_config(&data, hash_algo, &xxhash_config);
 
-        // Encode the hash - explicit dict, dejavu, or default
+        // Encode the hash - explicit dict, dejavu, or default (random if no default)
         let dict_name = if let Some(encode_name) = &cli.encode {
             encode_name.clone()
         } else if cli.dejavu {
             commands::select_random_dictionary(&config, false)?
+        } else if let Some(default) = &config.settings.default_dictionary {
+            default.clone()
         } else {
-            config.settings.default_dictionary.clone()
+            // No default configured - use random
+            commands::select_random_dictionary(&config, false)?
         };
         let encode_alphabet = create_dictionary(&config, &dict_name)?;
         let encoded = encode(&hash_output, &encode_alphabet);
@@ -309,17 +330,25 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         let encoded = encode(&data, &encode_alphabet);
         println!("{}", encoded);
     } else if compress_algo.is_some() {
-        // Compressed but no explicit encoding - use default
-        let default_dict = &config.settings.default_dictionary;
-        let encode_alphabet = create_dictionary(&config, default_dict)?;
+        // Compressed but no explicit encoding - use default or random
+        let dict_name = if let Some(default) = &config.settings.default_dictionary {
+            default.clone()
+        } else {
+            commands::select_random_dictionary(&config, false)?
+        };
+        let encode_alphabet = create_dictionary(&config, &dict_name)?;
         let encoded = encode(&data, &encode_alphabet);
         println!("{}", encoded);
     } else {
         // No compression, no encoding - output as-is (or use default encoding)
         if cli.decode.is_none() {
-            // Encoding mode without explicit dictionary - use config default
-            let default_dict = &config.settings.default_dictionary;
-            let encode_alphabet = create_dictionary(&config, default_dict)?;
+            // Encoding mode without explicit dictionary - use default or random
+            let dict_name = if let Some(default) = &config.settings.default_dictionary {
+                default.clone()
+            } else {
+                commands::select_random_dictionary(&config, false)?
+            };
+            let encode_alphabet = create_dictionary(&config, &dict_name)?;
             let encoded = encode(&data, &encode_alphabet);
             println!("{}", encoded);
         } else {

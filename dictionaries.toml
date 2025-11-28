@@ -8,7 +8,8 @@
 
 # Settings
 [settings]
-default_dictionary = "cards"
+# No default dictionary - embrace entropy
+# Encoding requires explicit -e <dict> or --dejavu for random
 
 # Compression algorithms
 [compression.gzip]

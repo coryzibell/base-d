@@ -76,16 +76,12 @@ pub struct XxHashSettings {
 /// Global settings for base-d.
 #[derive(Debug, Deserialize, Clone, Default)]
 pub struct Settings {
-    /// Default dictionary to use when compressing without explicit encoding
-    #[serde(default = "default_dictionary")]
-    pub default_dictionary: String,
+    /// Default dictionary - if not set, requires explicit -e or --dejavu
+    #[serde(default)]
+    pub default_dictionary: Option<String>,
     /// xxHash configuration
     #[serde(default)]
     pub xxhash: XxHashSettings,
-}
-
-fn default_dictionary() -> String {
-    "cards".to_string()
 }
 
 impl DictionaryRegistry {
