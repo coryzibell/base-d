@@ -476,11 +476,11 @@ impl GenericSimdCodec {
         // Uses multiply-add to efficiently pack 6-bit values back to 8-bit
 
         // Stage 1: Merge adjacent pairs using multiply-add
-        // Simulate maddubs: multiply unsigned bytes and add adjacent pairs
+        // Emulate x86 maddubs: result[i] = indices[2i] * 64 + indices[2i+1] * 1
         let pairs = vreinterpretq_u16_u8(indices);
-        let even = vandq_u16(pairs, vdupq_n_u16(0xFF));
-        let odd = vshrq_n_u16(pairs, 8);
-        let merge_result = vaddq_u16(even, vshlq_n_u16(odd, 6));
+        let even = vandq_u16(pairs, vdupq_n_u16(0xFF)); // indices[0,2,4,...]
+        let odd = vshrq_n_u16(pairs, 8); // indices[1,3,5,...]
+        let merge_result = vmlaq_n_u16(odd, even, 64); // even * 64 + odd
 
         // Stage 2: Combine 16-bit pairs into 32-bit values
         // Simulate madd: multiply 16-bit values and add adjacent pairs
