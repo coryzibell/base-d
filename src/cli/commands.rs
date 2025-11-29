@@ -48,6 +48,7 @@ pub fn parse_interval(s: &str) -> Result<SwitchInterval, Box<dyn std::error::Err
 }
 
 /// Select a random dictionary from the registry.
+/// Only selects from dictionaries with `common=true` (renders consistently across platforms).
 /// Optionally prints a "dejavu: ..." message to stderr based on the `print_message` flag.
 /// Returns the dictionary name.
 pub fn select_random_dictionary(
@@ -57,10 +58,17 @@ pub fn select_random_dictionary(
     use rand::seq::SliceRandom;
     let mut rng = rand::thread_rng();
 
-    let dict_names: Vec<&String> = config.dictionaries.keys().collect();
+    // Filter to only common dictionaries (those that render consistently across platforms)
+    let dict_names: Vec<&String> = config
+        .dictionaries
+        .iter()
+        .filter(|(_, cfg)| cfg.common)
+        .map(|(name, _)| name)
+        .collect();
+
     let random_dict = dict_names
         .choose(&mut rng)
-        .ok_or("No dictionaries available")?;
+        .ok_or("No common dictionaries available")?;
 
     // Silently select - the puzzle is figuring out which dictionary was used
     let _ = print_message; // Reserved for future verbose mode

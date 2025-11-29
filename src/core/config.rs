@@ -40,6 +40,14 @@ pub struct DictionaryConfig {
     /// Starting Unicode codepoint for ByteRange mode
     #[serde(default)]
     pub start_codepoint: Option<u32>,
+    /// Whether this dictionary renders consistently across platforms (default: true)
+    /// Dictionaries with common=false are excluded from random selection (--dejavu)
+    #[serde(default = "default_true")]
+    pub common: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 /// Collection of dictionary configurations loaded from TOML files.
@@ -213,6 +221,7 @@ mod tests {
                 mode: EncodingMode::BaseConversion,
                 padding: None,
                 start_codepoint: None,
+                common: true,
             },
         );
 
@@ -228,6 +237,7 @@ mod tests {
                 mode: EncodingMode::BaseConversion,
                 padding: None,
                 start_codepoint: None,
+                common: true,
             },
         );
         config2.dictionaries.insert(
@@ -237,6 +247,7 @@ mod tests {
                 mode: EncodingMode::BaseConversion,
                 padding: None,
                 start_codepoint: None,
+                common: true,
             },
         );
 
