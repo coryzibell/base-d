@@ -566,7 +566,7 @@ impl LargeLutCodec {
         #[cfg(target_arch = "aarch64")]
         unsafe {
             self.encode_neon_impl(data, &mut result);
-            return Some(result);
+            Some(result)
         }
 
         #[cfg(target_arch = "x86_64")]
@@ -1327,7 +1327,7 @@ impl LargeLutCodec {
             if !self.decode_neon_impl(encoded_bytes, &mut result) {
                 return None;
             }
-            return Some(result);
+            Some(result)
         }
 
         #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]

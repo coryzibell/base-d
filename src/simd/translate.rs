@@ -319,7 +319,6 @@ impl SimdTranslate for SequentialTranslate {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     #[test]
     #[cfg(target_arch = "x86_64")]
