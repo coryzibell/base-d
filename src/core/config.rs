@@ -199,10 +199,10 @@ mod tests {
     }
 
     #[test]
-    fn test_base64_math_mode() {
+    fn test_base64_radix_mode() {
         let config = DictionaryRegistry::load_default().unwrap();
-        let base64_math = config.get_dictionary("base64_math").unwrap();
-        assert_eq!(base64_math.mode, EncodingMode::Radix);
+        let base64_radix = config.get_dictionary("base64_radix").unwrap();
+        assert_eq!(base64_radix.mode, EncodingMode::Radix);
     }
 
     #[test]

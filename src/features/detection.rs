@@ -351,8 +351,8 @@ mod tests {
 
         let matches = detector.detect("48656c6c6f");
         assert!(!matches.is_empty());
-        // hex or hex_math are both correct
-        assert!(matches[0].name == "hex" || matches[0].name == "hex_math");
+        // hex or hex_radix are both correct
+        assert!(matches[0].name == "hex" || matches[0].name == "hex_radix");
         assert!(matches[0].confidence > 0.8);
     }
 

@@ -118,14 +118,14 @@ fn test_base64_chunked_mode() {
 }
 
 #[test]
-fn test_base64_math_mode() {
-    let dictionary = get_dictionary("base64_math");
+fn test_base64_radix_mode() {
+    let dictionary = get_dictionary("base64_radix");
     assert_eq!(dictionary.mode(), &EncodingMode::Radix);
 
     // This should use radix base conversion
     let data = b"Hello, World!";
     let encoded = encode(data, &dictionary);
-    println!("base64_math encoded: {}", encoded);
+    println!("base64_radix encoded: {}", encoded);
 
     // Should NOT match standard base64
     let standard_base64 = "SGVsbG8sIFdvcmxkIQ==";
