@@ -118,6 +118,7 @@ pub fn matrix_mode(
     initial_dictionary: &str,
     switch_mode: SwitchMode,
     no_color: bool,
+    quiet: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use std::thread;
     use std::time::Instant;
@@ -207,10 +208,12 @@ pub fn matrix_mode(
         .unwrap_or(0);
 
     // Display current dictionary name
-    if !no_color {
-        eprintln!("\x1b[32mDictionary: {}\x1b[0m", current_dictionary_name);
-    } else {
-        eprintln!("Dictionary: {}", current_dictionary_name);
+    if !quiet {
+        if !no_color {
+            eprintln!("\x1b[32mDictionary: {}\x1b[0m", current_dictionary_name);
+        } else {
+            eprintln!("Dictionary: {}", current_dictionary_name);
+        }
     }
 
     loop {
@@ -240,10 +243,12 @@ pub fn matrix_mode(
                 }
                 _ => {}
             }
-            if !no_color {
-                eprintln!("\x1b[32mDictionary: {}\x1b[0m", current_dictionary_name);
-            } else {
-                eprintln!("Dictionary: {}", current_dictionary_name);
+            if !quiet {
+                if !no_color {
+                    eprintln!("\x1b[32mDictionary: {}\x1b[0m", current_dictionary_name);
+                } else {
+                    eprintln!("Dictionary: {}", current_dictionary_name);
+                }
             }
             last_switch = Instant::now();
             continue; // Reload dictionary
@@ -267,10 +272,12 @@ pub fn matrix_mode(
                 }
                 _ => {}
             }
-            if !no_color {
-                eprintln!("\x1b[32mDictionary: {}\x1b[0m", current_dictionary_name);
-            } else {
-                eprintln!("Dictionary: {}", current_dictionary_name);
+            if !quiet {
+                if !no_color {
+                    eprintln!("\x1b[32mDictionary: {}\x1b[0m", current_dictionary_name);
+                } else {
+                    eprintln!("Dictionary: {}", current_dictionary_name);
+                }
             }
             continue; // Reload for next line
         }
@@ -303,10 +310,12 @@ pub fn matrix_mode(
                             .iter()
                             .position(|n| n == &current_dictionary_name)
                             .unwrap_or(0);
-                        if !no_color {
-                            eprintln!("\r\x1b[32m[Matrix: {}]\x1b[0m", current_dictionary_name);
-                        } else {
-                            eprintln!("\r[Matrix: {}]", current_dictionary_name);
+                        if !quiet {
+                            if !no_color {
+                                eprintln!("\r\x1b[32m[Matrix: {}]\x1b[0m", current_dictionary_name);
+                            } else {
+                                eprintln!("\r[Matrix: {}]", current_dictionary_name);
+                            }
                         }
                         continue; // Reload dictionary
                     }
@@ -318,10 +327,12 @@ pub fn matrix_mode(
                             current_index - 1
                         };
                         current_dictionary_name = dict_names[current_index].clone();
-                        if !no_color {
-                            eprintln!("\r\x1b[32m[Matrix: {}]\x1b[0m", current_dictionary_name);
-                        } else {
-                            eprintln!("\r[Matrix: {}]", current_dictionary_name);
+                        if !quiet {
+                            if !no_color {
+                                eprintln!("\r\x1b[32m[Matrix: {}]\x1b[0m", current_dictionary_name);
+                            } else {
+                                eprintln!("\r[Matrix: {}]", current_dictionary_name);
+                            }
                         }
                         continue; // Reload dictionary
                     }
@@ -329,10 +340,12 @@ pub fn matrix_mode(
                         // Next dictionary
                         current_index = (current_index + 1) % dict_names.len();
                         current_dictionary_name = dict_names[current_index].clone();
-                        if !no_color {
-                            eprintln!("\r\x1b[32m[Matrix: {}]\x1b[0m", current_dictionary_name);
-                        } else {
-                            eprintln!("\r[Matrix: {}]", current_dictionary_name);
+                        if !quiet {
+                            if !no_color {
+                                eprintln!("\r\x1b[32m[Matrix: {}]\x1b[0m", current_dictionary_name);
+                            } else {
+                                eprintln!("\r[Matrix: {}]", current_dictionary_name);
+                            }
                         }
                         continue; // Reload dictionary
                     }

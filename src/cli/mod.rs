@@ -223,7 +223,13 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         };
 
         let no_color = should_disable_color(cli.no_color);
-        return commands::matrix_mode(&config, &initial_dictionary, switch_mode, no_color);
+        return commands::matrix_mode(
+            &config,
+            &initial_dictionary,
+            switch_mode,
+            no_color,
+            cli.quiet,
+        );
     }
 
     // Handle --detect mode (auto-detect dictionary)
