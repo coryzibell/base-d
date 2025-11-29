@@ -9,7 +9,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let matrix_config = config.get_dictionary("base256_matrix").unwrap();
 
     let chars: Vec<char> = matrix_config.chars.chars().collect();
-    let dictionary = Dictionary::new_with_mode(chars, matrix_config.mode.clone(), None)?;
+    let dictionary = Dictionary::builder()
+        .chars(chars)
+        .mode(matrix_config.mode.clone())
+        .build()?;
 
     println!("Dictionary: base256_matrix");
     println!("Size: {} characters", dictionary.base());
@@ -47,19 +50,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let test_data = b"Matrix";
 
     // Test with chunked mode
-    let chunked_dictionary = Dictionary::new_with_mode(
-        matrix_config.chars.chars().collect(),
-        base_d::EncodingMode::Chunked,
-        None,
-    )?;
+    let chunked_dictionary = Dictionary::builder()
+        .chars(matrix_config.chars.chars().collect())
+        .mode(base_d::EncodingMode::Chunked)
+        .build()?;
     let chunked_encoded = encode(test_data, &chunked_dictionary);
 
     // Test with mathematical mode
-    let math_dictionary = Dictionary::new_with_mode(
-        matrix_config.chars.chars().collect(),
-        base_d::EncodingMode::BaseConversion,
-        None,
-    )?;
+    let math_dictionary = Dictionary::builder()
+        .chars(matrix_config.chars.chars().collect())
+        .mode(base_d::EncodingMode::BaseConversion)
+        .build()?;
     let math_encoded = encode(test_data, &math_dictionary);
 
     println!("Input:       '{}'", String::from_utf8_lossy(test_data));
@@ -89,8 +90,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .padding
         .as_ref()
         .and_then(|s| s.chars().next());
-    let base64_dictionary =
-        Dictionary::new_with_mode(base64_chars, base64_config.mode.clone(), base64_padding)?;
+    let mut builder = Dictionary::builder()
+        .chars(base64_chars)
+        .mode(base64_config.mode.clone());
+    if let Some(pad) = base64_padding {
+        builder = builder.padding(pad);
+    }
+    let base64_dictionary = builder.build()?;
 
     let matrix_encoded = encode(long_message, &dictionary);
     let base64_encoded = encode(long_message, &base64_dictionary);

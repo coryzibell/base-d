@@ -40,7 +40,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .padding
         .as_ref()
         .and_then(|s| s.chars().next());
-    let dictionary = Dictionary::new_with_mode(chars, base64_config.mode.clone(), padding)?;
+    let mut builder = Dictionary::builder()
+        .chars(chars)
+        .mode(base64_config.mode.clone());
+    if let Some(pad) = padding {
+        builder = builder.padding(pad);
+    }
+    let dictionary = builder.build()?;
 
     let test_data = b"Hello, SIMD World! This is a performance test.";
     let encoded = encode(test_data, &dictionary);

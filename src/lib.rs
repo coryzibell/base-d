@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+#![allow(deprecated)]
 #![allow(clippy::should_implement_trait)]
 #![allow(clippy::derivable_impls)]
 #![allow(clippy::manual_div_ceil)]
@@ -161,7 +162,7 @@ mod simd;
 pub use core::config::{
     CompressionConfig, DictionaryConfig, DictionaryRegistry, EncodingMode, Settings,
 };
-pub use core::dictionary::Dictionary;
+pub use core::dictionary::{Dictionary, DictionaryBuilder};
 pub use encoders::algorithms::{find_closest_dictionary, DecodeError, DictionaryNotFoundError};
 pub use encoders::streaming::{StreamingDecoder, StreamingEncoder};
 pub use features::{

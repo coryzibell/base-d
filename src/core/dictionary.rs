@@ -21,6 +21,22 @@ pub struct Dictionary {
 }
 
 impl Dictionary {
+    /// Creates a new DictionaryBuilder for constructing a Dictionary.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use base_d::{Dictionary, EncodingMode};
+    /// let dict = Dictionary::builder()
+    ///     .chars_from_str("0123456789ABCDEF")
+    ///     .mode(EncodingMode::BaseConversion)
+    ///     .build()
+    ///     .unwrap();
+    /// ```
+    pub fn builder() -> DictionaryBuilder {
+        DictionaryBuilder::new()
+    }
+
     /// Creates a new dictionary with default settings (BaseConversion mode, no padding).
     ///
     /// # Arguments
@@ -30,6 +46,11 @@ impl Dictionary {
     /// # Errors
     ///
     /// Returns an error if the dictionary is empty or contains duplicate characters.
+    ///
+    /// # Deprecated
+    ///
+    /// Use `Dictionary::builder()` instead for more flexible configuration.
+    #[deprecated(since = "0.1.0", note = "Use Dictionary::builder() instead")]
     pub fn new(chars: Vec<char>) -> Result<Self, String> {
         Self::new_with_mode(chars, EncodingMode::BaseConversion, None)
     }
@@ -47,6 +68,11 @@ impl Dictionary {
     /// Returns an error if:
     /// - The dictionary is empty or contains duplicates
     /// - Chunked mode is used with a non-power-of-two dictionary size
+    ///
+    /// # Deprecated
+    ///
+    /// Use `Dictionary::builder()` instead for more flexible configuration.
+    #[deprecated(since = "0.1.0", note = "Use Dictionary::builder() instead")]
     pub fn new_with_mode(
         chars: Vec<char>,
         mode: EncodingMode,
@@ -67,6 +93,11 @@ impl Dictionary {
     /// # Errors
     ///
     /// Returns an error if configuration is invalid for the specified mode.
+    ///
+    /// # Deprecated
+    ///
+    /// Use `Dictionary::builder()` instead for more flexible configuration.
+    #[deprecated(since = "0.1.0", note = "Use Dictionary::builder() instead")]
     pub fn new_with_mode_and_range(
         chars: Vec<char>,
         mode: EncodingMode,
@@ -210,6 +241,14 @@ impl Dictionary {
     /// # Arguments
     ///
     /// * `s` - String containing the dictionary characters
+    ///
+    /// # Deprecated
+    ///
+    /// Use `Dictionary::builder().chars_from_str(s).build()` instead.
+    #[deprecated(
+        since = "0.1.0",
+        note = "Use Dictionary::builder().chars_from_str(s).build() instead"
+    )]
     pub fn from_str(s: &str) -> Result<Self, String> {
         let chars: Vec<char> = s.chars().collect();
         Self::new(chars)
@@ -299,6 +338,104 @@ impl Dictionary {
     /// the current CPU features and dictionary configuration.
     pub fn simd_available(&self) -> bool {
         self.simd_metadata().simd_available()
+    }
+}
+
+/// Builder for constructing a Dictionary with flexible configuration.
+///
+/// # Example
+///
+/// ```
+/// use base_d::{Dictionary, EncodingMode};
+/// let dict = Dictionary::builder()
+///     .chars_from_str("0123456789ABCDEF")
+///     .mode(EncodingMode::BaseConversion)
+///     .build()
+///     .unwrap();
+/// ```
+#[derive(Debug, Default)]
+pub struct DictionaryBuilder {
+    chars: Option<Vec<char>>,
+    mode: Option<EncodingMode>,
+    padding: Option<char>,
+    start_codepoint: Option<u32>,
+}
+
+impl DictionaryBuilder {
+    /// Creates a new DictionaryBuilder with default settings.
+    pub fn new() -> Self {
+        Self {
+            chars: None,
+            mode: None,
+            padding: None,
+            start_codepoint: None,
+        }
+    }
+
+    /// Sets the dictionary characters from a vector.
+    ///
+    /// # Arguments
+    ///
+    /// * `chars` - Vector of characters to use in the dictionary
+    pub fn chars(mut self, chars: Vec<char>) -> Self {
+        self.chars = Some(chars);
+        self
+    }
+
+    /// Sets the dictionary characters from a string.
+    ///
+    /// # Arguments
+    ///
+    /// * `s` - String containing the dictionary characters
+    pub fn chars_from_str(mut self, s: &str) -> Self {
+        self.chars = Some(s.chars().collect());
+        self
+    }
+
+    /// Sets the encoding mode.
+    ///
+    /// # Arguments
+    ///
+    /// * `mode` - Encoding mode (BaseConversion, Chunked, or ByteRange)
+    pub fn mode(mut self, mode: EncodingMode) -> Self {
+        self.mode = Some(mode);
+        self
+    }
+
+    /// Sets the padding character.
+    ///
+    /// # Arguments
+    ///
+    /// * `padding` - Padding character (typically '=' for RFC modes)
+    pub fn padding(mut self, padding: char) -> Self {
+        self.padding = Some(padding);
+        self
+    }
+
+    /// Sets the starting Unicode codepoint for ByteRange mode.
+    ///
+    /// # Arguments
+    ///
+    /// * `start_codepoint` - Starting Unicode codepoint
+    pub fn start_codepoint(mut self, start_codepoint: u32) -> Self {
+        self.start_codepoint = Some(start_codepoint);
+        self
+    }
+
+    /// Builds the Dictionary with the configured settings.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The configuration is invalid for the specified mode
+    /// - Required fields are missing
+    /// - Validation fails (duplicates, invalid characters, etc.)
+    pub fn build(self) -> Result<Dictionary, String> {
+        let mode = self.mode.unwrap_or(EncodingMode::BaseConversion);
+        let chars = self.chars.unwrap_or_default();
+
+        #[allow(deprecated)]
+        Dictionary::new_with_mode_and_range(chars, mode, self.padding, self.start_codepoint)
     }
 }
 
@@ -415,5 +552,115 @@ mod tests {
         let chars = vec!['a', 'b', 'a'];
         let err = Dictionary::new(chars).unwrap_err();
         assert!(err.contains("'a'") || err.contains("U+"));
+    }
+
+    // DictionaryBuilder tests
+    #[test]
+    fn test_builder_basic() {
+        let dict = Dictionary::builder()
+            .chars(vec!['0', '1', '2', '3'])
+            .build()
+            .unwrap();
+
+        assert_eq!(dict.base(), 4);
+        assert_eq!(dict.mode(), &EncodingMode::BaseConversion);
+        assert_eq!(dict.padding(), None);
+    }
+
+    #[test]
+    fn test_builder_from_str() {
+        let dict = Dictionary::builder()
+            .chars_from_str("0123456789ABCDEF")
+            .build()
+            .unwrap();
+
+        assert_eq!(dict.base(), 16);
+    }
+
+    #[test]
+    fn test_builder_with_mode() {
+        let dict = Dictionary::builder()
+            .chars(vec!['0', '1'])
+            .mode(EncodingMode::Chunked)
+            .build()
+            .unwrap();
+
+        assert_eq!(dict.mode(), &EncodingMode::Chunked);
+    }
+
+    #[test]
+    fn test_builder_with_padding() {
+        let dict = Dictionary::builder()
+            .chars_from_str("ABCD")
+            .padding('=')
+            .build()
+            .unwrap();
+
+        assert_eq!(dict.padding(), Some('='));
+    }
+
+    #[test]
+    fn test_builder_byte_range() {
+        let dict = Dictionary::builder()
+            .mode(EncodingMode::ByteRange)
+            .start_codepoint(0x1F300)
+            .build()
+            .unwrap();
+
+        assert_eq!(dict.mode(), &EncodingMode::ByteRange);
+        assert_eq!(dict.start_codepoint(), Some(0x1F300));
+        assert_eq!(dict.base(), 256);
+    }
+
+    #[test]
+    fn test_builder_byte_range_missing_start() {
+        let result = Dictionary::builder().mode(EncodingMode::ByteRange).build();
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("requires start_codepoint"));
+    }
+
+    #[test]
+    fn test_builder_validation_duplicates() {
+        let result = Dictionary::builder().chars(vec!['a', 'b', 'a']).build();
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Duplicate character"));
+    }
+
+    #[test]
+    fn test_builder_chunked_validation() {
+        let result = Dictionary::builder()
+            .chars(vec!['a', 'b', 'c']) // 3 is not power of 2
+            .mode(EncodingMode::Chunked)
+            .build();
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("power-of-two"));
+    }
+
+    #[test]
+    fn test_builder_padding_conflict() {
+        let result = Dictionary::builder()
+            .chars(vec!['a', 'b', 'c'])
+            .padding('b')
+            .build();
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Padding character"));
+    }
+
+    #[test]
+    fn test_builder_full_config() {
+        let dict = Dictionary::builder()
+            .chars_from_str("01")
+            .mode(EncodingMode::Chunked)
+            .padding('=')
+            .build()
+            .unwrap();
+
+        assert_eq!(dict.base(), 2);
+        assert_eq!(dict.mode(), &EncodingMode::Chunked);
+        assert_eq!(dict.padding(), Some('='));
     }
 }

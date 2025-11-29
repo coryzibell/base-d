@@ -8,13 +8,12 @@ fn get_dictionary(name: &str) -> Dictionary {
     match dictionary_config.mode {
         EncodingMode::ByteRange => {
             let start = dictionary_config.start_codepoint.unwrap();
-            Dictionary::new_with_mode_and_range(
-                Vec::new(),
-                dictionary_config.mode.clone(),
-                None,
-                Some(start),
-            )
-            .unwrap()
+            Dictionary::builder()
+                .chars(Vec::new())
+                .mode(dictionary_config.mode.clone())
+                .start_codepoint(start)
+                .build()
+                .unwrap()
         }
         _ => {
             let chars: Vec<char> = dictionary_config.chars.chars().collect();
@@ -22,7 +21,13 @@ fn get_dictionary(name: &str) -> Dictionary {
                 .padding
                 .as_ref()
                 .and_then(|s| s.chars().next());
-            Dictionary::new_with_mode(chars, dictionary_config.mode.clone(), padding).unwrap()
+            let mut builder = Dictionary::builder()
+                .chars(chars)
+                .mode(dictionary_config.mode.clone());
+            if let Some(pad) = padding {
+                builder = builder.padding(pad);
+            }
+            builder.build().unwrap()
         }
     }
 }

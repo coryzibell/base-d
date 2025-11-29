@@ -221,7 +221,10 @@ pub fn matrix_mode(
             .ok_or(format!("{} dictionary not found", current_dictionary_name))?;
 
         let chars: Vec<char> = dictionary_config.chars.chars().collect();
-        let dictionary = Dictionary::new_with_mode(chars, dictionary_config.mode.clone(), None)?;
+        let dictionary = Dictionary::builder()
+            .chars(chars)
+            .mode(dictionary_config.mode.clone())
+            .build()?;
 
         // Check if we need to switch (time-based)
         let should_switch = match &switch_mode {
