@@ -37,7 +37,7 @@ impl DictionaryDetector {
                         .build()?
                 }
                 _ => {
-                    let chars: Vec<char> = dict_config.chars.chars().collect();
+                    let chars: Vec<char> = dict_config.effective_chars()?.chars().collect();
                     let padding = dict_config.padding.as_ref().and_then(|s| s.chars().next());
                     let mut builder = Dictionary::builder()
                         .chars(chars)
@@ -363,7 +363,7 @@ mod tests {
 
         // Test with actual encoding
         let dict_config = config.get_dictionary("base64").unwrap();
-        let chars: Vec<char> = dict_config.chars.chars().collect();
+        let chars: Vec<char> = dict_config.effective_chars().unwrap().chars().collect();
         let padding = dict_config.padding.as_ref().and_then(|s| s.chars().next());
         let mut builder = Dictionary::builder()
             .chars(chars)

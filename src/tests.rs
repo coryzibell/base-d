@@ -15,7 +15,7 @@ fn get_dictionary(name: &str) -> Dictionary {
                 .unwrap()
         }
         _ => {
-            let chars: Vec<char> = dictionary_config.chars.chars().collect();
+            let chars: Vec<char> = dictionary_config.effective_chars().unwrap().chars().collect();
             let padding = dictionary_config
                 .padding
                 .as_ref()
@@ -279,7 +279,7 @@ fn test_base256_matrix_like_hex() {
     // Create radix mode version
     let config = DictionaryRegistry::load_default().unwrap();
     let matrix_config = config.get_dictionary("base256_matrix").unwrap();
-    let chars: Vec<char> = matrix_config.chars.chars().collect();
+    let chars: Vec<char> = matrix_config.effective_chars().unwrap().chars().collect();
     let dictionary_radix = Dictionary::builder()
         .chars(chars)
         .mode(EncodingMode::Radix)

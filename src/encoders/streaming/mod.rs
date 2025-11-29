@@ -29,7 +29,7 @@ mod tests {
                 .unwrap()
             }
             _ => {
-                let chars: Vec<char> = dictionary_config.chars.chars().collect();
+                let chars: Vec<char> = dictionary_config.effective_chars().unwrap().chars().collect();
                 let padding = dictionary_config
                     .padding
                     .as_ref()
