@@ -148,8 +148,8 @@ pub fn matrix_mode(
 
             // Check for ESC/Space/Enter to skip intro
             if poll(Duration::from_millis(100))? {
-                if let Event::Key(KeyEvent { code, .. }) = read()? {
-                    if matches!(code, KeyCode::Esc | KeyCode::Char(' ') | KeyCode::Enter) {
+                if let Event::Key(KeyEvent { code, .. }) = read()?
+                    && matches!(code, KeyCode::Esc | KeyCode::Char(' ') | KeyCode::Enter) {
                         if !no_color {
                             print!("\r\x1b[K");
                         } else {
@@ -157,7 +157,6 @@ pub fn matrix_mode(
                         }
                         break 'intro_loop;
                     }
-                }
             } else {
                 thread::sleep(Duration::from_millis(100));
             }
@@ -308,8 +307,8 @@ pub fn matrix_mode(
         io::stdout().flush()?;
 
         // Handle keyboard input (all modes)
-        if poll(Duration::from_millis(25))? {
-            if let Event::Key(key_event) = read()? {
+        if poll(Duration::from_millis(25))?
+            && let Event::Key(key_event) = read()? {
                 match key_event.code {
                     KeyCode::Char('c')
                         if key_event
@@ -389,7 +388,6 @@ pub fn matrix_mode(
                     _ => {}
                 }
             }
-        }
 
         if !superman {
             thread::sleep(Duration::from_millis(250));

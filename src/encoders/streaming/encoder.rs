@@ -149,7 +149,7 @@ impl<'a, W: Write> StreamingEncoder<'a, W> {
             CompressionAlgorithm::Zstd => {
                 let mut encoder =
                     zstd::stream::write::Encoder::new(output, self.compress_level as i32)
-                        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+                        .map_err(std::io::Error::other)?;
                 let hash = Self::copy_with_hash(reader, &mut encoder, hasher)?;
                 encoder.finish()?;
                 Ok(hash)
@@ -178,12 +178,12 @@ impl<'a, W: Write> StreamingEncoder<'a, W> {
 
                 let compressed = match algo {
                     CompressionAlgorithm::Lz4 => lz4::block::compress(&buffer, None, false)
-                        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?,
+                        .map_err(std::io::Error::other)?,
                     CompressionAlgorithm::Snappy => {
                         let mut encoder = snap::raw::Encoder::new();
                         encoder
                             .compress_vec(&buffer)
-                            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
+                            .map_err(std::io::Error::other)?
                     }
                     _ => unreachable!(),
                 };

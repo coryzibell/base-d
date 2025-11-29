@@ -147,8 +147,8 @@ impl Base64LutCodec {
 
         // Calculate output length based on base
         let output_len = match self.metadata.base {
-            32 => (data.len() * 8 + 4) / 5, // 5 bits per char
-            64 => (data.len() * 8 + 5) / 6, // 6 bits per char
+            32 => (data.len() * 8).div_ceil(5), // 5 bits per char
+            64 => (data.len() * 8).div_ceil(6), // 6 bits per char
             _ => return None,
         };
 
@@ -792,11 +792,10 @@ impl Base64LutCodec {
             }
 
             // Scalar remainder
-            if simd_bytes < input_no_padding.len() {
-                if !self.decode_scalar(&input_no_padding[simd_bytes..], result) {
+            if simd_bytes < input_no_padding.len()
+                && !self.decode_scalar(&input_no_padding[simd_bytes..], result) {
                     return false;
                 }
-            }
 
             true
         }
@@ -930,11 +929,10 @@ impl Base64LutCodec {
             }
 
             // Scalar remainder
-            if simd_bytes < input_no_padding.len() {
-                if !self.decode_scalar(&input_no_padding[simd_bytes..], result) {
+            if simd_bytes < input_no_padding.len()
+                && !self.decode_scalar(&input_no_padding[simd_bytes..], result) {
                     return false;
                 }
-            }
 
             true
         }

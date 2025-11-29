@@ -124,9 +124,9 @@ pub fn load_xxhash_config(
     };
 
     // Warn if secret provided for non-XXH3
-    if secret.is_some() {
-        if let Some(algo) = hash_algo {
-            if !matches!(
+    if secret.is_some()
+        && let Some(algo) = hash_algo
+            && !matches!(
                 algo,
                 base_d::HashAlgorithm::XxHash3_64 | base_d::HashAlgorithm::XxHash3_128
             ) {
@@ -136,8 +136,6 @@ pub fn load_xxhash_config(
                 );
                 return Ok(base_d::XxHashConfig::with_seed(seed));
             }
-        }
-    }
 
     match secret {
         Some(s) => base_d::XxHashConfig::with_secret(seed, s).map_err(|e| e.into()),

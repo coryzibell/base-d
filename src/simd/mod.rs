@@ -112,19 +112,17 @@ pub fn encode_with_simd(data: &[u8], dict: &Dictionary) -> Option<String> {
     let base = dict.base();
 
     // 1. Try specialized base64 for known variants
-    if base == 64 {
-        if let Some(_variant) = variants::identify_base64_variant(dict) {
+    if base == 64
+        && let Some(_variant) = variants::identify_base64_variant(dict) {
             // Use existing specialized base64 implementation
             return encode_base64_simd(data, dict);
         }
-    }
 
     // 2. Try specialized base32 for known variants
-    if base == 32 {
-        if let Some(_variant) = variants::identify_base32_variant(dict) {
+    if base == 32
+        && let Some(_variant) = variants::identify_base32_variant(dict) {
             return encode_base32_simd(data, dict);
         }
-    }
 
     // 3. Try specialized base16 for known hex variants
     if base == 16 {
@@ -145,18 +143,16 @@ pub fn encode_with_simd(data: &[u8], dict: &Dictionary) -> Option<String> {
     }
 
     // 6. Try SmallLutCodec for small arbitrary dictionaries (≤16 chars)
-    if base <= 16 && base.is_power_of_two() {
-        if let Some(codec) = SmallLutCodec::from_dictionary(dict) {
+    if base <= 16 && base.is_power_of_two()
+        && let Some(codec) = SmallLutCodec::from_dictionary(dict) {
             return codec.encode(data, dict);
         }
-    }
 
     // 7. Try Base64LutCodec for large arbitrary dictionaries (17-64 chars)
-    if (17..=64).contains(&base) && base.is_power_of_two() {
-        if let Some(codec) = Base64LutCodec::from_dictionary(dict) {
+    if (17..=64).contains(&base) && base.is_power_of_two()
+        && let Some(codec) = Base64LutCodec::from_dictionary(dict) {
             return codec.encode(data, dict);
         }
-    }
 
     // 8. No SIMD optimization available
     None
@@ -248,19 +244,17 @@ pub fn decode_with_simd(encoded: &str, dict: &Dictionary) -> Option<Vec<u8>> {
     let base = dict.base();
 
     // 1. Try specialized base64 for known variants
-    if base == 64 {
-        if variants::identify_base64_variant(dict).is_some() {
+    if base == 64
+        && variants::identify_base64_variant(dict).is_some() {
             // Use existing specialized base64 implementation
             return decode_base64_simd(encoded, dict);
         }
-    }
 
     // 2. Try specialized base32 for known variants
-    if base == 32 {
-        if variants::identify_base32_variant(dict).is_some() {
+    if base == 32
+        && variants::identify_base32_variant(dict).is_some() {
             return decode_base32_simd(encoded, dict);
         }
-    }
 
     // 3. Try specialized base16 for known hex variants
     if base == 16 {
@@ -281,18 +275,16 @@ pub fn decode_with_simd(encoded: &str, dict: &Dictionary) -> Option<Vec<u8>> {
     }
 
     // 6. Try SmallLutCodec for small arbitrary dictionaries (≤16 chars)
-    if base <= 16 && base.is_power_of_two() {
-        if let Some(codec) = SmallLutCodec::from_dictionary(dict) {
+    if base <= 16 && base.is_power_of_two()
+        && let Some(codec) = SmallLutCodec::from_dictionary(dict) {
             return codec.decode(encoded, dict);
         }
-    }
 
     // 7. Try Base64LutCodec for large arbitrary dictionaries (17-64 chars)
-    if (17..=64).contains(&base) && base.is_power_of_two() {
-        if let Some(codec) = Base64LutCodec::from_dictionary(dict) {
+    if (17..=64).contains(&base) && base.is_power_of_two()
+        && let Some(codec) = Base64LutCodec::from_dictionary(dict) {
             return codec.decode(encoded, dict);
         }
-    }
 
     // 8. No SIMD optimization available
     None
@@ -436,7 +428,7 @@ mod tests {
         for c in encoded.chars() {
             let codepoint = c as u32;
             assert!(
-                codepoint >= 0x21 && codepoint < 0x31,
+                (0x21..0x31).contains(&codepoint),
                 "Output char U+{:04X} '{}' should be in custom dictionary range U+0021..U+0031",
                 codepoint,
                 c
@@ -445,7 +437,7 @@ mod tests {
 
         // Verify first few nibbles are correctly encoded
         // 0x01 -> nibbles 0x0, 0x1 -> chars 0x21 (0 + 0x21), 0x22 (1 + 0x21)
-        assert_eq!(encoded.chars().nth(0).unwrap(), '\x21'); // 0 + 0x21 = '!'
+        assert_eq!(encoded.chars().next().unwrap(), '\x21'); // 0 + 0x21 = '!'
         assert_eq!(encoded.chars().nth(1).unwrap(), '\x22'); // 1 + 0x21 = '"'
     }
 

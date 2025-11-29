@@ -26,7 +26,7 @@ pub enum HexVariant {
 /// Automatically selects the best available SIMD implementation:
 /// - AVX2 (256-bit): Processes 32 bytes -> 64 chars per iteration
 /// - SSSE3 (128-bit): Processes 16 bytes -> 32 chars per iteration
-/// Falls back to scalar for remainder.
+///   Falls back to scalar for remainder.
 pub fn encode(data: &[u8], _dictionary: &Dictionary, variant: HexVariant) -> Option<String> {
     // Pre-allocate output (2 chars per byte)
     let output_len = data.len() * 2;
@@ -55,12 +55,12 @@ pub fn encode(data: &[u8], _dictionary: &Dictionary, variant: HexVariant) -> Opt
 /// Automatically selects the best available SIMD implementation:
 /// - AVX2 (256-bit): Processes 64 chars -> 32 bytes per iteration
 /// - SSSE3 (128-bit): Processes 32 chars -> 16 bytes per iteration
-/// Falls back to scalar for remainder.
+///   Falls back to scalar for remainder.
 pub fn decode(encoded: &str, _variant: HexVariant) -> Option<Vec<u8>> {
     let encoded_bytes = encoded.as_bytes();
 
     // Hex must have even number of chars
-    if encoded_bytes.len() % 2 != 0 {
+    if !encoded_bytes.len().is_multiple_of(2) {
         return None;
     }
 
@@ -74,10 +74,8 @@ pub fn decode(encoded: &str, _variant: HexVariant) -> Option<Vec<u8>> {
             if !decode_avx2_impl(encoded_bytes, &mut result) {
                 return None;
             }
-        } else {
-            if !decode_ssse3_impl(encoded_bytes, &mut result) {
-                return None;
-            }
+        } else if !decode_ssse3_impl(encoded_bytes, &mut result) {
+            return None;
         }
     }
 
@@ -258,11 +256,10 @@ unsafe fn decode_avx2_impl(encoded: &[u8], result: &mut Vec<u8>) -> bool {
         }
 
         // Handle remainder with SSSE3 fallback
-        if simd_bytes < encoded.len() {
-            if !decode_ssse3_impl(&encoded[simd_bytes..], result) {
+        if simd_bytes < encoded.len()
+            && !decode_ssse3_impl(&encoded[simd_bytes..], result) {
                 return false;
             }
-        }
 
         true
     }
@@ -487,11 +484,10 @@ unsafe fn decode_ssse3_impl(encoded: &[u8], result: &mut Vec<u8>) -> bool {
         }
 
         // Handle remainder with scalar fallback
-        if simd_bytes < encoded.len() {
-            if !decode_scalar_remainder(&encoded[simd_bytes..], result) {
+        if simd_bytes < encoded.len()
+            && !decode_scalar_remainder(&encoded[simd_bytes..], result) {
                 return false;
             }
-        }
 
         true
     }
@@ -551,7 +547,7 @@ unsafe fn decode_nibble_chars(
 
 /// Decode remaining bytes using scalar algorithm
 fn decode_scalar_remainder(data: &[u8], result: &mut Vec<u8>) -> bool {
-    if data.len() % 2 != 0 {
+    if !data.len().is_multiple_of(2) {
         return false;
     }
 
@@ -674,11 +670,10 @@ mod tests {
         for len in 0..100 {
             let original: Vec<u8> = (0..len).map(|i| (i * 7) as u8).collect();
 
-            if let Some(encoded) = encode(&original, &dictionary, HexVariant::Uppercase) {
-                if let Some(decoded) = decode(&encoded, HexVariant::Uppercase) {
+            if let Some(encoded) = encode(&original, &dictionary, HexVariant::Uppercase)
+                && let Some(decoded) = decode(&encoded, HexVariant::Uppercase) {
                     assert_eq!(decoded, original, "Round-trip failed at length {}", len);
                 }
-            }
         }
     }
 

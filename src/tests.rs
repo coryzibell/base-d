@@ -219,7 +219,7 @@ fn test_base1024_large_dictionary() {
         // For mathematical mode, larger base = more compact representation
         // Each 1024-base digit represents ~10 bits (log2(1024) = 10)
         let bits_in = data.len() * 8;
-        let max_chars = (bits_in + 9) / 10; // ceiling division
+        let max_chars = bits_in.div_ceil(10); // ceiling division
         assert!(
             encoded.chars().count() <= max_chars + 1,
             "Encoding too long: {} chars for {} bytes (expected <= {})",

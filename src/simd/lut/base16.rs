@@ -327,7 +327,7 @@ impl SmallLutCodec {
         }
 
         // For base16, input must have even length (2 chars per byte)
-        if encoded.len() % 2 != 0 {
+        if !encoded.len().is_multiple_of(2) {
             return None;
         }
 
@@ -424,11 +424,10 @@ impl SmallLutCodec {
             }
 
             // Scalar remainder
-            if simd_bytes < encoded.len() {
-                if !self.decode_ssse3_impl(&encoded[simd_bytes..], result) {
+            if simd_bytes < encoded.len()
+                && !self.decode_ssse3_impl(&encoded[simd_bytes..], result) {
                     return false;
                 }
-            }
 
             true
         }
@@ -485,11 +484,10 @@ impl SmallLutCodec {
             }
 
             // Scalar remainder
-            if simd_bytes < encoded.len() {
-                if !self.decode_scalar(&encoded[simd_bytes..], result) {
+            if simd_bytes < encoded.len()
+                && !self.decode_scalar(&encoded[simd_bytes..], result) {
                     return false;
                 }
-            }
 
             true
         }
@@ -753,7 +751,7 @@ mod tests {
 
         // Verify encoding correctness for first byte:
         // 0x00 -> nibbles [0x0, 0x0] -> chars[0] = 'f', chars[0] = 'f'
-        assert_eq!(encoded.chars().nth(0).unwrap(), 'f');
+        assert_eq!(encoded.chars().next().unwrap(), 'f');
         assert_eq!(encoded.chars().nth(1).unwrap(), 'f');
 
         // Verify second byte: 0x11 -> nibbles [0x1, 0x1] -> chars[1] = 'e', chars[1] = 'e'

@@ -20,10 +20,10 @@ use crate::simd::variants::Base32Variant;
 /// Automatically selects the best available SIMD implementation:
 /// - AVX2 (256-bit): Processes 20 bytes -> 32 chars per iteration
 /// - SSSE3 (128-bit): Processes 10 bytes -> 16 chars per iteration
-/// Falls back to scalar for remainder.
+///   Falls back to scalar for remainder.
 pub fn encode(data: &[u8], dictionary: &Dictionary, variant: Base32Variant) -> Option<String> {
     // Pre-allocate output
-    let output_len = ((data.len() + 4) / 5) * 8;
+    let output_len = data.len().div_ceil(5) * 8;
     let mut result = String::with_capacity(output_len);
 
     // SAFETY: Runtime detection verifies CPU feature support
@@ -60,7 +60,7 @@ fn validate_base32_padding(input: &str) -> Option<&str> {
     }
 
     // With padding, total must be multiple of 8
-    if input.len() % 8 != 0 {
+    if !input.len().is_multiple_of(8) {
         return None;
     }
 
@@ -86,7 +86,7 @@ fn validate_base32_padding(input: &str) -> Option<&str> {
 /// Automatically selects the best available SIMD implementation:
 /// - AVX2 (256-bit): Processes 32 chars -> 20 bytes per iteration
 /// - SSSE3 (128-bit): Processes 16 chars -> 10 bytes per iteration
-/// Falls back to scalar for remainder.
+///   Falls back to scalar for remainder.
 pub fn decode(encoded: &str, variant: Base32Variant) -> Option<Vec<u8>> {
     // Validate padding before processing
     let input_no_padding = validate_base32_padding(encoded)?;
@@ -113,10 +113,8 @@ pub fn decode(encoded: &str, variant: Base32Variant) -> Option<Vec<u8>> {
             if !decode_avx2_impl(encoded_bytes, variant, &mut result) {
                 return None;
             }
-        } else {
-            if !decode_ssse3_impl(encoded_bytes, variant, &mut result) {
-                return None;
-            }
+        } else if !decode_ssse3_impl(encoded_bytes, variant, &mut result) {
+            return None;
         }
     }
 
@@ -625,13 +623,13 @@ unsafe fn decode_ssse3_impl(encoded: &[u8], variant: Base32Variant, result: &mut
                 remainder,
                 &mut |c| match variant {
                     Base32Variant::Rfc4648 => match c {
-                        b'A'..=b'Z' => Some((c - b'A') as u8),
-                        b'2'..=b'7' => Some((c - b'2' + 26) as u8),
+                        b'A'..=b'Z' => Some(c - b'A'),
+                        b'2'..=b'7' => Some(c - b'2' + 26),
                         _ => None,
                     },
                     Base32Variant::Rfc4648Hex => match c {
-                        b'0'..=b'9' => Some((c - b'0') as u8),
-                        b'A'..=b'V' => Some((c - b'A' + 10) as u8),
+                        b'0'..=b'9' => Some(c - b'0'),
+                        b'A'..=b'V' => Some(c - b'A' + 10),
                         _ => None,
                     },
                 },
@@ -890,11 +888,10 @@ mod tests {
         for len in 0..100 {
             let original: Vec<u8> = (0..len).map(|i| (i * 7) as u8).collect();
 
-            if let Some(encoded) = encode(&original, &dictionary, Base32Variant::Rfc4648) {
-                if let Some(decoded) = decode(&encoded, Base32Variant::Rfc4648) {
+            if let Some(encoded) = encode(&original, &dictionary, Base32Variant::Rfc4648)
+                && let Some(decoded) = decode(&encoded, Base32Variant::Rfc4648) {
                     assert_eq!(decoded, original, "Round-trip failed at length {}", len);
                 }
-            }
         }
     }
 
@@ -905,11 +902,10 @@ mod tests {
         for len in 0..100 {
             let original: Vec<u8> = (0..len).map(|i| (i * 7) as u8).collect();
 
-            if let Some(encoded) = encode(&original, &dictionary, Base32Variant::Rfc4648Hex) {
-                if let Some(decoded) = decode(&encoded, Base32Variant::Rfc4648Hex) {
+            if let Some(encoded) = encode(&original, &dictionary, Base32Variant::Rfc4648Hex)
+                && let Some(decoded) = decode(&encoded, Base32Variant::Rfc4648Hex) {
                     assert_eq!(decoded, original, "Round-trip failed at length {}", len);
                 }
-            }
         }
     }
 
@@ -919,7 +915,7 @@ mod tests {
 
         // Test with input large enough to trigger AVX2 path (>32 bytes)
         // 40 bytes = 2 AVX2 blocks (20 bytes each)
-        let test_data: Vec<u8> = (0..40).map(|i| i).collect();
+        let test_data: Vec<u8> = (0..40).collect();
 
         if let Some(simd_result) = encode(&test_data, &dictionary, Base32Variant::Rfc4648) {
             // Verify round-trip

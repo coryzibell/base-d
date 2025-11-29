@@ -171,7 +171,7 @@ impl GenericSimdCodec {
         const BLOCK_SIZE: usize = 12;
 
         // Pre-allocate output
-        let output_len = ((data.len() + 2) / 3) * 4;
+        let output_len = data.len().div_ceil(3) * 4;
         let mut result = String::with_capacity(output_len);
 
         unsafe {
@@ -338,7 +338,7 @@ impl GenericSimdCodec {
         const BLOCK_SIZE: usize = 10; // 10 bytes -> 16 chars
 
         // Pre-allocate output
-        let output_len = ((data.len() + 4) / 5) * 8;
+        let output_len = data.len().div_ceil(5) * 8;
         let mut result = String::with_capacity(output_len);
 
         unsafe {
@@ -919,7 +919,7 @@ impl GenericSimdCodec {
 
             const BLOCK_SIZE: usize = 20; // 20 bytes -> 32 chars
 
-            let output_len = ((data.len() + 4) / 5) * 8;
+            let output_len = data.len().div_ceil(5) * 8;
             let mut result = String::with_capacity(output_len);
 
             if data.len() < 32 {
@@ -978,7 +978,7 @@ impl GenericSimdCodec {
 
             const BLOCK_SIZE: usize = 24; // 24 bytes input -> 32 chars output
 
-            let output_len = ((data.len() + 2) / 3) * 4;
+            let output_len = data.len().div_ceil(3) * 4;
             let mut result = String::with_capacity(output_len);
 
             if data.len() < 32 {
@@ -1582,7 +1582,7 @@ mod tests {
         for c in encoded.chars() {
             let codepoint = c as u32;
             assert!(
-                codepoint >= 0x21 && codepoint < 0x31,
+                (0x21..0x31).contains(&codepoint),
                 "Output char U+{:04X} '{}' should be in custom dictionary range U+0021..U+0031",
                 codepoint,
                 c
@@ -1591,7 +1591,7 @@ mod tests {
 
         // Verify first few nibbles are correctly encoded
         // 0x01 -> nibbles 0x0, 0x1 -> chars 0x21 (0 + 0x21), 0x22 (1 + 0x21)
-        assert_eq!(encoded.chars().nth(0).unwrap(), '\x21'); // 0 + 0x21 = '!'
+        assert_eq!(encoded.chars().next().unwrap(), '\x21'); // 0 + 0x21 = '!'
         assert_eq!(encoded.chars().nth(1).unwrap(), '\x22'); // 1 + 0x21 = '"'
     }
 

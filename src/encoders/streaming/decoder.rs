@@ -152,7 +152,7 @@ impl<'a, W: Write> StreamingDecoder<'a, W> {
             }
             CompressionAlgorithm::Zstd => {
                 let mut decoder = zstd::stream::read::Decoder::new(reader)
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+                    .map_err(std::io::Error::other)?;
                 Self::copy_with_hash_to_writer(&mut decoder, &mut self.writer, &mut hasher)?;
             }
             CompressionAlgorithm::Brotli => {
@@ -171,13 +171,13 @@ impl<'a, W: Write> StreamingDecoder<'a, W> {
                 let decompressed = match algo {
                     CompressionAlgorithm::Lz4 => {
                         lz4::block::decompress(&compressed, Some(100 * 1024 * 1024))
-                            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
+                            .map_err(std::io::Error::other)?
                     }
                     CompressionAlgorithm::Snappy => {
                         let mut decoder = snap::raw::Decoder::new();
                         decoder
                             .decompress_vec(&compressed)
-                            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
+                            .map_err(std::io::Error::other)?
                     }
                     _ => unreachable!(),
                 };

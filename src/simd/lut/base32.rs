@@ -365,11 +365,10 @@ impl Base64LutCodec {
             }
 
             // Scalar remainder
-            if simd_bytes < encoded.len() {
-                if !self.decode_scalar(&encoded[simd_bytes..], result) {
+            if simd_bytes < encoded.len()
+                && !self.decode_scalar(&encoded[simd_bytes..], result) {
                     return false;
                 }
-            }
 
             true
         }
@@ -483,11 +482,10 @@ impl Base64LutCodec {
             }
 
             // Scalar remainder
-            if simd_bytes < encoded.len() {
-                if !self.decode_scalar(&encoded[simd_bytes..], result) {
+            if simd_bytes < encoded.len()
+                && !self.decode_scalar(&encoded[simd_bytes..], result) {
                     return false;
                 }
-            }
 
             true
         }

@@ -14,10 +14,10 @@ use crate::simd::variants::DictionaryVariant;
 /// Automatically selects the best available SIMD implementation:
 /// - AVX2 (256-bit): Processes 24 bytes -> 32 chars per iteration
 /// - SSSE3 (128-bit): Processes 12 bytes -> 16 chars per iteration
-/// Falls back to scalar for remainder.
+///   Falls back to scalar for remainder.
 pub fn encode(data: &[u8], dictionary: &Dictionary, variant: DictionaryVariant) -> Option<String> {
     // Pre-allocate output
-    let output_len = ((data.len() + 2) / 3) * 4;
+    let output_len = data.len().div_ceil(3) * 4;
     let mut result = String::with_capacity(output_len);
 
     // SAFETY: Runtime detection verifies CPU feature support
@@ -43,7 +43,7 @@ pub fn encode(data: &[u8], dictionary: &Dictionary, variant: DictionaryVariant) 
 /// Automatically selects the best available SIMD implementation:
 /// - AVX2 (256-bit): Processes 32 chars -> 24 bytes per iteration
 /// - SSSE3 (128-bit): Processes 16 chars -> 12 bytes per iteration
-/// Falls back to scalar for remainder.
+///   Falls back to scalar for remainder.
 pub fn decode(encoded: &str, variant: DictionaryVariant) -> Option<Vec<u8>> {
     let encoded_bytes = encoded.as_bytes();
 
@@ -66,10 +66,8 @@ pub fn decode(encoded: &str, variant: DictionaryVariant) -> Option<Vec<u8>> {
             if !decode_avx2_impl(encoded_bytes, variant, &mut result) {
                 return None;
             }
-        } else {
-            if !decode_ssse3_impl(encoded_bytes, variant, &mut result) {
-                return None;
-            }
+        } else if !decode_ssse3_impl(encoded_bytes, variant, &mut result) {
+            return None;
         }
     }
 
@@ -621,9 +619,9 @@ unsafe fn decode_ssse3_impl(
             if !decode_scalar_remainder(
                 remainder,
                 &mut |c| match c {
-                    b'A'..=b'Z' => Some((c - b'A') as u8),
-                    b'a'..=b'z' => Some((c - b'a' + 26) as u8),
-                    b'0'..=b'9' => Some((c - b'0' + 52) as u8),
+                    b'A'..=b'Z' => Some(c - b'A'),
+                    b'a'..=b'z' => Some(c - b'a' + 26),
+                    b'0'..=b'9' => Some(c - b'0' + 52),
                     b'+' if matches!(variant, DictionaryVariant::Base64Standard) => Some(62),
                     b'/' if matches!(variant, DictionaryVariant::Base64Standard) => Some(63),
                     b'-' if matches!(variant, DictionaryVariant::Base64Url) => Some(62),
@@ -828,11 +826,9 @@ mod tests {
             let original: Vec<u8> = (0..len).map(|i| (i * 7) as u8).collect();
 
             if let Some(encoded) = encode(&original, &dictionary, DictionaryVariant::Base64Standard)
-            {
-                if let Some(decoded) = decode(&encoded, DictionaryVariant::Base64Standard) {
+                && let Some(decoded) = decode(&encoded, DictionaryVariant::Base64Standard) {
                     assert_eq!(decoded, original, "Round-trip failed at length {}", len);
                 }
-            }
         }
     }
 
@@ -842,7 +838,7 @@ mod tests {
 
         // Test with input large enough to trigger AVX2 path (>28 bytes)
         // 48 bytes = 2 AVX2 blocks (24 bytes each)
-        let test_data: Vec<u8> = (0..48).map(|i| i).collect();
+        let test_data: Vec<u8> = (0..48).collect();
 
         if let Some(simd_result) =
             encode(&test_data, &dictionary, DictionaryVariant::Base64Standard)

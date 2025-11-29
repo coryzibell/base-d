@@ -17,7 +17,7 @@ use crate::core::dictionary::Dictionary;
 /// Automatically selects the best available SIMD implementation:
 /// - AVX2 (256-bit): Processes 32 bytes per iteration
 /// - SSSE3 (128-bit): Processes 16 bytes per iteration
-/// Falls back to scalar for remainder.
+///   Falls back to scalar for remainder.
 pub fn encode(data: &[u8], dictionary: &Dictionary) -> Option<String> {
     // Build 256-entry LUT from dictionary
     let mut lut = ['\0'; 256];
@@ -52,7 +52,7 @@ pub fn encode(data: &[u8], dictionary: &Dictionary) -> Option<String> {
 /// Automatically selects the best available SIMD implementation:
 /// - AVX2 (256-bit): Processes 32 chars per iteration
 /// - SSSE3 (128-bit): Processes 16 chars per iteration
-/// Falls back to scalar for remainder.
+///   Falls back to scalar for remainder.
 pub fn decode(encoded: &str, dictionary: &Dictionary) -> Option<Vec<u8>> {
     // Build reverse LUT (char → byte) using HashMap for Unicode support
     use std::collections::HashMap;
@@ -74,10 +74,8 @@ pub fn decode(encoded: &str, dictionary: &Dictionary) -> Option<Vec<u8>> {
             if !decode_avx2_impl_unicode(&chars, &reverse_map, &mut result) {
                 return None;
             }
-        } else {
-            if !decode_ssse3_impl_unicode(&chars, &reverse_map, &mut result) {
-                return None;
-            }
+        } else if !decode_ssse3_impl_unicode(&chars, &reverse_map, &mut result) {
+            return None;
         }
     }
 
