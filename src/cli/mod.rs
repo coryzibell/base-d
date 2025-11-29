@@ -109,6 +109,10 @@ struct Cli {
     /// Disable colored output (respects NO_COLOR env var)
     #[arg(long)]
     pub no_color: bool,
+
+    /// Suppress informational notices (random selection warnings, etc.)
+    #[arg(short = 'q', long)]
+    pub quiet: bool,
 }
 
 #[derive(Subcommand)]
@@ -275,7 +279,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let compress_algo = match &cli.compress {
         Some(Some(algo)) => Some(base_d::CompressionAlgorithm::from_str(algo)?),
         Some(None) => Some(base_d::CompressionAlgorithm::from_str(
-            commands::select_random_compress(),
+            commands::select_random_compress(cli.quiet),
         )?),
         None => None,
     };
@@ -296,12 +300,12 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         // Resolve optional hash/compress to concrete values for streaming
         let resolved_hash = match &cli.hash {
             Some(Some(name)) => Some(name.clone()),
-            Some(None) => Some(commands::select_random_hash().to_string()),
+            Some(None) => Some(commands::select_random_hash(cli.quiet).to_string()),
             None => None,
         };
         let resolved_compress = match &cli.compress {
             Some(Some(name)) => Some(name.clone()),
-            Some(None) => Some(commands::select_random_compress().to_string()),
+            Some(None) => Some(commands::select_random_compress(cli.quiet).to_string()),
             None => None,
         };
 
@@ -394,7 +398,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(hash_opt) = &cli.hash {
         let hash_name = match hash_opt {
             Some(name) => name.clone(),
-            None => commands::select_random_hash().to_string(),
+            None => commands::select_random_hash(cli.quiet).to_string(),
         };
         let hash_algo = base_d::HashAlgorithm::from_str(&hash_name)?;
         let xxhash_config = load_xxhash_config(

@@ -49,7 +49,7 @@ pub fn parse_interval(s: &str) -> Result<SwitchInterval, Box<dyn std::error::Err
 
 /// Select a random dictionary from the registry.
 /// Only selects from dictionaries with `common=true` (renders consistently across platforms).
-/// Optionally prints a "dejavu: ..." message to stderr based on the `print_message` flag.
+/// Optionally prints a warning message to stderr based on the `print_message` flag.
 /// Returns the dictionary name.
 pub fn select_random_dictionary(
     config: &DictionaryRegistry,
@@ -70,8 +70,12 @@ pub fn select_random_dictionary(
         .choose(&mut rng)
         .ok_or("No common dictionaries available")?;
 
-    // Silently select - the puzzle is figuring out which dictionary was used
-    let _ = print_message; // Reserved for future verbose mode
+    if print_message {
+        eprintln!(
+            "Note: Using randomly selected dictionary '{}' (use --encode={} to fix)",
+            random_dict, random_dict
+        );
+    }
 
     Ok(random_dict.to_string())
 }
@@ -83,15 +87,29 @@ pub const HASH_ALGORITHMS: &[&str] = &["md5", "sha256", "sha512", "blake3", "xxh
 pub const COMPRESS_ALGORITHMS: &[&str] = &["gzip", "zstd", "brotli", "lz4"];
 
 /// Select a random hash algorithm
-pub fn select_random_hash() -> &'static str {
+pub fn select_random_hash(quiet: bool) -> &'static str {
     use rand::seq::SliceRandom;
-    HASH_ALGORITHMS.choose(&mut rand::thread_rng()).unwrap()
+    let selected = HASH_ALGORITHMS.choose(&mut rand::thread_rng()).unwrap();
+    if !quiet {
+        eprintln!(
+            "Note: Using randomly selected hash '{}' (use --hash={} to fix)",
+            selected, selected
+        );
+    }
+    selected
 }
 
 /// Select a random compression algorithm
-pub fn select_random_compress() -> &'static str {
+pub fn select_random_compress(quiet: bool) -> &'static str {
     use rand::seq::SliceRandom;
-    COMPRESS_ALGORITHMS.choose(&mut rand::thread_rng()).unwrap()
+    let selected = COMPRESS_ALGORITHMS.choose(&mut rand::thread_rng()).unwrap();
+    if !quiet {
+        eprintln!(
+            "Note: Using randomly selected compression '{}' (use --compress={} to fix)",
+            selected, selected
+        );
+    }
+    selected
 }
 
 /// Matrix mode: Stream random data as Matrix-style falling code
