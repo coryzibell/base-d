@@ -160,52 +160,54 @@ unsafe fn encode_avx2_impl(
     variant: Base32Variant,
     result: &mut String,
 ) {
-    use std::arch::x86_64::*;
+    unsafe {
+        use std::arch::x86_64::*;
 
-    const BLOCK_SIZE: usize = 20; // 20 bytes -> 32 chars
+        const BLOCK_SIZE: usize = 20; // 20 bytes -> 32 chars
 
-    // Need at least 32 bytes to safely load two 128-bit blocks (16 bytes each)
-    if data.len() < 32 {
-        // Fall back to SSSE3 for small inputs
-        encode_ssse3_impl(data, dictionary, variant, result);
-        return;
-    }
-
-    // Process blocks of 20 bytes
-    let safe_len = if data.len() >= 12 { data.len() - 12 } else { 0 };
-    let (num_rounds, simd_bytes) = common::calculate_blocks(safe_len, BLOCK_SIZE);
-
-    let mut offset = 0;
-    for _ in 0..num_rounds {
-        // Load 20 bytes as two 128-bit chunks (bytes 0-9 and 10-19)
-        // We load 16 bytes but only use 10 from each
-        let input_lo = _mm_loadu_si128(data.as_ptr().add(offset) as *const __m128i);
-        let input_hi = _mm_loadu_si128(data.as_ptr().add(offset + 10) as *const __m128i);
-
-        // Combine into 256-bit register
-        let input_256 = _mm256_set_m128i(input_hi, input_lo);
-
-        // Extract 5-bit indices from both lanes (same algorithm as SSSE3, per-lane)
-        let indices = extract_5bit_indices_avx2(input_256);
-
-        // Translate 5-bit indices to ASCII (per-lane)
-        let encoded = translate_encode_avx2(indices, variant);
-
-        // Store 32 output characters
-        let mut output_buf = [0u8; 32];
-        _mm256_storeu_si256(output_buf.as_mut_ptr() as *mut __m256i, encoded);
-
-        // Append to result (safe because base32 is ASCII)
-        for &byte in &output_buf {
-            result.push(byte as char);
+        // Need at least 32 bytes to safely load two 128-bit blocks (16 bytes each)
+        if data.len() < 32 {
+            // Fall back to SSSE3 for small inputs
+            encode_ssse3_impl(data, dictionary, variant, result);
+            return;
         }
 
-        offset += BLOCK_SIZE;
-    }
+        // Process blocks of 20 bytes
+        let safe_len = if data.len() >= 12 { data.len() - 12 } else { 0 };
+        let (num_rounds, simd_bytes) = common::calculate_blocks(safe_len, BLOCK_SIZE);
 
-    // Handle remainder with SSSE3
-    if simd_bytes < data.len() {
-        encode_ssse3_impl(&data[simd_bytes..], dictionary, variant, result);
+        let mut offset = 0;
+        for _ in 0..num_rounds {
+            // Load 20 bytes as two 128-bit chunks (bytes 0-9 and 10-19)
+            // We load 16 bytes but only use 10 from each
+            let input_lo = _mm_loadu_si128(data.as_ptr().add(offset) as *const __m128i);
+            let input_hi = _mm_loadu_si128(data.as_ptr().add(offset + 10) as *const __m128i);
+
+            // Combine into 256-bit register
+            let input_256 = _mm256_set_m128i(input_hi, input_lo);
+
+            // Extract 5-bit indices from both lanes (same algorithm as SSSE3, per-lane)
+            let indices = extract_5bit_indices_avx2(input_256);
+
+            // Translate 5-bit indices to ASCII (per-lane)
+            let encoded = translate_encode_avx2(indices, variant);
+
+            // Store 32 output characters
+            let mut output_buf = [0u8; 32];
+            _mm256_storeu_si256(output_buf.as_mut_ptr() as *mut __m256i, encoded);
+
+            // Append to result (safe because base32 is ASCII)
+            for &byte in &output_buf {
+                result.push(byte as char);
+            }
+
+            offset += BLOCK_SIZE;
+        }
+
+        // Handle remainder with SSSE3
+        if simd_bytes < data.len() {
+            encode_ssse3_impl(&data[simd_bytes..], dictionary, variant, result);
+        }
     }
 }
 
@@ -218,18 +220,20 @@ unsafe fn encode_avx2_impl(
 unsafe fn extract_5bit_indices_avx2(
     input: std::arch::x86_64::__m256i,
 ) -> std::arch::x86_64::__m256i {
-    use std::arch::x86_64::*;
+    unsafe {
+        use std::arch::x86_64::*;
 
-    // Extract both 128-bit lanes and process separately
-    let lane_lo = _mm256_castsi256_si128(input);
-    let lane_hi = _mm256_extracti128_si256(input, 1);
+        // Extract both 128-bit lanes and process separately
+        let lane_lo = _mm256_castsi256_si128(input);
+        let lane_hi = _mm256_extracti128_si256(input, 1);
 
-    // Apply SSSE3 unpacking to each lane
-    let indices_lo = unpack_5bit_simple(lane_lo);
-    let indices_hi = unpack_5bit_simple(lane_hi);
+        // Apply SSSE3 unpacking to each lane
+        let indices_lo = unpack_5bit_simple(lane_lo);
+        let indices_hi = unpack_5bit_simple(lane_hi);
 
-    // Recombine into 256-bit register
-    _mm256_set_m128i(indices_hi, indices_lo)
+        // Recombine into 256-bit register
+        _mm256_set_m128i(indices_hi, indices_lo)
+    }
 }
 
 /// Translate 5-bit indices to base32 ASCII characters (AVX2)
@@ -290,48 +294,50 @@ unsafe fn encode_ssse3_impl(
     variant: Base32Variant,
     result: &mut String,
 ) {
-    use std::arch::x86_64::*;
+    unsafe {
+        use std::arch::x86_64::*;
 
-    const BLOCK_SIZE: usize = 10; // 10 bytes -> 16 chars
+        const BLOCK_SIZE: usize = 10; // 10 bytes -> 16 chars
 
-    // Need at least 16 bytes in buffer to safely load 128 bits
-    if data.len() < 16 {
-        // Fall back to scalar for small inputs
-        encode_scalar_remainder(data, dictionary, result);
-        return;
-    }
-
-    // Process blocks of 10 bytes. We load 16 bytes but only use 10.
-    // Ensure we don't read past the buffer: need 6 extra bytes after last block
-    let safe_len = if data.len() >= 6 { data.len() - 6 } else { 0 };
-    let (num_rounds, simd_bytes) = common::calculate_blocks(safe_len, BLOCK_SIZE);
-
-    let mut offset = 0;
-    for _ in 0..num_rounds {
-        // Load 16 bytes (we only use the first 10)
-        let input_vec = _mm_loadu_si128(data.as_ptr().add(offset) as *const __m128i);
-
-        // Extract 5-bit indices from 10 packed bytes
-        let indices = extract_5bit_indices(input_vec);
-
-        // Translate 5-bit indices to ASCII
-        let encoded = translate_encode(indices, variant);
-
-        // Store 16 output characters
-        let mut output_buf = [0u8; 16];
-        _mm_storeu_si128(output_buf.as_mut_ptr() as *mut __m128i, encoded);
-
-        // Append to result (safe because base32 is ASCII)
-        for &byte in &output_buf {
-            result.push(byte as char);
+        // Need at least 16 bytes in buffer to safely load 128 bits
+        if data.len() < 16 {
+            // Fall back to scalar for small inputs
+            encode_scalar_remainder(data, dictionary, result);
+            return;
         }
 
-        offset += BLOCK_SIZE;
-    }
+        // Process blocks of 10 bytes. We load 16 bytes but only use 10.
+        // Ensure we don't read past the buffer: need 6 extra bytes after last block
+        let safe_len = if data.len() >= 6 { data.len() - 6 } else { 0 };
+        let (num_rounds, simd_bytes) = common::calculate_blocks(safe_len, BLOCK_SIZE);
 
-    // Handle remainder with scalar code
-    if simd_bytes < data.len() {
-        encode_scalar_remainder(&data[simd_bytes..], dictionary, result);
+        let mut offset = 0;
+        for _ in 0..num_rounds {
+            // Load 16 bytes (we only use the first 10)
+            let input_vec = _mm_loadu_si128(data.as_ptr().add(offset) as *const __m128i);
+
+            // Extract 5-bit indices from 10 packed bytes
+            let indices = extract_5bit_indices(input_vec);
+
+            // Translate 5-bit indices to ASCII
+            let encoded = translate_encode(indices, variant);
+
+            // Store 16 output characters
+            let mut output_buf = [0u8; 16];
+            _mm_storeu_si128(output_buf.as_mut_ptr() as *mut __m128i, encoded);
+
+            // Append to result (safe because base32 is ASCII)
+            for &byte in &output_buf {
+                result.push(byte as char);
+            }
+
+            offset += BLOCK_SIZE;
+        }
+
+        // Handle remainder with scalar code
+        if simd_bytes < data.len() {
+            encode_scalar_remainder(&data[simd_bytes..], dictionary, result);
+        }
     }
 }
 
@@ -357,8 +363,10 @@ unsafe fn encode_ssse3_impl(
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "ssse3")]
 unsafe fn extract_5bit_indices(input: std::arch::x86_64::__m128i) -> std::arch::x86_64::__m128i {
-    // Use direct extraction - 5-bit boundaries are irregular
-    unpack_5bit_simple(input)
+    unsafe {
+        // Use direct extraction - 5-bit boundaries are irregular
+        unpack_5bit_simple(input)
+    }
 }
 
 /// Simple 5-bit unpacking using direct shifts and masks
@@ -367,36 +375,38 @@ unsafe fn extract_5bit_indices(input: std::arch::x86_64::__m128i) -> std::arch::
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "ssse3")]
 unsafe fn unpack_5bit_simple(input: std::arch::x86_64::__m128i) -> std::arch::x86_64::__m128i {
-    use std::arch::x86_64::*;
+    unsafe {
+        use std::arch::x86_64::*;
 
-    // Extract bytes 0-9 into a buffer for easier manipulation
-    let mut buf = [0u8; 16];
-    _mm_storeu_si128(buf.as_mut_ptr() as *mut __m128i, input);
+        // Extract bytes 0-9 into a buffer for easier manipulation
+        let mut buf = [0u8; 16];
+        _mm_storeu_si128(buf.as_mut_ptr() as *mut __m128i, input);
 
-    // Extract 5-bit indices manually (two 5-byte groups)
-    let mut indices = [0u8; 16];
+        // Extract 5-bit indices manually (two 5-byte groups)
+        let mut indices = [0u8; 16];
 
-    // First group: bytes 0-4 -> indices 0-7
-    indices[0] = buf[0] >> 3;
-    indices[1] = ((buf[0] & 0x07) << 2) | (buf[1] >> 6);
-    indices[2] = (buf[1] >> 1) & 0x1F;
-    indices[3] = ((buf[1] & 0x01) << 4) | (buf[2] >> 4);
-    indices[4] = ((buf[2] & 0x0F) << 1) | (buf[3] >> 7);
-    indices[5] = (buf[3] >> 2) & 0x1F;
-    indices[6] = ((buf[3] & 0x03) << 3) | (buf[4] >> 5);
-    indices[7] = buf[4] & 0x1F;
+        // First group: bytes 0-4 -> indices 0-7
+        indices[0] = buf[0] >> 3;
+        indices[1] = ((buf[0] & 0x07) << 2) | (buf[1] >> 6);
+        indices[2] = (buf[1] >> 1) & 0x1F;
+        indices[3] = ((buf[1] & 0x01) << 4) | (buf[2] >> 4);
+        indices[4] = ((buf[2] & 0x0F) << 1) | (buf[3] >> 7);
+        indices[5] = (buf[3] >> 2) & 0x1F;
+        indices[6] = ((buf[3] & 0x03) << 3) | (buf[4] >> 5);
+        indices[7] = buf[4] & 0x1F;
 
-    // Second group: bytes 5-9 -> indices 8-15
-    indices[8] = buf[5] >> 3;
-    indices[9] = ((buf[5] & 0x07) << 2) | (buf[6] >> 6);
-    indices[10] = (buf[6] >> 1) & 0x1F;
-    indices[11] = ((buf[6] & 0x01) << 4) | (buf[7] >> 4);
-    indices[12] = ((buf[7] & 0x0F) << 1) | (buf[8] >> 7);
-    indices[13] = (buf[8] >> 2) & 0x1F;
-    indices[14] = ((buf[8] & 0x03) << 3) | (buf[9] >> 5);
-    indices[15] = buf[9] & 0x1F;
+        // Second group: bytes 5-9 -> indices 8-15
+        indices[8] = buf[5] >> 3;
+        indices[9] = ((buf[5] & 0x07) << 2) | (buf[6] >> 6);
+        indices[10] = (buf[6] >> 1) & 0x1F;
+        indices[11] = ((buf[6] & 0x01) << 4) | (buf[7] >> 4);
+        indices[12] = ((buf[7] & 0x0F) << 1) | (buf[8] >> 7);
+        indices[13] = (buf[8] >> 2) & 0x1F;
+        indices[14] = ((buf[8] & 0x03) << 3) | (buf[9] >> 5);
+        indices[15] = buf[9] & 0x1F;
 
-    _mm_loadu_si128(indices.as_ptr() as *const __m128i)
+        _mm_loadu_si128(indices.as_ptr() as *const __m128i)
+    }
 }
 
 /// Translate 5-bit indices (0-31) to base32 ASCII characters
@@ -458,76 +468,79 @@ unsafe fn translate_encode(
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
 unsafe fn decode_avx2_impl(encoded: &[u8], variant: Base32Variant, result: &mut Vec<u8>) -> bool {
-    use std::arch::x86_64::*;
+    unsafe {
+        use std::arch::x86_64::*;
 
-    const INPUT_BLOCK_SIZE: usize = 32;
+        const INPUT_BLOCK_SIZE: usize = 32;
 
-    // Need at least 32 bytes to use AVX2
-    if encoded.len() < 32 {
-        // Fall back to SSSE3 for small inputs
-        return decode_ssse3_impl(encoded, variant, result);
-    }
-
-    // Get decode LUTs for this variant (128-bit versions)
-    let (delta_check_128, delta_rebase_128) = get_decode_delta_tables(variant);
-
-    // Broadcast to 256-bit (duplicate in both lanes)
-    let delta_check = _mm256_broadcastsi128_si256(delta_check_128);
-    let delta_rebase = _mm256_broadcastsi128_si256(delta_rebase_128);
-
-    // Calculate number of full 32-byte blocks
-    let (num_rounds, simd_bytes) = common::calculate_blocks(encoded.len(), INPUT_BLOCK_SIZE);
-
-    // Process full blocks
-    for round in 0..num_rounds {
-        let offset = round * INPUT_BLOCK_SIZE;
-
-        // Load 32 bytes (16 chars per lane)
-        let input_vec = _mm256_loadu_si256(encoded.as_ptr().add(offset) as *const __m256i);
-
-        // Validate and translate using hash-based approach
-        // 1. Extract hash key (upper 4 bits)
-        let hash_key = _mm256_and_si256(_mm256_srli_epi32(input_vec, 4), _mm256_set1_epi8(0x0F));
-
-        // 2. Validate: check = delta_check[hash_key] + input
-        let check = _mm256_add_epi8(_mm256_shuffle_epi8(delta_check, hash_key), input_vec);
-
-        // 3. Check should be <= 0x1F (31) for valid base32 characters
-        let invalid_mask = _mm256_cmpgt_epi8(check, _mm256_set1_epi8(0x1F));
-        if _mm256_movemask_epi8(invalid_mask) != 0 {
-            return false; // Invalid characters
+        // Need at least 32 bytes to use AVX2
+        if encoded.len() < 32 {
+            // Fall back to SSSE3 for small inputs
+            return decode_ssse3_impl(encoded, variant, result);
         }
 
-        // 4. Translate: indices = input + delta_rebase[hash_key]
-        let indices = _mm256_add_epi8(input_vec, _mm256_shuffle_epi8(delta_rebase, hash_key));
+        // Get decode LUTs for this variant (128-bit versions)
+        let (delta_check_128, delta_rebase_128) = get_decode_delta_tables(variant);
 
-        // Pack 5-bit values into bytes (32 chars -> 20 bytes, per-lane)
-        let decoded = pack_5bit_to_8bit_avx2(indices);
+        // Broadcast to 256-bit (duplicate in both lanes)
+        let delta_check = _mm256_broadcastsi128_si256(delta_check_128);
+        let delta_rebase = _mm256_broadcastsi128_si256(delta_rebase_128);
 
-        // Extract 10 bytes from each 128-bit lane (20 total)
-        // Lane 0 (low): bytes 0-9
-        // Lane 1 (high): bytes 0-9 (after extracting high 128 bits)
-        let lane0 = _mm256_castsi256_si128(decoded);
-        let lane1 = _mm256_extracti128_si256(decoded, 1);
+        // Calculate number of full 32-byte blocks
+        let (num_rounds, simd_bytes) = common::calculate_blocks(encoded.len(), INPUT_BLOCK_SIZE);
 
-        let mut buf0 = [0u8; 16];
-        let mut buf1 = [0u8; 16];
-        _mm_storeu_si128(buf0.as_mut_ptr() as *mut __m128i, lane0);
-        _mm_storeu_si128(buf1.as_mut_ptr() as *mut __m128i, lane1);
+        // Process full blocks
+        for round in 0..num_rounds {
+            let offset = round * INPUT_BLOCK_SIZE;
 
-        result.extend_from_slice(&buf0[0..10]);
-        result.extend_from_slice(&buf1[0..10]);
-    }
+            // Load 32 bytes (16 chars per lane)
+            let input_vec = _mm256_loadu_si256(encoded.as_ptr().add(offset) as *const __m256i);
 
-    // Handle remainder with SSSE3 fallback
-    if simd_bytes < encoded.len() {
-        let remainder = &encoded[simd_bytes..];
-        if !decode_ssse3_impl(remainder, variant, result) {
-            return false;
+            // Validate and translate using hash-based approach
+            // 1. Extract hash key (upper 4 bits)
+            let hash_key =
+                _mm256_and_si256(_mm256_srli_epi32(input_vec, 4), _mm256_set1_epi8(0x0F));
+
+            // 2. Validate: check = delta_check[hash_key] + input
+            let check = _mm256_add_epi8(_mm256_shuffle_epi8(delta_check, hash_key), input_vec);
+
+            // 3. Check should be <= 0x1F (31) for valid base32 characters
+            let invalid_mask = _mm256_cmpgt_epi8(check, _mm256_set1_epi8(0x1F));
+            if _mm256_movemask_epi8(invalid_mask) != 0 {
+                return false; // Invalid characters
+            }
+
+            // 4. Translate: indices = input + delta_rebase[hash_key]
+            let indices = _mm256_add_epi8(input_vec, _mm256_shuffle_epi8(delta_rebase, hash_key));
+
+            // Pack 5-bit values into bytes (32 chars -> 20 bytes, per-lane)
+            let decoded = pack_5bit_to_8bit_avx2(indices);
+
+            // Extract 10 bytes from each 128-bit lane (20 total)
+            // Lane 0 (low): bytes 0-9
+            // Lane 1 (high): bytes 0-9 (after extracting high 128 bits)
+            let lane0 = _mm256_castsi256_si128(decoded);
+            let lane1 = _mm256_extracti128_si256(decoded, 1);
+
+            let mut buf0 = [0u8; 16];
+            let mut buf1 = [0u8; 16];
+            _mm_storeu_si128(buf0.as_mut_ptr() as *mut __m128i, lane0);
+            _mm_storeu_si128(buf1.as_mut_ptr() as *mut __m128i, lane1);
+
+            result.extend_from_slice(&buf0[0..10]);
+            result.extend_from_slice(&buf1[0..10]);
         }
-    }
 
-    true
+        // Handle remainder with SSSE3 fallback
+        if simd_bytes < encoded.len() {
+            let remainder = &encoded[simd_bytes..];
+            if !decode_ssse3_impl(remainder, variant, result) {
+                return false;
+            }
+        }
+
+        true
+    }
 }
 
 /// Pack 32 bytes of 5-bit indices into 20 bytes (AVX2)
@@ -539,18 +552,20 @@ unsafe fn decode_avx2_impl(encoded: &[u8], variant: Base32Variant, result: &mut 
 unsafe fn pack_5bit_to_8bit_avx2(
     indices: std::arch::x86_64::__m256i,
 ) -> std::arch::x86_64::__m256i {
-    use std::arch::x86_64::*;
+    unsafe {
+        use std::arch::x86_64::*;
 
-    // Extract both 128-bit lanes and process separately
-    let lane_lo = _mm256_castsi256_si128(indices);
-    let lane_hi = _mm256_extracti128_si256(indices, 1);
+        // Extract both 128-bit lanes and process separately
+        let lane_lo = _mm256_castsi256_si128(indices);
+        let lane_hi = _mm256_extracti128_si256(indices, 1);
 
-    // Apply SSSE3 packing to each lane
-    let packed_lo = pack_5bit_to_8bit(lane_lo);
-    let packed_hi = pack_5bit_to_8bit(lane_hi);
+        // Apply SSSE3 packing to each lane
+        let packed_lo = pack_5bit_to_8bit(lane_lo);
+        let packed_hi = pack_5bit_to_8bit(lane_hi);
 
-    // Recombine into 256-bit register
-    _mm256_set_m128i(packed_hi, packed_lo)
+        // Recombine into 256-bit register
+        _mm256_set_m128i(packed_hi, packed_lo)
+    }
 }
 
 /// SSSE3 base32 decoding implementation
@@ -560,72 +575,74 @@ unsafe fn pack_5bit_to_8bit_avx2(
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "ssse3")]
 unsafe fn decode_ssse3_impl(encoded: &[u8], variant: Base32Variant, result: &mut Vec<u8>) -> bool {
-    use std::arch::x86_64::*;
+    unsafe {
+        use std::arch::x86_64::*;
 
-    const INPUT_BLOCK_SIZE: usize = 16;
+        const INPUT_BLOCK_SIZE: usize = 16;
 
-    // Get decode LUTs for this variant
-    let (delta_check, delta_rebase) = get_decode_delta_tables(variant);
+        // Get decode LUTs for this variant
+        let (delta_check, delta_rebase) = get_decode_delta_tables(variant);
 
-    // Calculate number of full 16-byte blocks
-    let (num_rounds, simd_bytes) = common::calculate_blocks(encoded.len(), INPUT_BLOCK_SIZE);
+        // Calculate number of full 16-byte blocks
+        let (num_rounds, simd_bytes) = common::calculate_blocks(encoded.len(), INPUT_BLOCK_SIZE);
 
-    // Process full blocks
-    for round in 0..num_rounds {
-        let offset = round * INPUT_BLOCK_SIZE;
+        // Process full blocks
+        for round in 0..num_rounds {
+            let offset = round * INPUT_BLOCK_SIZE;
 
-        // Load 16 bytes
-        let input_vec = _mm_loadu_si128(encoded.as_ptr().add(offset) as *const __m128i);
+            // Load 16 bytes
+            let input_vec = _mm_loadu_si128(encoded.as_ptr().add(offset) as *const __m128i);
 
-        // Validate and translate using hash-based approach
-        // 1. Extract hash key (upper 4 bits)
-        let hash_key = _mm_and_si128(_mm_srli_epi32(input_vec, 4), _mm_set1_epi8(0x0F));
+            // Validate and translate using hash-based approach
+            // 1. Extract hash key (upper 4 bits)
+            let hash_key = _mm_and_si128(_mm_srli_epi32(input_vec, 4), _mm_set1_epi8(0x0F));
 
-        // 2. Validate: check = delta_check[hash_key] + input
-        let check = _mm_add_epi8(_mm_shuffle_epi8(delta_check, hash_key), input_vec);
+            // 2. Validate: check = delta_check[hash_key] + input
+            let check = _mm_add_epi8(_mm_shuffle_epi8(delta_check, hash_key), input_vec);
 
-        // 3. Check should be <= 0x1F (31) for valid base32 characters
-        let invalid_mask = _mm_cmpgt_epi8(check, _mm_set1_epi8(0x1F));
-        if _mm_movemask_epi8(invalid_mask) != 0 {
-            return false; // Invalid characters
+            // 3. Check should be <= 0x1F (31) for valid base32 characters
+            let invalid_mask = _mm_cmpgt_epi8(check, _mm_set1_epi8(0x1F));
+            if _mm_movemask_epi8(invalid_mask) != 0 {
+                return false; // Invalid characters
+            }
+
+            // 4. Translate: indices = input + delta_rebase[hash_key]
+            let indices = _mm_add_epi8(input_vec, _mm_shuffle_epi8(delta_rebase, hash_key));
+
+            // Pack 5-bit values into bytes (16 chars -> 10 bytes)
+            let decoded = pack_5bit_to_8bit(indices);
+
+            // Store 10 bytes
+            let mut output_buf = [0u8; 16];
+            _mm_storeu_si128(output_buf.as_mut_ptr() as *mut __m128i, decoded);
+            result.extend_from_slice(&output_buf[0..10]);
         }
 
-        // 4. Translate: indices = input + delta_rebase[hash_key]
-        let indices = _mm_add_epi8(input_vec, _mm_shuffle_epi8(delta_rebase, hash_key));
-
-        // Pack 5-bit values into bytes (16 chars -> 10 bytes)
-        let decoded = pack_5bit_to_8bit(indices);
-
-        // Store 10 bytes
-        let mut output_buf = [0u8; 16];
-        _mm_storeu_si128(output_buf.as_mut_ptr() as *mut __m128i, decoded);
-        result.extend_from_slice(&output_buf[0..10]);
-    }
-
-    // Handle remainder with scalar fallback
-    if simd_bytes < encoded.len() {
-        let remainder = &encoded[simd_bytes..];
-        if !decode_scalar_remainder(
-            remainder,
-            &mut |c| match variant {
-                Base32Variant::Rfc4648 => match c {
-                    b'A'..=b'Z' => Some((c - b'A') as u8),
-                    b'2'..=b'7' => Some((c - b'2' + 26) as u8),
-                    _ => None,
+        // Handle remainder with scalar fallback
+        if simd_bytes < encoded.len() {
+            let remainder = &encoded[simd_bytes..];
+            if !decode_scalar_remainder(
+                remainder,
+                &mut |c| match variant {
+                    Base32Variant::Rfc4648 => match c {
+                        b'A'..=b'Z' => Some((c - b'A') as u8),
+                        b'2'..=b'7' => Some((c - b'2' + 26) as u8),
+                        _ => None,
+                    },
+                    Base32Variant::Rfc4648Hex => match c {
+                        b'0'..=b'9' => Some((c - b'0') as u8),
+                        b'A'..=b'V' => Some((c - b'A' + 10) as u8),
+                        _ => None,
+                    },
                 },
-                Base32Variant::Rfc4648Hex => match c {
-                    b'0'..=b'9' => Some((c - b'0') as u8),
-                    b'A'..=b'V' => Some((c - b'A' + 10) as u8),
-                    _ => None,
-                },
-            },
-            result,
-        ) {
-            return false;
+                result,
+            ) {
+                return false;
+            }
         }
-    }
 
-    true
+        true
+    }
 }
 
 /// Get decode delta tables for hash-based validation

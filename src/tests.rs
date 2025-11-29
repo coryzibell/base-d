@@ -1,4 +1,4 @@
-use crate::{decode, encode, Dictionary, DictionaryRegistry, EncodingMode};
+use crate::{Dictionary, DictionaryRegistry, EncodingMode, decode, encode};
 
 fn get_dictionary(name: &str) -> Dictionary {
     let config = DictionaryRegistry::load_default().unwrap();

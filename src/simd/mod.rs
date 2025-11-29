@@ -25,15 +25,15 @@ mod aarch64;
 
 #[cfg(target_arch = "x86_64")]
 pub use x86_64::{
-    decode_base16_simd, decode_base256_simd, decode_base32_simd, decode_base64_simd,
-    encode_base16_simd, encode_base256_simd, encode_base32_simd, encode_base64_simd,
+    decode_base16_simd, decode_base32_simd, decode_base64_simd, decode_base256_simd,
+    encode_base16_simd, encode_base32_simd, encode_base64_simd, encode_base256_simd,
 };
 
 #[cfg(target_arch = "aarch64")]
 pub use aarch64::{
-    decode_base16_simd, decode_base256_simd, decode_base32_simd, decode_base64_simd,
-    encode_base16_simd, encode_base256_simd, encode_base32_simd, encode_base64_simd,
-    GenericSimdCodec,
+    GenericSimdCodec, decode_base16_simd, decode_base32_simd, decode_base64_simd,
+    decode_base256_simd, encode_base16_simd, encode_base32_simd, encode_base64_simd,
+    encode_base256_simd,
 };
 
 #[cfg(target_arch = "x86_64")]
@@ -399,7 +399,7 @@ fn is_standard_hex(dict: &Dictionary) -> bool {
 #[cfg(test)]
 mod tests {
     #[cfg(target_arch = "x86_64")]
-    use super::{decode_with_simd, encode_with_simd, has_ssse3, Dictionary};
+    use super::{Dictionary, decode_with_simd, encode_with_simd, has_ssse3};
     #[cfg(target_arch = "x86_64")]
     use crate::core::config::EncodingMode;
 

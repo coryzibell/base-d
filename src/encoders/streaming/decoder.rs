@@ -4,7 +4,7 @@ use crate::features::compression::CompressionAlgorithm;
 use crate::features::hashing::HashAlgorithm;
 use std::io::{Read, Write};
 
-use super::hasher::{create_hasher_writer, HasherWriter};
+use super::hasher::{HasherWriter, create_hasher_writer};
 
 const CHUNK_SIZE: usize = 4096; // 4KB chunks
 
@@ -207,7 +207,7 @@ impl<'a, W: Write> StreamingDecoder<'a, W> {
             }
 
             let chunk = &buffer[..bytes_read];
-            if let Some(ref mut h) = hasher {
+            if let Some(h) = hasher {
                 h.update(chunk);
             }
             writer.write_all(chunk)?;

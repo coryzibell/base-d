@@ -279,11 +279,7 @@ impl DictionaryDetector {
             }
             EncodingMode::BaseConversion => {
                 // Mathematical conversion can produce any length
-                if length > 0 {
-                    1.0
-                } else {
-                    0.0
-                }
+                if length > 0 { 1.0 } else { 0.0 }
             }
         }
     }

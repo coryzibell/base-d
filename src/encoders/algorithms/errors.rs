@@ -118,7 +118,10 @@ impl fmt::Display for DecodeError {
             DecodeError::InvalidPadding => {
                 if use_color {
                     writeln!(f, "\x1b[1;31merror:\x1b[0m invalid padding")?;
-                    write!(f, "\n\x1b[1;36mhint:\x1b[0m check for missing or incorrect '=' characters at end of input")?;
+                    write!(
+                        f,
+                        "\n\x1b[1;36mhint:\x1b[0m check for missing or incorrect '=' characters at end of input"
+                    )?;
                 } else {
                     writeln!(f, "error: invalid padding")?;
                     write!(
@@ -318,7 +321,8 @@ mod tests {
     #[test]
     fn test_error_display_no_color() {
         // Set NO_COLOR to disable colors for testing
-        std::env::set_var("NO_COLOR", "1");
+        // TODO: Audit that the environment access only happens in single-threaded code.
+        unsafe { std::env::set_var("NO_COLOR", "1") };
 
         let err = DecodeError::invalid_character('_', 12, "SGVsbG9faW52YWxpZA==", "A-Za-z0-9+/=");
         let display = format!("{}", err);
@@ -328,12 +332,14 @@ mod tests {
         assert!(display.contains("^"));
         assert!(display.contains("hint:"));
 
-        std::env::remove_var("NO_COLOR");
+        // TODO: Audit that the environment access only happens in single-threaded code.
+        unsafe { std::env::remove_var("NO_COLOR") };
     }
 
     #[test]
     fn test_invalid_length_error() {
-        std::env::set_var("NO_COLOR", "1");
+        // TODO: Audit that the environment access only happens in single-threaded code.
+        unsafe { std::env::set_var("NO_COLOR", "1") };
 
         let err = DecodeError::invalid_length(
             13,
@@ -347,12 +353,14 @@ mod tests {
         assert!(display.contains("multiple of 4"));
         assert!(display.contains("add padding"));
 
-        std::env::remove_var("NO_COLOR");
+        // TODO: Audit that the environment access only happens in single-threaded code.
+        unsafe { std::env::remove_var("NO_COLOR") };
     }
 
     #[test]
     fn test_dictionary_not_found_error() {
-        std::env::set_var("NO_COLOR", "1");
+        // TODO: Audit that the environment access only happens in single-threaded code.
+        unsafe { std::env::set_var("NO_COLOR", "1") };
 
         let err = DictionaryNotFoundError::new("bas64", Some("base64".to_string()));
         let display = format!("{}", err);
@@ -361,6 +369,7 @@ mod tests {
         assert!(display.contains("did you mean 'base64'?"));
         assert!(display.contains("base-d config --dictionaries"));
 
-        std::env::remove_var("NO_COLOR");
+        // TODO: Audit that the environment access only happens in single-threaded code.
+        unsafe { std::env::remove_var("NO_COLOR") };
     }
 }

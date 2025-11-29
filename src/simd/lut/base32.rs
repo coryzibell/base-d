@@ -127,88 +127,90 @@ impl Base64LutCodec {
         data: &[u8],
         result: &mut String,
     ) {
-        use std::arch::x86_64::*;
+        unsafe {
+            use std::arch::x86_64::*;
 
-        const BLOCK_SIZE: usize = 5; // 5 bytes → 8 chars (40 bits)
+            const BLOCK_SIZE: usize = 5; // 5 bytes → 8 chars (40 bits)
 
-        if data.len() < BLOCK_SIZE {
-            self.encode_scalar_base32_x86(data, result);
-            return;
-        }
-
-        let range_info = self.range_info.as_ref().unwrap();
-        let num_blocks = data.len() / BLOCK_SIZE;
-        let simd_bytes = num_blocks * BLOCK_SIZE;
-
-        // Load offset LUT once (reused for all blocks)
-        let offset_lut = _mm_loadu_si128(range_info.offset_lut.as_ptr() as *const __m128i);
-        let subs_threshold = _mm_set1_epi8(range_info.subs_threshold as i8);
-
-        let mut offset = 0;
-        for _ in 0..num_blocks {
-            // SAFETY: offset + BLOCK_SIZE <= simd_bytes <= data.len() by construction
-            // (num_blocks = data.len() / BLOCK_SIZE, simd_bytes = num_blocks * BLOCK_SIZE)
-            debug_assert!(offset + BLOCK_SIZE <= data.len());
-
-            // Extract 5 bytes → 8 x 5-bit indices from 5 bytes (40 bits)
-            let bytes = [
-                *data.get_unchecked(offset),
-                *data.get_unchecked(offset + 1),
-                *data.get_unchecked(offset + 2),
-                *data.get_unchecked(offset + 3),
-                *data.get_unchecked(offset + 4),
-            ];
-
-            let mut indices = [0u8; 16];
-            indices[0] = (bytes[0] >> 3) & 0x1F;
-            indices[1] = ((bytes[0] << 2) | (bytes[1] >> 6)) & 0x1F;
-            indices[2] = (bytes[1] >> 1) & 0x1F;
-            indices[3] = ((bytes[1] << 4) | (bytes[2] >> 4)) & 0x1F;
-            indices[4] = ((bytes[2] << 1) | (bytes[3] >> 7)) & 0x1F;
-            indices[5] = (bytes[3] >> 2) & 0x1F;
-            indices[6] = ((bytes[3] << 3) | (bytes[4] >> 5)) & 0x1F;
-            indices[7] = bytes[4] & 0x1F;
-
-            let idx_vec = _mm_loadu_si128(indices.as_ptr() as *const __m128i);
-
-            // === RANGE REDUCTION ===
-
-            // Step 1: Saturating subtraction
-            let reduced = _mm_subs_epu8(idx_vec, subs_threshold);
-
-            // Step 2: Comparison + blend (if needed for >2 ranges)
-            let compressed = if let (Some(cmp), Some(override_val)) =
-                (range_info.cmp_value, range_info.override_val)
-            {
-                let cmp_vec = _mm_set1_epi8(cmp as i8);
-                let override_vec = _mm_set1_epi8(override_val as i8);
-                let is_below = _mm_cmplt_epi8(idx_vec, cmp_vec);
-                _mm_blendv_epi8(reduced, override_vec, is_below)
-            } else {
-                reduced
-            };
-
-            // Step 3: Lookup offset (compressed index → offset)
-            let offset_vec = _mm_shuffle_epi8(offset_lut, compressed);
-
-            // Step 4: Add offset to original index
-            let chars = _mm_add_epi8(idx_vec, offset_vec);
-
-            // Store results
-            let mut output_buf = [0u8; 16];
-            _mm_storeu_si128(output_buf.as_mut_ptr() as *mut __m128i, chars);
-
-            // Append first 8 chars to result
-            for &byte in &output_buf[0..8] {
-                result.push(byte as char);
+            if data.len() < BLOCK_SIZE {
+                self.encode_scalar_base32_x86(data, result);
+                return;
             }
 
-            offset += BLOCK_SIZE;
-        }
+            let range_info = self.range_info.as_ref().unwrap();
+            let num_blocks = data.len() / BLOCK_SIZE;
+            let simd_bytes = num_blocks * BLOCK_SIZE;
 
-        // Scalar remainder
-        if simd_bytes < data.len() {
-            self.encode_scalar_base32_x86(&data[simd_bytes..], result);
+            // Load offset LUT once (reused for all blocks)
+            let offset_lut = _mm_loadu_si128(range_info.offset_lut.as_ptr() as *const __m128i);
+            let subs_threshold = _mm_set1_epi8(range_info.subs_threshold as i8);
+
+            let mut offset = 0;
+            for _ in 0..num_blocks {
+                // SAFETY: offset + BLOCK_SIZE <= simd_bytes <= data.len() by construction
+                // (num_blocks = data.len() / BLOCK_SIZE, simd_bytes = num_blocks * BLOCK_SIZE)
+                debug_assert!(offset + BLOCK_SIZE <= data.len());
+
+                // Extract 5 bytes → 8 x 5-bit indices from 5 bytes (40 bits)
+                let bytes = [
+                    *data.get_unchecked(offset),
+                    *data.get_unchecked(offset + 1),
+                    *data.get_unchecked(offset + 2),
+                    *data.get_unchecked(offset + 3),
+                    *data.get_unchecked(offset + 4),
+                ];
+
+                let mut indices = [0u8; 16];
+                indices[0] = (bytes[0] >> 3) & 0x1F;
+                indices[1] = ((bytes[0] << 2) | (bytes[1] >> 6)) & 0x1F;
+                indices[2] = (bytes[1] >> 1) & 0x1F;
+                indices[3] = ((bytes[1] << 4) | (bytes[2] >> 4)) & 0x1F;
+                indices[4] = ((bytes[2] << 1) | (bytes[3] >> 7)) & 0x1F;
+                indices[5] = (bytes[3] >> 2) & 0x1F;
+                indices[6] = ((bytes[3] << 3) | (bytes[4] >> 5)) & 0x1F;
+                indices[7] = bytes[4] & 0x1F;
+
+                let idx_vec = _mm_loadu_si128(indices.as_ptr() as *const __m128i);
+
+                // === RANGE REDUCTION ===
+
+                // Step 1: Saturating subtraction
+                let reduced = _mm_subs_epu8(idx_vec, subs_threshold);
+
+                // Step 2: Comparison + blend (if needed for >2 ranges)
+                let compressed = if let (Some(cmp), Some(override_val)) =
+                    (range_info.cmp_value, range_info.override_val)
+                {
+                    let cmp_vec = _mm_set1_epi8(cmp as i8);
+                    let override_vec = _mm_set1_epi8(override_val as i8);
+                    let is_below = _mm_cmplt_epi8(idx_vec, cmp_vec);
+                    _mm_blendv_epi8(reduced, override_vec, is_below)
+                } else {
+                    reduced
+                };
+
+                // Step 3: Lookup offset (compressed index → offset)
+                let offset_vec = _mm_shuffle_epi8(offset_lut, compressed);
+
+                // Step 4: Add offset to original index
+                let chars = _mm_add_epi8(idx_vec, offset_vec);
+
+                // Store results
+                let mut output_buf = [0u8; 16];
+                _mm_storeu_si128(output_buf.as_mut_ptr() as *mut __m128i, chars);
+
+                // Append first 8 chars to result
+                for &byte in &output_buf[0..8] {
+                    result.push(byte as char);
+                }
+
+                offset += BLOCK_SIZE;
+            }
+
+            // Scalar remainder
+            if simd_bytes < data.len() {
+                self.encode_scalar_base32_x86(&data[simd_bytes..], result);
+            }
         }
     }
 
@@ -331,81 +333,85 @@ impl Base64LutCodec {
         encoded: &[u8],
         result: &mut Vec<u8>,
     ) -> bool {
-        use std::arch::x86_64::*;
+        unsafe {
+            use std::arch::x86_64::*;
 
-        const BLOCK_SIZE: usize = 16; // 16 chars → 10 bytes
+            const BLOCK_SIZE: usize = 16; // 16 chars → 10 bytes
 
-        let range_info = self.range_info.as_ref().unwrap();
-        let num_blocks = encoded.len() / BLOCK_SIZE;
-        let simd_bytes = num_blocks * BLOCK_SIZE;
+            let range_info = self.range_info.as_ref().unwrap();
+            let num_blocks = encoded.len() / BLOCK_SIZE;
+            let simd_bytes = num_blocks * BLOCK_SIZE;
 
-        for i in 0..num_blocks {
-            let offset = i * BLOCK_SIZE;
+            for i in 0..num_blocks {
+                let offset = i * BLOCK_SIZE;
 
-            // SAFETY: offset + BLOCK_SIZE <= simd_bytes <= encoded.len() by construction
-            // (num_blocks = encoded.len() / BLOCK_SIZE, offset = i * BLOCK_SIZE where i < num_blocks)
-            debug_assert!(offset + BLOCK_SIZE <= encoded.len());
+                // SAFETY: offset + BLOCK_SIZE <= simd_bytes <= encoded.len() by construction
+                // (num_blocks = encoded.len() / BLOCK_SIZE, offset = i * BLOCK_SIZE where i < num_blocks)
+                debug_assert!(offset + BLOCK_SIZE <= encoded.len());
 
-            let chars = _mm_loadu_si128(encoded.as_ptr().add(offset) as *const __m128i);
+                let chars = _mm_loadu_si128(encoded.as_ptr().add(offset) as *const __m128i);
 
-            // === VALIDATION + TRANSLATION ===
-            let indices = match self.validate_and_translate_multi_range(chars, range_info) {
-                Some(idx) => idx,
-                None => return false,
-            };
+                // === VALIDATION + TRANSLATION ===
+                let indices = match self.validate_and_translate_multi_range(chars, range_info) {
+                    Some(idx) => idx,
+                    None => return false,
+                };
 
-            // === UNPACKING (16×5-bit → 10 bytes) ===
-            let bytes = self.unpack_5bit_ssse3(indices);
+                // === UNPACKING (16×5-bit → 10 bytes) ===
+                let bytes = self.unpack_5bit_ssse3(indices);
 
-            // Store 10 bytes
-            result.extend_from_slice(&bytes);
-        }
-
-        // Scalar remainder
-        if simd_bytes < encoded.len() {
-            if !self.decode_scalar(&encoded[simd_bytes..], result) {
-                return false;
+                // Store 10 bytes
+                result.extend_from_slice(&bytes);
             }
-        }
 
-        true
+            // Scalar remainder
+            if simd_bytes < encoded.len() {
+                if !self.decode_scalar(&encoded[simd_bytes..], result) {
+                    return false;
+                }
+            }
+
+            true
+        }
     }
 
     /// Unpack 16×5-bit indices to 10×8-bit bytes (SIMD-accelerated)
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "ssse3")]
     pub(super) unsafe fn unpack_5bit_ssse3(&self, indices: std::arch::x86_64::__m128i) -> [u8; 10] {
-        use std::arch::x86_64::*;
+        unsafe {
+            use std::arch::x86_64::*;
 
-        // Extract indices to array for bit manipulation
-        let mut idx_buf = [0u8; 16];
-        _mm_storeu_si128(idx_buf.as_mut_ptr() as *mut __m128i, indices);
+            // Extract indices to array for bit manipulation
+            let mut idx_buf = [0u8; 16];
+            _mm_storeu_si128(idx_buf.as_mut_ptr() as *mut __m128i, indices);
 
-        // Mask to 5 bits (indices may have high bits set from blending)
-        for i in 0..16 {
-            idx_buf[i] &= 0x1F;
+            // Mask to 5 bits (indices may have high bits set from blending)
+            for i in 0..16 {
+                idx_buf[i] &= 0x1F;
+            }
+
+            // Pack 16×5-bit → 10×8-bit
+            // This is complex bit manipulation - using optimized scalar for now
+            // (SIMD shuffle-based packing is ~40 ops for marginal gain)
+            let mut output = [0u8; 10];
+
+            // First 8 indices → 5 bytes
+            output[0] = (idx_buf[0] << 3) | (idx_buf[1] >> 2);
+            output[1] = (idx_buf[1] << 6) | (idx_buf[2] << 1) | (idx_buf[3] >> 4);
+            output[2] = (idx_buf[3] << 4) | (idx_buf[4] >> 1);
+            output[3] = (idx_buf[4] << 7) | (idx_buf[5] << 2) | (idx_buf[6] >> 3);
+            output[4] = (idx_buf[6] << 5) | idx_buf[7];
+
+            // Second 8 indices → 5 bytes
+            output[5] = (idx_buf[8] << 3) | (idx_buf[9] >> 2);
+            output[6] = (idx_buf[9] << 6) | (idx_buf[10] << 1) | (idx_buf[11] >> 4);
+            output[7] = (idx_buf[11] << 4) | (idx_buf[12] >> 1);
+            output[8] = (idx_buf[12] << 7) | (idx_buf[13] << 2) | (idx_buf[14] >> 3);
+            output[9] = (idx_buf[14] << 5) | idx_buf[15];
+
+            output
         }
-
-        // Pack 16×5-bit → 10×8-bit
-        // This is complex bit manipulation - using optimized scalar for now
-        // (SIMD shuffle-based packing is ~40 ops for marginal gain)
-        let mut output = [0u8; 10];
-
-        // First 8 indices → 5 bytes
-        output[0] = (idx_buf[0] << 3) | (idx_buf[1] >> 2);
-        output[1] = (idx_buf[1] << 6) | (idx_buf[2] << 1) | (idx_buf[3] >> 4);
-        output[2] = (idx_buf[3] << 4) | (idx_buf[4] >> 1);
-        output[3] = (idx_buf[4] << 7) | (idx_buf[5] << 2) | (idx_buf[6] >> 3);
-        output[4] = (idx_buf[6] << 5) | idx_buf[7];
-
-        // Second 8 indices → 5 bytes
-        output[5] = (idx_buf[8] << 3) | (idx_buf[9] >> 2);
-        output[6] = (idx_buf[9] << 6) | (idx_buf[10] << 1) | (idx_buf[11] >> 4);
-        output[7] = (idx_buf[11] << 4) | (idx_buf[12] >> 1);
-        output[8] = (idx_buf[12] << 7) | (idx_buf[13] << 2) | (idx_buf[14] >> 3);
-        output[9] = (idx_buf[14] << 5) | idx_buf[15];
-
-        output
     }
 
     /// SSSE3 base32 RFC4648 decode (range-based validation)
@@ -416,73 +422,75 @@ impl Base64LutCodec {
         encoded: &[u8],
         result: &mut Vec<u8>,
     ) -> bool {
-        use std::arch::x86_64::*;
+        unsafe {
+            use std::arch::x86_64::*;
 
-        const BLOCK_SIZE: usize = 16; // 16 chars per iteration
+            const BLOCK_SIZE: usize = 16; // 16 chars per iteration
 
-        let num_blocks = encoded.len() / BLOCK_SIZE;
-        let simd_bytes = num_blocks * BLOCK_SIZE;
+            let num_blocks = encoded.len() / BLOCK_SIZE;
+            let simd_bytes = num_blocks * BLOCK_SIZE;
 
-        for i in 0..num_blocks {
-            let offset = i * BLOCK_SIZE;
+            for i in 0..num_blocks {
+                let offset = i * BLOCK_SIZE;
 
-            // SAFETY: offset + BLOCK_SIZE <= simd_bytes <= encoded.len() by construction
-            // (num_blocks = encoded.len() / BLOCK_SIZE, offset = i * BLOCK_SIZE where i < num_blocks)
-            debug_assert!(offset + BLOCK_SIZE <= encoded.len());
+                // SAFETY: offset + BLOCK_SIZE <= simd_bytes <= encoded.len() by construction
+                // (num_blocks = encoded.len() / BLOCK_SIZE, offset = i * BLOCK_SIZE where i < num_blocks)
+                debug_assert!(offset + BLOCK_SIZE <= encoded.len());
 
-            let input = _mm_loadu_si128(encoded.as_ptr().add(offset) as *const __m128i);
+                let input = _mm_loadu_si128(encoded.as_ptr().add(offset) as *const __m128i);
 
-            // === VALIDATION (Range Checks) ===
-            // Range 1: 'A'-'Z' (65-90)
-            let ge_a = _mm_cmpgt_epi8(input, _mm_set1_epi8(64)); // c > '@'
-            let le_z = _mm_cmplt_epi8(input, _mm_set1_epi8(91)); // c < '['
-            let in_range1 = _mm_and_si128(ge_a, le_z);
+                // === VALIDATION (Range Checks) ===
+                // Range 1: 'A'-'Z' (65-90)
+                let ge_a = _mm_cmpgt_epi8(input, _mm_set1_epi8(64)); // c > '@'
+                let le_z = _mm_cmplt_epi8(input, _mm_set1_epi8(91)); // c < '['
+                let in_range1 = _mm_and_si128(ge_a, le_z);
 
-            // Range 2: '2'-'7' (50-55)
-            let ge_2 = _mm_cmpgt_epi8(input, _mm_set1_epi8(49)); // c > '1'
-            let le_7 = _mm_cmplt_epi8(input, _mm_set1_epi8(56)); // c < '8'
-            let in_range2 = _mm_and_si128(ge_2, le_7);
+                // Range 2: '2'-'7' (50-55)
+                let ge_2 = _mm_cmpgt_epi8(input, _mm_set1_epi8(49)); // c > '1'
+                let le_7 = _mm_cmplt_epi8(input, _mm_set1_epi8(56)); // c < '8'
+                let in_range2 = _mm_and_si128(ge_2, le_7);
 
-            let valid_mask = _mm_or_si128(in_range1, in_range2);
-            if _mm_movemask_epi8(valid_mask) != 0xFFFF {
-                return false;
-            }
+                let valid_mask = _mm_or_si128(in_range1, in_range2);
+                if _mm_movemask_epi8(valid_mask) != 0xFFFF {
+                    return false;
+                }
 
-            // === TRANSLATION (char → 5-bit index) ===
-            let letter_indices = _mm_sub_epi8(input, _mm_set1_epi8(65)); // 'A' → 0
-            let digit_indices =
-                _mm_add_epi8(_mm_sub_epi8(input, _mm_set1_epi8(50)), _mm_set1_epi8(26)); // '2' → 26
-            let indices = _mm_blendv_epi8(digit_indices, letter_indices, in_range1);
+                // === TRANSLATION (char → 5-bit index) ===
+                let letter_indices = _mm_sub_epi8(input, _mm_set1_epi8(65)); // 'A' → 0
+                let digit_indices =
+                    _mm_add_epi8(_mm_sub_epi8(input, _mm_set1_epi8(50)), _mm_set1_epi8(26)); // '2' → 26
+                let indices = _mm_blendv_epi8(digit_indices, letter_indices, in_range1);
 
-            // === UNPACKING (16×5-bit → 10 bytes) ===
-            // Extract to array for scalar bit manipulation
-            let mut idx_buf = [0u8; 16];
-            _mm_storeu_si128(idx_buf.as_mut_ptr() as *mut __m128i, indices);
+                // === UNPACKING (16×5-bit → 10 bytes) ===
+                // Extract to array for scalar bit manipulation
+                let mut idx_buf = [0u8; 16];
+                _mm_storeu_si128(idx_buf.as_mut_ptr() as *mut __m128i, indices);
 
-            // Manual bit packing (scalar for now)
-            let mut bit_buffer = 0u32;
-            let mut bits_in_buffer = 0;
+                // Manual bit packing (scalar for now)
+                let mut bit_buffer = 0u32;
+                let mut bits_in_buffer = 0;
 
-            for &idx in &idx_buf {
-                bit_buffer = (bit_buffer << 5) | (idx as u32);
-                bits_in_buffer += 5;
+                for &idx in &idx_buf {
+                    bit_buffer = (bit_buffer << 5) | (idx as u32);
+                    bits_in_buffer += 5;
 
-                while bits_in_buffer >= 8 {
-                    bits_in_buffer -= 8;
-                    let byte = ((bit_buffer >> bits_in_buffer) & 0xFF) as u8;
-                    result.push(byte);
+                    while bits_in_buffer >= 8 {
+                        bits_in_buffer -= 8;
+                        let byte = ((bit_buffer >> bits_in_buffer) & 0xFF) as u8;
+                        result.push(byte);
+                    }
                 }
             }
-        }
 
-        // Scalar remainder
-        if simd_bytes < encoded.len() {
-            if !self.decode_scalar(&encoded[simd_bytes..], result) {
-                return false;
+            // Scalar remainder
+            if simd_bytes < encoded.len() {
+                if !self.decode_scalar(&encoded[simd_bytes..], result) {
+                    return false;
+                }
             }
-        }
 
-        true
+            true
+        }
     }
 
     // ========================================================================

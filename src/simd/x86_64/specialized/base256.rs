@@ -105,38 +105,40 @@ pub fn decode(encoded: &str, dictionary: &Dictionary) -> Option<Vec<u8>> {
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
 unsafe fn encode_avx2_impl(data: &[u8], lut: &[char; 256], result: &mut String) {
-    use std::arch::x86_64::*;
+    unsafe {
+        use std::arch::x86_64::*;
 
-    const BLOCK_SIZE: usize = 32;
+        const BLOCK_SIZE: usize = 32;
 
-    // For small inputs, scalar is faster due to setup cost
-    if data.len() < BLOCK_SIZE {
-        encode_scalar_remainder(data, lut, result);
-        return;
-    }
-
-    let (num_rounds, simd_bytes) = common::calculate_blocks(data.len(), BLOCK_SIZE);
-
-    let mut offset = 0;
-    for _ in 0..num_rounds {
-        // Load 32 bytes with AVX2
-        let input_vec = _mm256_loadu_si256(data.as_ptr().add(offset) as *const __m256i);
-
-        // Store to buffer
-        let mut input_buf = [0u8; 32];
-        _mm256_storeu_si256(input_buf.as_mut_ptr() as *mut __m256i, input_vec);
-
-        // Translate using LUT (scalar - fastest for 256-entry table)
-        for &byte in &input_buf {
-            result.push(lut[byte as usize]);
+        // For small inputs, scalar is faster due to setup cost
+        if data.len() < BLOCK_SIZE {
+            encode_scalar_remainder(data, lut, result);
+            return;
         }
 
-        offset += BLOCK_SIZE;
-    }
+        let (num_rounds, simd_bytes) = common::calculate_blocks(data.len(), BLOCK_SIZE);
 
-    // Handle remainder with scalar code
-    if simd_bytes < data.len() {
-        encode_scalar_remainder(&data[simd_bytes..], lut, result);
+        let mut offset = 0;
+        for _ in 0..num_rounds {
+            // Load 32 bytes with AVX2
+            let input_vec = _mm256_loadu_si256(data.as_ptr().add(offset) as *const __m256i);
+
+            // Store to buffer
+            let mut input_buf = [0u8; 32];
+            _mm256_storeu_si256(input_buf.as_mut_ptr() as *mut __m256i, input_vec);
+
+            // Translate using LUT (scalar - fastest for 256-entry table)
+            for &byte in &input_buf {
+                result.push(lut[byte as usize]);
+            }
+
+            offset += BLOCK_SIZE;
+        }
+
+        // Handle remainder with scalar code
+        if simd_bytes < data.len() {
+            encode_scalar_remainder(&data[simd_bytes..], lut, result);
+        }
     }
 }
 
@@ -152,38 +154,40 @@ unsafe fn encode_avx2_impl(data: &[u8], lut: &[char; 256], result: &mut String) 
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "ssse3")]
 unsafe fn encode_ssse3_impl(data: &[u8], lut: &[char; 256], result: &mut String) {
-    use std::arch::x86_64::*;
+    unsafe {
+        use std::arch::x86_64::*;
 
-    const BLOCK_SIZE: usize = 16;
+        const BLOCK_SIZE: usize = 16;
 
-    // For small inputs, scalar is faster due to setup cost
-    if data.len() < BLOCK_SIZE {
-        encode_scalar_remainder(data, lut, result);
-        return;
-    }
-
-    let (num_rounds, simd_bytes) = common::calculate_blocks(data.len(), BLOCK_SIZE);
-
-    let mut offset = 0;
-    for _ in 0..num_rounds {
-        // Load 16 bytes with SIMD
-        let input_vec = _mm_loadu_si128(data.as_ptr().add(offset) as *const __m128i);
-
-        // Store to buffer
-        let mut input_buf = [0u8; 16];
-        _mm_storeu_si128(input_buf.as_mut_ptr() as *mut __m128i, input_vec);
-
-        // Translate using LUT (scalar - fastest for 256-entry table)
-        for &byte in &input_buf {
-            result.push(lut[byte as usize]);
+        // For small inputs, scalar is faster due to setup cost
+        if data.len() < BLOCK_SIZE {
+            encode_scalar_remainder(data, lut, result);
+            return;
         }
 
-        offset += BLOCK_SIZE;
-    }
+        let (num_rounds, simd_bytes) = common::calculate_blocks(data.len(), BLOCK_SIZE);
 
-    // Handle remainder with scalar code
-    if simd_bytes < data.len() {
-        encode_scalar_remainder(&data[simd_bytes..], lut, result);
+        let mut offset = 0;
+        for _ in 0..num_rounds {
+            // Load 16 bytes with SIMD
+            let input_vec = _mm_loadu_si128(data.as_ptr().add(offset) as *const __m128i);
+
+            // Store to buffer
+            let mut input_buf = [0u8; 16];
+            _mm_storeu_si128(input_buf.as_mut_ptr() as *mut __m128i, input_vec);
+
+            // Translate using LUT (scalar - fastest for 256-entry table)
+            for &byte in &input_buf {
+                result.push(lut[byte as usize]);
+            }
+
+            offset += BLOCK_SIZE;
+        }
+
+        // Handle remainder with scalar code
+        if simd_bytes < data.len() {
+            encode_scalar_remainder(&data[simd_bytes..], lut, result);
+        }
     }
 }
 

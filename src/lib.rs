@@ -163,11 +163,11 @@ pub use core::config::{
     CompressionConfig, DictionaryConfig, DictionaryRegistry, EncodingMode, Settings,
 };
 pub use core::dictionary::{Dictionary, DictionaryBuilder};
-pub use encoders::algorithms::{find_closest_dictionary, DecodeError, DictionaryNotFoundError};
+pub use encoders::algorithms::{DecodeError, DictionaryNotFoundError, find_closest_dictionary};
 pub use encoders::streaming::{StreamingDecoder, StreamingEncoder};
 pub use features::{
-    compress, decompress, detect_dictionary, hash, hash_with_config, CompressionAlgorithm,
-    DictionaryDetector, DictionaryMatch, HashAlgorithm, XxHashConfig,
+    CompressionAlgorithm, DictionaryDetector, DictionaryMatch, HashAlgorithm, XxHashConfig,
+    compress, decompress, detect_dictionary, hash, hash_with_config,
 };
 
 /// Encodes binary data using the specified dictionary.

@@ -1,7 +1,7 @@
 mod commands;
 mod config;
 
-use base_d::{decode, encode, DictionaryRegistry};
+use base_d::{DictionaryRegistry, decode, encode};
 use clap::{Parser, Subcommand};
 use std::fs;
 use std::io::{self, Read, Write};

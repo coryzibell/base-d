@@ -3,7 +3,7 @@ use crate::features::compression::CompressionAlgorithm;
 use crate::features::hashing::HashAlgorithm;
 use std::io::{Read, Write};
 
-use super::hasher::{create_hasher_writer, HasherWriter};
+use super::hasher::{HasherWriter, create_hasher_writer};
 
 const CHUNK_SIZE: usize = 4096; // 4KB chunks
 

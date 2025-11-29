@@ -1,10 +1,10 @@
-use base_d::{decode, encode, Dictionary, DictionaryRegistry};
+use base_d::{Dictionary, DictionaryRegistry, decode, encode};
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
 use std::time::Duration;
 
-use crossterm::event::{poll, read, Event, KeyCode, KeyEvent};
+use crossterm::event::{Event, KeyCode, KeyEvent, poll, read};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 
 use super::config::{create_dictionary, get_compression_level, load_xxhash_config};

@@ -4,4 +4,4 @@ pub mod errors;
 pub mod math;
 
 // Re-export error types for public API
-pub use errors::{find_closest_dictionary, DecodeError, DictionaryNotFoundError};
+pub use errors::{DecodeError, DictionaryNotFoundError, find_closest_dictionary};

@@ -290,11 +290,7 @@ impl SimdTranslate for SequentialTranslate {
         // Check if any lane is invalid (vmaxvq returns max across all lanes)
         let invalid = vmaxvq_u8(too_large);
 
-        if invalid == 0 {
-            Some(indices)
-        } else {
-            None
-        }
+        if invalid == 0 { Some(indices) } else { None }
     }
 
     #[target_feature(enable = "neon")]

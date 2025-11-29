@@ -1,4 +1,4 @@
-use base_d::{decode, encode, Dictionary};
+use base_d::{Dictionary, decode, encode};
 
 fn main() {
     // Create a custom dictionary with just 4 DNA bases

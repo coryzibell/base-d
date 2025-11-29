@@ -164,7 +164,10 @@ impl Dictionary {
                 && base != 128
                 && base != 256
             {
-                return Err(format!("Chunked mode requires dictionary size of 2, 4, 8, 16, 32, 64, 128, or 256, got {}", base));
+                return Err(format!(
+                    "Chunked mode requires dictionary size of 2, 4, 8, 16, 32, 64, 128, or 256, got {}",
+                    base
+                ));
             }
         }
 

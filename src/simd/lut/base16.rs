@@ -125,60 +125,62 @@ impl SmallLutCodec {
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "avx2")]
     unsafe fn encode_avx2_impl(&self, data: &[u8], result: &mut String) {
-        use std::arch::x86_64::*;
+        unsafe {
+            use std::arch::x86_64::*;
 
-        const BLOCK_SIZE: usize = 32;
+            const BLOCK_SIZE: usize = 32;
 
-        if data.len() < BLOCK_SIZE {
-            self.encode_ssse3_impl(data, result);
-            return;
-        }
-
-        let num_blocks = data.len() / BLOCK_SIZE;
-        let simd_bytes = num_blocks * BLOCK_SIZE;
-
-        // Load 128-bit LUT and broadcast to both lanes
-        let lut_128 = _mm_loadu_si128(self.encode_lut.as_ptr() as *const __m128i);
-        let lut_256 = _mm256_broadcastsi128_si256(lut_128);
-        let mask_0f = _mm256_set1_epi8(0x0F);
-
-        let mut offset = 0;
-        for _ in 0..num_blocks {
-            // Load 32 bytes
-            let input_vec = _mm256_loadu_si256(data.as_ptr().add(offset) as *const __m256i);
-
-            // Extract nibbles (lane-independent)
-            let hi_nibbles = _mm256_and_si256(_mm256_srli_epi32(input_vec, 4), mask_0f);
-            let lo_nibbles = _mm256_and_si256(input_vec, mask_0f);
-
-            // Translate using broadcast LUT (lane-independent shuffle)
-            let hi_ascii = _mm256_shuffle_epi8(lut_256, hi_nibbles);
-            let lo_ascii = _mm256_shuffle_epi8(lut_256, lo_nibbles);
-
-            // Interleave (per-lane, then cross-lane permute)
-            let lane0_lo = _mm256_unpacklo_epi8(hi_ascii, lo_ascii);
-            let lane0_hi = _mm256_unpackhi_epi8(hi_ascii, lo_ascii);
-
-            // Cross-lane permute
-            let result_lo = _mm256_permute2x128_si256(lane0_lo, lane0_hi, 0x20);
-            let result_hi = _mm256_permute2x128_si256(lane0_lo, lane0_hi, 0x31);
-
-            // Store 64 chars
-            let mut output_buf = [0u8; 64];
-            _mm256_storeu_si256(output_buf.as_mut_ptr() as *mut __m256i, result_lo);
-            _mm256_storeu_si256(output_buf.as_mut_ptr().add(32) as *mut __m256i, result_hi);
-
-            // Append to result (ASCII characters)
-            for &byte in &output_buf {
-                result.push(byte as char);
+            if data.len() < BLOCK_SIZE {
+                self.encode_ssse3_impl(data, result);
+                return;
             }
 
-            offset += BLOCK_SIZE;
-        }
+            let num_blocks = data.len() / BLOCK_SIZE;
+            let simd_bytes = num_blocks * BLOCK_SIZE;
 
-        // Handle remainder with SSSE3
-        if simd_bytes < data.len() {
-            self.encode_ssse3_impl(&data[simd_bytes..], result);
+            // Load 128-bit LUT and broadcast to both lanes
+            let lut_128 = _mm_loadu_si128(self.encode_lut.as_ptr() as *const __m128i);
+            let lut_256 = _mm256_broadcastsi128_si256(lut_128);
+            let mask_0f = _mm256_set1_epi8(0x0F);
+
+            let mut offset = 0;
+            for _ in 0..num_blocks {
+                // Load 32 bytes
+                let input_vec = _mm256_loadu_si256(data.as_ptr().add(offset) as *const __m256i);
+
+                // Extract nibbles (lane-independent)
+                let hi_nibbles = _mm256_and_si256(_mm256_srli_epi32(input_vec, 4), mask_0f);
+                let lo_nibbles = _mm256_and_si256(input_vec, mask_0f);
+
+                // Translate using broadcast LUT (lane-independent shuffle)
+                let hi_ascii = _mm256_shuffle_epi8(lut_256, hi_nibbles);
+                let lo_ascii = _mm256_shuffle_epi8(lut_256, lo_nibbles);
+
+                // Interleave (per-lane, then cross-lane permute)
+                let lane0_lo = _mm256_unpacklo_epi8(hi_ascii, lo_ascii);
+                let lane0_hi = _mm256_unpackhi_epi8(hi_ascii, lo_ascii);
+
+                // Cross-lane permute
+                let result_lo = _mm256_permute2x128_si256(lane0_lo, lane0_hi, 0x20);
+                let result_hi = _mm256_permute2x128_si256(lane0_lo, lane0_hi, 0x31);
+
+                // Store 64 chars
+                let mut output_buf = [0u8; 64];
+                _mm256_storeu_si256(output_buf.as_mut_ptr() as *mut __m256i, result_lo);
+                _mm256_storeu_si256(output_buf.as_mut_ptr().add(32) as *mut __m256i, result_hi);
+
+                // Append to result (ASCII characters)
+                for &byte in &output_buf {
+                    result.push(byte as char);
+                }
+
+                offset += BLOCK_SIZE;
+            }
+
+            // Handle remainder with SSSE3
+            if simd_bytes < data.len() {
+                self.encode_ssse3_impl(&data[simd_bytes..], result);
+            }
         }
     }
 
@@ -186,57 +188,59 @@ impl SmallLutCodec {
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "ssse3")]
     unsafe fn encode_ssse3_impl(&self, data: &[u8], result: &mut String) {
-        use std::arch::x86_64::*;
+        unsafe {
+            use std::arch::x86_64::*;
 
-        const BLOCK_SIZE: usize = 16;
+            const BLOCK_SIZE: usize = 16;
 
-        if data.len() < BLOCK_SIZE {
-            self.encode_scalar(data, result);
-            return;
-        }
-
-        let num_blocks = data.len() / BLOCK_SIZE;
-        let simd_bytes = num_blocks * BLOCK_SIZE;
-
-        // Load LUT into XMM register
-        let lut = _mm_loadu_si128(self.encode_lut.as_ptr() as *const __m128i);
-        let mask_0f = _mm_set1_epi8(0x0F);
-
-        let mut offset = 0;
-        for _ in 0..num_blocks {
-            // Load 16 bytes
-            let input_vec = _mm_loadu_si128(data.as_ptr().add(offset) as *const __m128i);
-
-            // Extract high nibbles (shift right by 4)
-            let hi_nibbles = _mm_and_si128(_mm_srli_epi32(input_vec, 4), mask_0f);
-
-            // Extract low nibbles
-            let lo_nibbles = _mm_and_si128(input_vec, mask_0f);
-
-            // Translate nibbles to ASCII using pshufb
-            let hi_ascii = _mm_shuffle_epi8(lut, hi_nibbles);
-            let lo_ascii = _mm_shuffle_epi8(lut, lo_nibbles);
-
-            // Interleave high and low bytes: hi[0], lo[0], hi[1], lo[1], ...
-            let result_lo = _mm_unpacklo_epi8(hi_ascii, lo_ascii);
-            let result_hi = _mm_unpackhi_epi8(hi_ascii, lo_ascii);
-
-            // Store 32 output characters
-            let mut output_buf = [0u8; 32];
-            _mm_storeu_si128(output_buf.as_mut_ptr() as *mut __m128i, result_lo);
-            _mm_storeu_si128(output_buf.as_mut_ptr().add(16) as *mut __m128i, result_hi);
-
-            // Append to result (ASCII characters)
-            for &byte in &output_buf {
-                result.push(byte as char);
+            if data.len() < BLOCK_SIZE {
+                self.encode_scalar(data, result);
+                return;
             }
 
-            offset += BLOCK_SIZE;
-        }
+            let num_blocks = data.len() / BLOCK_SIZE;
+            let simd_bytes = num_blocks * BLOCK_SIZE;
 
-        // Handle remainder with scalar
-        if simd_bytes < data.len() {
-            self.encode_scalar(&data[simd_bytes..], result);
+            // Load LUT into XMM register
+            let lut = _mm_loadu_si128(self.encode_lut.as_ptr() as *const __m128i);
+            let mask_0f = _mm_set1_epi8(0x0F);
+
+            let mut offset = 0;
+            for _ in 0..num_blocks {
+                // Load 16 bytes
+                let input_vec = _mm_loadu_si128(data.as_ptr().add(offset) as *const __m128i);
+
+                // Extract high nibbles (shift right by 4)
+                let hi_nibbles = _mm_and_si128(_mm_srli_epi32(input_vec, 4), mask_0f);
+
+                // Extract low nibbles
+                let lo_nibbles = _mm_and_si128(input_vec, mask_0f);
+
+                // Translate nibbles to ASCII using pshufb
+                let hi_ascii = _mm_shuffle_epi8(lut, hi_nibbles);
+                let lo_ascii = _mm_shuffle_epi8(lut, lo_nibbles);
+
+                // Interleave high and low bytes: hi[0], lo[0], hi[1], lo[1], ...
+                let result_lo = _mm_unpacklo_epi8(hi_ascii, lo_ascii);
+                let result_hi = _mm_unpackhi_epi8(hi_ascii, lo_ascii);
+
+                // Store 32 output characters
+                let mut output_buf = [0u8; 32];
+                _mm_storeu_si128(output_buf.as_mut_ptr() as *mut __m128i, result_lo);
+                _mm_storeu_si128(output_buf.as_mut_ptr().add(16) as *mut __m128i, result_hi);
+
+                // Append to result (ASCII characters)
+                for &byte in &output_buf {
+                    result.push(byte as char);
+                }
+
+                offset += BLOCK_SIZE;
+            }
+
+            // Handle remainder with scalar
+            if simd_bytes < data.len() {
+                self.encode_scalar(&data[simd_bytes..], result);
+            }
         }
     }
 
@@ -348,147 +352,147 @@ impl SmallLutCodec {
         #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
         let success = self.decode_scalar(encoded_bytes, &mut result);
 
-        if success {
-            Some(result)
-        } else {
-            None
-        }
+        if success { Some(result) } else { None }
     }
 
     /// x86_64 AVX2 decode implementation
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "avx2")]
     unsafe fn decode_avx2_impl(&self, encoded: &[u8], result: &mut Vec<u8>) -> bool {
-        use std::arch::x86_64::*;
+        unsafe {
+            use std::arch::x86_64::*;
 
-        const BLOCK_SIZE: usize = 32; // 32 chars → 16 bytes
+            const BLOCK_SIZE: usize = 32; // 32 chars → 16 bytes
 
-        if encoded.len() < BLOCK_SIZE {
-            return self.decode_ssse3_impl(encoded, result);
-        }
-
-        // Load 128-bit LUT and broadcast to both lanes
-        let lut_128 = _mm_loadu_si128(self.encode_lut.as_ptr() as *const __m128i);
-        let lut_256 = _mm256_broadcastsi128_si256(lut_128);
-
-        let num_blocks = encoded.len() / BLOCK_SIZE;
-        let simd_bytes = num_blocks * BLOCK_SIZE;
-
-        for i in 0..num_blocks {
-            let offset = i * BLOCK_SIZE;
-            let input = _mm256_loadu_si256(encoded.as_ptr().add(offset) as *const __m256i);
-
-            // Exhaustive search for indices (16 parallel comparisons per lane)
-            let mut indices = _mm256_setzero_si256();
-            for j in 0..16 {
-                let candidate = _mm256_set1_epi8(self.encode_lut[j] as i8);
-                let match_mask = _mm256_cmpeq_epi8(input, candidate);
-                let idx_vec = _mm256_set1_epi8(j as i8);
-                indices = _mm256_blendv_epi8(indices, idx_vec, match_mask);
+            if encoded.len() < BLOCK_SIZE {
+                return self.decode_ssse3_impl(encoded, result);
             }
 
-            // Validate by reverse lookup
-            let validated = _mm256_shuffle_epi8(lut_256, indices);
-            let is_valid = _mm256_cmpeq_epi8(validated, input);
-            if _mm256_movemask_epi8(is_valid) != -1 {
-                return false; // Invalid character
+            // Load 128-bit LUT and broadcast to both lanes
+            let lut_128 = _mm_loadu_si128(self.encode_lut.as_ptr() as *const __m128i);
+            let lut_256 = _mm256_broadcastsi128_si256(lut_128);
+
+            let num_blocks = encoded.len() / BLOCK_SIZE;
+            let simd_bytes = num_blocks * BLOCK_SIZE;
+
+            for i in 0..num_blocks {
+                let offset = i * BLOCK_SIZE;
+                let input = _mm256_loadu_si256(encoded.as_ptr().add(offset) as *const __m256i);
+
+                // Exhaustive search for indices (16 parallel comparisons per lane)
+                let mut indices = _mm256_setzero_si256();
+                for j in 0..16 {
+                    let candidate = _mm256_set1_epi8(self.encode_lut[j] as i8);
+                    let match_mask = _mm256_cmpeq_epi8(input, candidate);
+                    let idx_vec = _mm256_set1_epi8(j as i8);
+                    indices = _mm256_blendv_epi8(indices, idx_vec, match_mask);
+                }
+
+                // Validate by reverse lookup
+                let validated = _mm256_shuffle_epi8(lut_256, indices);
+                let is_valid = _mm256_cmpeq_epi8(validated, input);
+                if _mm256_movemask_epi8(is_valid) != -1 {
+                    return false; // Invalid character
+                }
+
+                // Pack nibbles: Extract even bytes (high nibbles) and odd bytes (low nibbles)
+                let shuffle_even = _mm256_setr_epi8(
+                    0, 2, 4, 6, 8, 10, 12, 14, -1, -1, -1, -1, -1, -1, -1, -1, 0, 2, 4, 6, 8, 10,
+                    12, 14, -1, -1, -1, -1, -1, -1, -1, -1,
+                );
+                let shuffle_odd = _mm256_setr_epi8(
+                    1, 3, 5, 7, 9, 11, 13, 15, -1, -1, -1, -1, -1, -1, -1, -1, 1, 3, 5, 7, 9, 11,
+                    13, 15, -1, -1, -1, -1, -1, -1, -1, -1,
+                );
+
+                let hi_nibbles = _mm256_shuffle_epi8(indices, shuffle_even);
+                let lo_nibbles = _mm256_shuffle_epi8(indices, shuffle_odd);
+
+                let packed = _mm256_or_si256(_mm256_slli_epi32(hi_nibbles, 4), lo_nibbles);
+
+                // Store 16 output bytes (8 from each lane)
+                let lane0 = _mm256_castsi256_si128(packed);
+                let lane1 = _mm256_extracti128_si256(packed, 1);
+
+                let mut buf0 = [0u8; 16];
+                let mut buf1 = [0u8; 16];
+                _mm_storeu_si128(buf0.as_mut_ptr() as *mut __m128i, lane0);
+                _mm_storeu_si128(buf1.as_mut_ptr() as *mut __m128i, lane1);
+
+                result.extend_from_slice(&buf0[0..8]);
+                result.extend_from_slice(&buf1[0..8]);
             }
 
-            // Pack nibbles: Extract even bytes (high nibbles) and odd bytes (low nibbles)
-            let shuffle_even = _mm256_setr_epi8(
-                0, 2, 4, 6, 8, 10, 12, 14, -1, -1, -1, -1, -1, -1, -1, -1, 0, 2, 4, 6, 8, 10, 12,
-                14, -1, -1, -1, -1, -1, -1, -1, -1,
-            );
-            let shuffle_odd = _mm256_setr_epi8(
-                1, 3, 5, 7, 9, 11, 13, 15, -1, -1, -1, -1, -1, -1, -1, -1, 1, 3, 5, 7, 9, 11, 13,
-                15, -1, -1, -1, -1, -1, -1, -1, -1,
-            );
-
-            let hi_nibbles = _mm256_shuffle_epi8(indices, shuffle_even);
-            let lo_nibbles = _mm256_shuffle_epi8(indices, shuffle_odd);
-
-            let packed = _mm256_or_si256(_mm256_slli_epi32(hi_nibbles, 4), lo_nibbles);
-
-            // Store 16 output bytes (8 from each lane)
-            let lane0 = _mm256_castsi256_si128(packed);
-            let lane1 = _mm256_extracti128_si256(packed, 1);
-
-            let mut buf0 = [0u8; 16];
-            let mut buf1 = [0u8; 16];
-            _mm_storeu_si128(buf0.as_mut_ptr() as *mut __m128i, lane0);
-            _mm_storeu_si128(buf1.as_mut_ptr() as *mut __m128i, lane1);
-
-            result.extend_from_slice(&buf0[0..8]);
-            result.extend_from_slice(&buf1[0..8]);
-        }
-
-        // Scalar remainder
-        if simd_bytes < encoded.len() {
-            if !self.decode_ssse3_impl(&encoded[simd_bytes..], result) {
-                return false;
+            // Scalar remainder
+            if simd_bytes < encoded.len() {
+                if !self.decode_ssse3_impl(&encoded[simd_bytes..], result) {
+                    return false;
+                }
             }
-        }
 
-        true
+            true
+        }
     }
 
     /// x86_64 SSSE3 decode implementation
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "ssse3")]
     unsafe fn decode_ssse3_impl(&self, encoded: &[u8], result: &mut Vec<u8>) -> bool {
-        use std::arch::x86_64::*;
+        unsafe {
+            use std::arch::x86_64::*;
 
-        const BLOCK_SIZE: usize = 16; // 16 chars → 8 bytes
+            const BLOCK_SIZE: usize = 16; // 16 chars → 8 bytes
 
-        let inverse_lut = _mm_loadu_si128(self.encode_lut.as_ptr() as *const __m128i);
+            let inverse_lut = _mm_loadu_si128(self.encode_lut.as_ptr() as *const __m128i);
 
-        let num_blocks = encoded.len() / BLOCK_SIZE;
-        let simd_bytes = num_blocks * BLOCK_SIZE;
+            let num_blocks = encoded.len() / BLOCK_SIZE;
+            let simd_bytes = num_blocks * BLOCK_SIZE;
 
-        for i in 0..num_blocks {
-            let offset = i * BLOCK_SIZE;
-            let input = _mm_loadu_si128(encoded.as_ptr().add(offset) as *const __m128i);
+            for i in 0..num_blocks {
+                let offset = i * BLOCK_SIZE;
+                let input = _mm_loadu_si128(encoded.as_ptr().add(offset) as *const __m128i);
 
-            // Exhaustive search for indices (16 parallel comparisons)
-            let mut indices = _mm_setzero_si128();
-            for j in 0..16 {
-                let candidate = _mm_set1_epi8(self.encode_lut[j] as i8);
-                let match_mask = _mm_cmpeq_epi8(input, candidate);
-                let idx_vec = _mm_set1_epi8(j as i8);
-                indices = _mm_blendv_epi8(indices, idx_vec, match_mask);
+                // Exhaustive search for indices (16 parallel comparisons)
+                let mut indices = _mm_setzero_si128();
+                for j in 0..16 {
+                    let candidate = _mm_set1_epi8(self.encode_lut[j] as i8);
+                    let match_mask = _mm_cmpeq_epi8(input, candidate);
+                    let idx_vec = _mm_set1_epi8(j as i8);
+                    indices = _mm_blendv_epi8(indices, idx_vec, match_mask);
+                }
+
+                // Validate by reverse lookup
+                let validated = _mm_shuffle_epi8(inverse_lut, indices);
+                let is_valid = _mm_cmpeq_epi8(validated, input);
+                if _mm_movemask_epi8(is_valid) != 0xFFFF {
+                    return false; // Invalid character
+                }
+
+                // Pack nibbles: Extract even bytes (high nibbles) and odd bytes (low nibbles)
+                let shuffle_even =
+                    _mm_setr_epi8(0, 2, 4, 6, 8, 10, 12, 14, -1, -1, -1, -1, -1, -1, -1, -1);
+                let shuffle_odd =
+                    _mm_setr_epi8(1, 3, 5, 7, 9, 11, 13, 15, -1, -1, -1, -1, -1, -1, -1, -1);
+
+                let hi_nibbles = _mm_shuffle_epi8(indices, shuffle_even);
+                let lo_nibbles = _mm_shuffle_epi8(indices, shuffle_odd);
+
+                let packed = _mm_or_si128(_mm_slli_epi32(hi_nibbles, 4), lo_nibbles);
+
+                let mut output_buf = [0u8; 16];
+                _mm_storeu_si128(output_buf.as_mut_ptr() as *mut __m128i, packed);
+                result.extend_from_slice(&output_buf[0..8]);
             }
 
-            // Validate by reverse lookup
-            let validated = _mm_shuffle_epi8(inverse_lut, indices);
-            let is_valid = _mm_cmpeq_epi8(validated, input);
-            if _mm_movemask_epi8(is_valid) != 0xFFFF {
-                return false; // Invalid character
+            // Scalar remainder
+            if simd_bytes < encoded.len() {
+                if !self.decode_scalar(&encoded[simd_bytes..], result) {
+                    return false;
+                }
             }
 
-            // Pack nibbles: Extract even bytes (high nibbles) and odd bytes (low nibbles)
-            let shuffle_even =
-                _mm_setr_epi8(0, 2, 4, 6, 8, 10, 12, 14, -1, -1, -1, -1, -1, -1, -1, -1);
-            let shuffle_odd =
-                _mm_setr_epi8(1, 3, 5, 7, 9, 11, 13, 15, -1, -1, -1, -1, -1, -1, -1, -1);
-
-            let hi_nibbles = _mm_shuffle_epi8(indices, shuffle_even);
-            let lo_nibbles = _mm_shuffle_epi8(indices, shuffle_odd);
-
-            let packed = _mm_or_si128(_mm_slli_epi32(hi_nibbles, 4), lo_nibbles);
-
-            let mut output_buf = [0u8; 16];
-            _mm_storeu_si128(output_buf.as_mut_ptr() as *mut __m128i, packed);
-            result.extend_from_slice(&output_buf[0..8]);
+            true
         }
-
-        // Scalar remainder
-        if simd_bytes < encoded.len() {
-            if !self.decode_scalar(&encoded[simd_bytes..], result) {
-                return false;
-            }
-        }
-
-        true
     }
 
     /// aarch64 NEON decode implementation
