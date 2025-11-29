@@ -15,14 +15,16 @@ fn get_dictionary(name: &str) -> Dictionary {
                 .unwrap()
         }
         _ => {
-            let chars: Vec<char> = dictionary_config.effective_chars().unwrap().chars().collect();
+            let chars: Vec<char> = dictionary_config
+                .effective_chars()
+                .unwrap()
+                .chars()
+                .collect();
             let padding = dictionary_config
                 .padding
                 .as_ref()
                 .and_then(|s| s.chars().next());
-            let mut builder = Dictionary::builder()
-                .chars(chars)
-                .mode(effective_mode);
+            let mut builder = Dictionary::builder().chars(chars).mode(effective_mode);
             if let Some(p) = padding {
                 builder = builder.padding(p);
             }

@@ -67,7 +67,9 @@ impl DictionaryConfig {
 
         // Generate from start + length range
         if let (Some(start_str), Some(length)) = (&self.start, self.length) {
-            let start_char = start_str.chars().next()
+            let start_char = start_str
+                .chars()
+                .next()
                 .ok_or("start must contain at least one character")?;
             let start_codepoint = start_char as u32;
 
@@ -88,7 +90,8 @@ impl DictionaryConfig {
             return Err("length must be greater than 0".to_string());
         }
 
-        let end = start.checked_add(length as u32 - 1)
+        let end = start
+            .checked_add(length as u32 - 1)
             .ok_or("range exceeds maximum Unicode codepoint")?;
 
         if end > MAX_UNICODE {
@@ -342,7 +345,7 @@ mod tests {
     fn test_explicit_mode_override() {
         // Explicit mode overrides auto-detection
         let config = DictionaryConfig {
-            chars: "ABCD".to_string(), // Would be Chunked
+            chars: "ABCD".to_string(),       // Would be Chunked
             mode: Some(EncodingMode::Radix), // But explicitly set to Radix
             padding: None,
             start_codepoint: None,
@@ -491,7 +494,7 @@ mode = "base_conversion"
             padding: None,
             start_codepoint: None,
             start: Some("\u{D700}".to_string()), // Just before surrogates
-            length: Some(512), // Would cross into surrogate range
+            length: Some(512),                   // Would cross into surrogate range
             common: true,
         };
         assert!(config.effective_chars().is_err());
@@ -506,7 +509,7 @@ mode = "base_conversion"
             padding: None,
             start_codepoint: None,
             start: Some("\u{10FFFE}".to_string()), // Near end of Unicode
-            length: Some(10), // Would exceed U+10FFFF
+            length: Some(10),                      // Would exceed U+10FFFF
             common: true,
         };
         assert!(config.effective_chars().is_err());

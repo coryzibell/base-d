@@ -53,16 +53,16 @@ pub fn create_dictionary(
                 .map_err(|e| format!("Invalid dictionary: {}", e))?
         }
         _ => {
-            let chars: Vec<char> = dictionary_config.effective_chars()
+            let chars: Vec<char> = dictionary_config
+                .effective_chars()
                 .map_err(|e| format!("Invalid dictionary config: {}", e))?
-                .chars().collect();
+                .chars()
+                .collect();
             let padding = dictionary_config
                 .padding
                 .as_ref()
                 .and_then(|s| s.chars().next());
-            let mut builder = Dictionary::builder()
-                .chars(chars)
-                .mode(effective_mode);
+            let mut builder = Dictionary::builder().chars(chars).mode(effective_mode);
             if let Some(pad) = padding {
                 builder = builder.padding(pad);
             }

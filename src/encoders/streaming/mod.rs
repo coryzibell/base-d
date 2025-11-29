@@ -20,16 +20,15 @@ mod tests {
         match effective_mode {
             crate::core::config::EncodingMode::ByteRange => {
                 let start = dictionary_config.start_codepoint.unwrap();
-                Dictionary::new_with_mode_and_range(
-                    Vec::new(),
-                    effective_mode,
-                    None,
-                    Some(start),
-                )
-                .unwrap()
+                Dictionary::new_with_mode_and_range(Vec::new(), effective_mode, None, Some(start))
+                    .unwrap()
             }
             _ => {
-                let chars: Vec<char> = dictionary_config.effective_chars().unwrap().chars().collect();
+                let chars: Vec<char> = dictionary_config
+                    .effective_chars()
+                    .unwrap()
+                    .chars()
+                    .collect();
                 let padding = dictionary_config
                     .padding
                     .as_ref()
