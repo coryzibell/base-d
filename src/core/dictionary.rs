@@ -192,8 +192,8 @@ impl Dictionary {
                 ));
             }
 
-            // Check for whitespace (except in specific cases)
-            if c.is_whitespace() {
+            // Check for whitespace (allow space for RFC-compliant encodings like Base45)
+            if c.is_whitespace() && c != ' ' {
                 return Err(format!(
                     "Whitespace character not allowed in dictionary: '{}' (U+{:04X})",
                     c, c as u32
@@ -504,10 +504,16 @@ mod tests {
 
     #[test]
     fn test_whitespace_rejection() {
-        let chars = vec!['a', 'b', ' ', 'c'];
+        // Tab should be rejected (only space is allowed for RFC encodings like Base45)
+        let chars = vec!['a', 'b', '\t', 'c'];
         let result = Dictionary::builder().chars(chars).build();
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Whitespace"));
+
+        // But space should be allowed (for Base45 RFC 9285 compliance)
+        let chars_with_space = vec!['a', 'b', ' ', 'c'];
+        let result_space = Dictionary::builder().chars(chars_with_space).build();
+        assert!(result_space.is_ok());
     }
 
     #[test]
