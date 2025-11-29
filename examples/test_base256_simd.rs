@@ -5,7 +5,11 @@ fn main() {
     let config = DictionaryRegistry::load_default().unwrap();
     let dict_config = config.get_dictionary("base256_matrix").unwrap();
     let chars: Vec<char> = dict_config.chars.chars().collect();
-    let dict = Dictionary::new_with_mode(chars, dict_config.mode.clone(), None).unwrap();
+    let dict = Dictionary::builder()
+        .chars(chars)
+        .mode(dict_config.mode.clone())
+        .build()
+        .unwrap();
 
     println!("Testing base256 SIMD implementation...\n");
 

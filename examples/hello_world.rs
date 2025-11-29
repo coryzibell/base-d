@@ -10,8 +10,13 @@ fn main() {
         .padding
         .as_ref()
         .and_then(|s| s.chars().next());
-    let dictionary =
-        Dictionary::new_with_mode(chars, dictionary_config.mode.clone(), padding).unwrap();
+    let mut builder = Dictionary::builder()
+        .chars(chars)
+        .mode(dictionary_config.mode.clone());
+    if let Some(pad) = padding {
+        builder = builder.padding(pad);
+    }
+    let dictionary = builder.build().unwrap();
 
     let data = b"Hello, World!";
 

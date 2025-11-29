@@ -6,7 +6,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let base1024_config = config.get_dictionary("base1024").unwrap();
 
     let chars: Vec<char> = base1024_config.chars.chars().collect();
-    let dictionary = Dictionary::new_with_mode(chars, base1024_config.mode.clone(), None)?;
+    let dictionary = Dictionary::builder()
+        .chars(chars)
+        .mode(base1024_config.mode.clone())
+        .build()?;
 
     println!("Base1024 Dictionary Demo");
     println!("======================");
@@ -33,8 +36,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .padding
         .as_ref()
         .and_then(|s| s.chars().next());
-    let base64_dictionary =
-        Dictionary::new_with_mode(base64_chars, base64_config.mode.clone(), base64_padding)?;
+    let mut builder = Dictionary::builder()
+        .chars(base64_chars)
+        .mode(base64_config.mode.clone());
+    if let Some(pad) = base64_padding {
+        builder = builder.padding(pad);
+    }
+    let base64_dictionary = builder.build()?;
 
     let base64_encoded = encode(data, &base64_dictionary);
 

@@ -44,13 +44,12 @@ pub fn create_dictionary(
             let start = dictionary_config
                 .start_codepoint
                 .ok_or("ByteRange mode requires start_codepoint")?;
-            Dictionary::new_with_mode_and_range(
-                Vec::new(),
-                dictionary_config.mode.clone(),
-                None,
-                Some(start),
-            )
-            .map_err(|e| format!("Invalid dictionary: {}", e))?
+            Dictionary::builder()
+                .chars(Vec::new())
+                .mode(dictionary_config.mode.clone())
+                .start_codepoint(start)
+                .build()
+                .map_err(|e| format!("Invalid dictionary: {}", e))?
         }
         _ => {
             let chars: Vec<char> = dictionary_config.chars.chars().collect();
@@ -58,7 +57,14 @@ pub fn create_dictionary(
                 .padding
                 .as_ref()
                 .and_then(|s| s.chars().next());
-            Dictionary::new_with_mode(chars, dictionary_config.mode.clone(), padding)
+            let mut builder = Dictionary::builder()
+                .chars(chars)
+                .mode(dictionary_config.mode.clone());
+            if let Some(pad) = padding {
+                builder = builder.padding(pad);
+            }
+            builder
+                .build()
                 .map_err(|e| format!("Invalid dictionary: {}", e))?
         }
     };

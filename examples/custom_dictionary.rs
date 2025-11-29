@@ -2,7 +2,10 @@ use base_d::{decode, encode, Dictionary};
 
 fn main() {
     // Create a custom dictionary with just 4 DNA bases
-    let dna_dictionary = Dictionary::from_str("ACGT").unwrap();
+    let dna_dictionary = Dictionary::builder()
+        .chars_from_str("ACGT")
+        .build()
+        .unwrap();
 
     println!("DNA Dictionary (base-4)");
     println!("=====================\n");
