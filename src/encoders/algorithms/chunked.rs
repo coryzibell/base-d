@@ -1,6 +1,6 @@
 use crate::core::dictionary::Dictionary;
 
-pub use super::math::DecodeError;
+pub use super::errors::DecodeError;
 
 #[cfg(target_arch = "x86_64")]
 use crate::simd;
@@ -140,6 +140,18 @@ fn decode_chunked_scalar(encoded: &str, dictionary: &Dictionary) -> Result<Vec<u
     // Collect chars once for better cache performance
     let chars: Vec<char> = encoded.chars().collect();
 
+    // Build valid character string for error messages
+    let valid_chars = if base <= 64 {
+        (0..base)
+            .filter_map(|i| dictionary.encode_digit(i))
+            .collect::<String>()
+    } else {
+        format!("{} characters in dictionary", base)
+    };
+
+    // Track character position for error reporting
+    let mut char_position = 0;
+
     // Process in chunks for better CPU cache utilization
     const CHUNK_SIZE: usize = 64;
     let chunks = chars.chunks_exact(CHUNK_SIZE);
@@ -153,9 +165,9 @@ fn decode_chunked_scalar(encoded: &str, dictionary: &Dictionary) -> Result<Vec<u
                 return Ok(result);
             }
 
-            let digit = dictionary
-                .decode_char(c)
-                .ok_or(DecodeError::InvalidCharacter(c))?;
+            let digit = dictionary.decode_char(c).ok_or_else(|| {
+                DecodeError::invalid_character(c, char_position, encoded, &valid_chars)
+            })?;
 
             bit_buffer = (bit_buffer << bits_per_char) | (digit as u32);
             bits_in_buffer += bits_per_char;
@@ -165,6 +177,8 @@ fn decode_chunked_scalar(encoded: &str, dictionary: &Dictionary) -> Result<Vec<u
                 let byte = ((bit_buffer >> bits_in_buffer) & 0xFF) as u8;
                 result.push(byte);
             }
+
+            char_position += 1;
         }
     }
 
@@ -175,9 +189,9 @@ fn decode_chunked_scalar(encoded: &str, dictionary: &Dictionary) -> Result<Vec<u
             break;
         }
 
-        let digit = dictionary
-            .decode_char(c)
-            .ok_or(DecodeError::InvalidCharacter(c))?;
+        let digit = dictionary.decode_char(c).ok_or_else(|| {
+            DecodeError::invalid_character(c, char_position, encoded, &valid_chars)
+        })?;
 
         bit_buffer = (bit_buffer << bits_per_char) | (digit as u32);
         bits_in_buffer += bits_per_char;
@@ -187,6 +201,8 @@ fn decode_chunked_scalar(encoded: &str, dictionary: &Dictionary) -> Result<Vec<u
             let byte = ((bit_buffer >> bits_in_buffer) & 0xFF) as u8;
             result.push(byte);
         }
+
+        char_position += 1;
     }
 
     Ok(result)

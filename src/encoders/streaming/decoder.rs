@@ -78,7 +78,12 @@ impl<'a, W: Write> StreamingDecoder<'a, W> {
                 let mut buffer = String::new();
                 reader
                     .read_to_string(&mut buffer)
-                    .map_err(|_| DecodeError::InvalidCharacter('\0'))?;
+                    .map_err(|_| DecodeError::InvalidCharacter {
+                        char: '\0',
+                        position: 0,
+                        input: String::new(),
+                        valid_chars: String::new(),
+                    })?;
                 let decoded = crate::encoders::algorithms::math::decode(&buffer, self.dictionary)?;
 
                 let hash = self
@@ -87,7 +92,12 @@ impl<'a, W: Write> StreamingDecoder<'a, W> {
 
                 self.writer
                     .write_all(&decoded)
-                    .map_err(|_| DecodeError::InvalidCharacter('\0'))?;
+                    .map_err(|_| DecodeError::InvalidCharacter {
+                        char: '\0',
+                        position: 0,
+                        input: String::new(),
+                        valid_chars: String::new(),
+                    })?;
                 Ok(hash)
             }
         }
@@ -110,9 +120,14 @@ impl<'a, W: Write> StreamingDecoder<'a, W> {
 
         // Decompress and write to output with optional hashing
         let mut cursor = Cursor::new(compressed_data);
-        let hash = self
-            .decompress_stream(&mut cursor, algo)
-            .map_err(|_| DecodeError::InvalidCharacter('\0'))?;
+        let hash = self.decompress_stream(&mut cursor, algo).map_err(|_| {
+            DecodeError::InvalidCharacter {
+                char: '\0',
+                position: 0,
+                input: String::new(),
+                valid_chars: String::new(),
+            }
+        })?;
 
         Ok(hash)
     }
@@ -214,15 +229,27 @@ impl<'a, W: Write> StreamingDecoder<'a, W> {
             .map(|algo| create_hasher_writer(algo, &self.xxhash_config));
 
         loop {
-            let bytes_read = reader
-                .read(&mut char_buffer)
-                .map_err(|_| DecodeError::InvalidCharacter('\0'))?;
+            let bytes_read =
+                reader
+                    .read(&mut char_buffer)
+                    .map_err(|_| DecodeError::InvalidCharacter {
+                        char: '\0',
+                        position: 0,
+                        input: String::new(),
+                        valid_chars: String::new(),
+                    })?;
             if bytes_read == 0 {
                 break;
             }
 
-            let chunk_str = std::str::from_utf8(&char_buffer[..bytes_read])
-                .map_err(|_| DecodeError::InvalidCharacter('\0'))?;
+            let chunk_str = std::str::from_utf8(&char_buffer[..bytes_read]).map_err(|_| {
+                DecodeError::InvalidCharacter {
+                    char: '\0',
+                    position: 0,
+                    input: String::new(),
+                    valid_chars: String::new(),
+                }
+            })?;
             text_buffer.push_str(chunk_str);
 
             // Process complete character groups
@@ -242,7 +269,12 @@ impl<'a, W: Write> StreamingDecoder<'a, W> {
 
                 self.writer
                     .write_all(&decoded)
-                    .map_err(|_| DecodeError::InvalidCharacter('\0'))?;
+                    .map_err(|_| DecodeError::InvalidCharacter {
+                        char: '\0',
+                        position: 0,
+                        input: String::new(),
+                        valid_chars: String::new(),
+                    })?;
 
                 // Keep remaining chars for next iteration
                 text_buffer = chars[complete_groups..].iter().collect();
@@ -262,7 +294,12 @@ impl<'a, W: Write> StreamingDecoder<'a, W> {
 
             self.writer
                 .write_all(&decoded)
-                .map_err(|_| DecodeError::InvalidCharacter('\0'))?;
+                .map_err(|_| DecodeError::InvalidCharacter {
+                    char: '\0',
+                    position: 0,
+                    input: String::new(),
+                    valid_chars: String::new(),
+                })?;
         }
 
         Ok(hasher.map(|h| h.finalize()))
@@ -278,15 +315,27 @@ impl<'a, W: Write> StreamingDecoder<'a, W> {
             .map(|algo| create_hasher_writer(algo, &self.xxhash_config));
 
         loop {
-            let bytes_read = reader
-                .read(&mut char_buffer)
-                .map_err(|_| DecodeError::InvalidCharacter('\0'))?;
+            let bytes_read =
+                reader
+                    .read(&mut char_buffer)
+                    .map_err(|_| DecodeError::InvalidCharacter {
+                        char: '\0',
+                        position: 0,
+                        input: String::new(),
+                        valid_chars: String::new(),
+                    })?;
             if bytes_read == 0 {
                 break;
             }
 
-            let chunk_str = std::str::from_utf8(&char_buffer[..bytes_read])
-                .map_err(|_| DecodeError::InvalidCharacter('\0'))?;
+            let chunk_str = std::str::from_utf8(&char_buffer[..bytes_read]).map_err(|_| {
+                DecodeError::InvalidCharacter {
+                    char: '\0',
+                    position: 0,
+                    input: String::new(),
+                    valid_chars: String::new(),
+                }
+            })?;
 
             let decoded = crate::encoders::algorithms::byte_range::decode_byte_range(
                 chunk_str,
@@ -299,7 +348,12 @@ impl<'a, W: Write> StreamingDecoder<'a, W> {
 
             self.writer
                 .write_all(&decoded)
-                .map_err(|_| DecodeError::InvalidCharacter('\0'))?;
+                .map_err(|_| DecodeError::InvalidCharacter {
+                    char: '\0',
+                    position: 0,
+                    input: String::new(),
+                    valid_chars: String::new(),
+                })?;
         }
 
         Ok(hasher.map(|h| h.finalize()))

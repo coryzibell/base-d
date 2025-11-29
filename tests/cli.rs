@@ -35,16 +35,6 @@ fn test_version() {
 }
 
 #[test]
-fn test_list_dictionaries() {
-    base_d()
-        .arg("--list")
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("base64"))
-        .stdout(predicate::str::contains("base32"));
-}
-
-#[test]
 fn test_config_dictionaries() {
     base_d()
         .args(["config", "--dictionaries"])

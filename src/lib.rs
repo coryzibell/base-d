@@ -162,7 +162,7 @@ pub use core::config::{
     CompressionConfig, DictionaryConfig, DictionaryRegistry, EncodingMode, Settings,
 };
 pub use core::dictionary::Dictionary;
-pub use encoders::algorithms::DecodeError;
+pub use encoders::algorithms::{find_closest_dictionary, DecodeError, DictionaryNotFoundError};
 pub use encoders::streaming::{StreamingDecoder, StreamingEncoder};
 pub use features::{
     compress, decompress, detect_dictionary, hash, hash_with_config, CompressionAlgorithm,

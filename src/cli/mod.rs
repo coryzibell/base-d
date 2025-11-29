@@ -67,10 +67,6 @@ struct Cli {
     #[arg(value_name = "FILE")]
     file: Option<PathBuf>,
 
-    /// List available dictionaries
-    #[arg(short, long)]
-    list: bool,
-
     /// Use streaming mode for large files (memory efficient)
     #[arg(short, long)]
     stream: bool,
@@ -246,44 +242,6 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             cli.decompress.as_ref(),
             cli.max_size,
         );
-    }
-
-    // Handle list command
-    if cli.list {
-        println!("Available dictionaries:\n");
-        let mut dictionaries: Vec<_> = config.dictionaries.iter().collect();
-        dictionaries.sort_by_key(|(name, _)| *name);
-
-        for (name, dictionary_config) in dictionaries {
-            let (char_count, preview) = match dictionary_config.mode {
-                base_d::EncodingMode::ByteRange => {
-                    if let Some(start) = dictionary_config.start_codepoint {
-                        let preview_chars: String = (0..20)
-                            .filter_map(|i| std::char::from_u32(start + i))
-                            .collect();
-                        (256, preview_chars)
-                    } else {
-                        (256, String::from("(invalid range)"))
-                    }
-                }
-                _ => {
-                    let count = dictionary_config.chars.chars().count();
-                    let preview: String = dictionary_config.chars.chars().take(20).collect();
-                    (count, preview)
-                }
-            };
-            let suffix = if char_count > 20 { "..." } else { "" };
-            let mode_str = match dictionary_config.mode {
-                base_d::EncodingMode::BaseConversion => "math",
-                base_d::EncodingMode::Chunked => "chunk",
-                base_d::EncodingMode::ByteRange => "range",
-            };
-            println!(
-                "  {:<15} base-{:<3} {:>5}  {}{}",
-                name, char_count, mode_str, preview, suffix
-            );
-        }
-        return Ok(());
     }
 
     // Parse compression algorithm - if flag present but no value, pick random

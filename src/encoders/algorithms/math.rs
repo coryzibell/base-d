@@ -2,28 +2,7 @@ use crate::core::dictionary::Dictionary;
 use num_integer::Integer;
 use num_traits::Zero;
 
-/// Errors that can occur during decoding.
-#[derive(Debug, PartialEq, Eq)]
-pub enum DecodeError {
-    /// The input contains a character not in the dictionary
-    InvalidCharacter(char),
-    /// The input string is empty
-    EmptyInput,
-    /// The padding is malformed or incorrect
-    InvalidPadding,
-}
-
-impl std::fmt::Display for DecodeError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            DecodeError::InvalidCharacter(c) => write!(f, "Invalid character in input: {}", c),
-            DecodeError::EmptyInput => write!(f, "Cannot decode empty input"),
-            DecodeError::InvalidPadding => write!(f, "Invalid padding"),
-        }
-    }
-}
-
-impl std::error::Error for DecodeError {}
+pub use super::errors::DecodeError;
 
 pub fn encode(data: &[u8], dictionary: &Dictionary) -> String {
     if data.is_empty() {
@@ -86,11 +65,27 @@ pub fn decode(encoded: &str, dictionary: &Dictionary) -> Result<Vec<u8>, DecodeE
     let chars: Vec<char> = encoded.chars().collect();
     let mut leading_zeros = 0;
 
-    // Process in chunks for better performance
+    // Build valid character string for error messages (truncate if too long)
+    let valid_chars = if let Some(start) = dictionary.start_codepoint() {
+        format!("U+{:04X} to U+{:04X}", start, start + 255)
+    } else {
+        let base_val = dictionary.base();
+        // Show first few and last few chars for large dictionaries
+        if base_val <= 64 {
+            (0..base_val)
+                .filter_map(|i| dictionary.encode_digit(i))
+                .collect::<String>()
+        } else {
+            format!("{} characters in dictionary", base_val)
+        }
+    };
+
+    // Process in chunks for better performance - track position for error reporting
+    let mut byte_position = 0;
     for &c in &chars {
-        let digit = dictionary
-            .decode_char(c)
-            .ok_or(DecodeError::InvalidCharacter(c))?;
+        let digit = dictionary.decode_char(c).ok_or_else(|| {
+            DecodeError::invalid_character(c, byte_position, encoded, &valid_chars)
+        })?;
 
         if num.is_zero() && digit == 0 {
             leading_zeros += 1;
@@ -98,6 +93,9 @@ pub fn decode(encoded: &str, dictionary: &Dictionary) -> Result<Vec<u8>, DecodeE
             num *= &base_big;
             num += num_bigint::BigUint::from(digit);
         }
+
+        // Track byte position (handles multi-byte UTF-8)
+        byte_position += c.len_utf8();
     }
 
     // Handle all-zero case

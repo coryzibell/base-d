@@ -33,10 +33,10 @@ pub fn create_dictionary(
     name: &str,
 ) -> Result<Dictionary, Box<dyn std::error::Error>> {
     let dictionary_config = config.get_dictionary(name).ok_or_else(|| {
-        format!(
-            "Dictionary '{}' not found. Use --list to see available dictionaries.",
-            name
-        )
+        // Try to find a close match
+        let available: Vec<String> = config.dictionaries.keys().cloned().collect();
+        let suggestion = base_d::find_closest_dictionary(name, &available);
+        base_d::DictionaryNotFoundError::new(name, suggestion)
     })?;
 
     let dictionary = match dictionary_config.mode {

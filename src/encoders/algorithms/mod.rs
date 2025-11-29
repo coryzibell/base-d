@@ -1,6 +1,7 @@
 pub mod byte_range;
 pub mod chunked;
+pub mod errors;
 pub mod math;
 
-// Re-export DecodeError for public API
-pub use math::DecodeError;
+// Re-export error types for public API
+pub use errors::{find_closest_dictionary, DecodeError, DictionaryNotFoundError};
