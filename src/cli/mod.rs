@@ -121,6 +121,24 @@ enum Commands {
     },
 }
 
+/// Check if output contains problematic control characters (0x00-0x1F except \t, \n, \r)
+fn contains_control_chars(s: &str) -> bool {
+    s.bytes().any(|b| b < 0x20 && b != b'\t' && b != b'\n' && b != b'\r')
+}
+
+/// Output encoded string, failing if it contains control characters
+fn output_encoded(encoded: &str, dict_name: &str) -> Result<(), Box<dyn std::error::Error>> {
+    if contains_control_chars(encoded) {
+        // Log debug info to stderr
+        eprintln!("ERROR: Encoded output contains control characters");
+        eprintln!("  Dictionary: {}", dict_name);
+        eprintln!("  Output bytes: {:?}", encoded.as_bytes().iter().take(50).collect::<Vec<_>>());
+        return Err(format!("Encoded output contains control characters (dictionary: {})", dict_name).into());
+    }
+    println!("{}", encoded);
+    Ok(())
+}
+
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
@@ -342,7 +360,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         };
         let encode_dictionary = create_dictionary(&config, &dict_name)?;
         let encoded = encode(&hash_output, &encode_dictionary);
-        println!("{}", encoded);
+        output_encoded(&encoded, &dict_name)?;
         return Ok(());
     }
 
@@ -361,12 +379,12 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         let random_dict = commands::select_random_dictionary(&config, true)?;
         let encode_dictionary = create_dictionary(&config, &random_dict)?;
         let encoded = encode(&data, &encode_dictionary);
-        println!("{}", encoded);
+        output_encoded(&encoded, &random_dict)?;
     } else if let Some(encode_name) = &cli.encode {
         // Explicit encoding
         let encode_dictionary = create_dictionary(&config, encode_name)?;
         let encoded = encode(&data, &encode_dictionary);
-        println!("{}", encoded);
+        output_encoded(&encoded, encode_name)?;
     } else if compress_algo.is_some() {
         // Compressed but no explicit encoding - use default or random
         let dict_name = if let Some(default) = &config.settings.default_dictionary {
@@ -376,7 +394,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         };
         let encode_dictionary = create_dictionary(&config, &dict_name)?;
         let encoded = encode(&data, &encode_dictionary);
-        println!("{}", encoded);
+        output_encoded(&encoded, &dict_name)?;
     } else {
         // No compression, no encoding - output as-is (or use default encoding)
         if cli.decode.is_none() {
@@ -388,7 +406,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             };
             let encode_dictionary = create_dictionary(&config, &dict_name)?;
             let encoded = encode(&data, &encode_dictionary);
-            println!("{}", encoded);
+            output_encoded(&encoded, &dict_name)?;
         } else {
             // Decode-only mode
             io::stdout().write_all(&data)?;
