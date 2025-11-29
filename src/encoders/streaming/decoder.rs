@@ -58,8 +58,8 @@ impl<'a, W: Write> StreamingDecoder<'a, W> {
 
     /// Decodes data from a reader in chunks.
     ///
-    /// Note: BaseConversion mode requires reading the entire input at once
-    /// due to the mathematical nature of the algorithm. For truly streaming
+    /// Note: Radix mode requires reading the entire input at once
+    /// due to the nature of true base conversion. For truly streaming
     /// behavior, use Chunked or ByteRange modes.
     ///
     /// Returns the computed hash if hash_algo was set, otherwise None.
@@ -73,8 +73,8 @@ impl<'a, W: Write> StreamingDecoder<'a, W> {
         match self.dictionary.mode() {
             crate::core::config::EncodingMode::Chunked => self.decode_chunked(reader),
             crate::core::config::EncodingMode::ByteRange => self.decode_byte_range(reader),
-            crate::core::config::EncodingMode::BaseConversion => {
-                // Mathematical mode requires entire input
+            crate::core::config::EncodingMode::Radix => {
+                // Radix mode requires entire input
                 let mut buffer = String::new();
                 reader
                     .read_to_string(&mut buffer)
@@ -84,7 +84,7 @@ impl<'a, W: Write> StreamingDecoder<'a, W> {
                         input: String::new(),
                         valid_chars: String::new(),
                     })?;
-                let decoded = crate::encoders::algorithms::math::decode(&buffer, self.dictionary)?;
+                let decoded = crate::encoders::algorithms::radix::decode(&buffer, self.dictionary)?;
 
                 let hash = self
                     .hash_algo

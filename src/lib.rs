@@ -3,8 +3,8 @@
 //! A universal, multi-dictionary encoding library for Rust.
 //!
 //! Encode binary data using numerous dictionaries including RFC standards, ancient scripts,
-//! emoji, playing cards, and more. Supports three encoding modes: mathematical
-//! base conversion, RFC 4648 chunked encoding, and direct byte-range mapping.
+//! emoji, playing cards, and more. Supports three encoding modes: radix (true base
+//! conversion), RFC 4648 chunked encoding, and direct byte-range mapping.
 //!
 //! ## Quick Start
 //!
@@ -39,16 +39,16 @@
 //! ## Features
 //!
 //! - **33 Built-in Dictionaries**: RFC standards, emoji, ancient scripts, and more
-//! - **3 Encoding Modes**: Mathematical, chunked (RFC-compliant), byte-range
+//! - **3 Encoding Modes**: Radix, chunked (RFC-compliant), byte-range
 //! - **Streaming Support**: Memory-efficient processing for large files
 //! - **Custom Dictionaries**: Define your own via TOML configuration
 //! - **User Configuration**: Load dictionaries from `~/.config/base-d/dictionaries.toml`
 //!
 //! ## Encoding Modes
 //!
-//! ### Mathematical Base Conversion
+//! ### Radix Base Conversion
 //!
-//! Treats data as a large number. Works with any dictionary size.
+//! True base conversion treating data as a large number. Works with any dictionary size.
 //!
 //! ```
 //! use base_d::{Dictionary, EncodingMode, encode};
@@ -57,7 +57,7 @@
 //! let chars: Vec<char> = "😀😁😂🤣😃😄😅😆".chars().collect();
 //! let dictionary = Dictionary::builder()
 //!     .chars(chars)
-//!     .mode(EncodingMode::BaseConversion)
+//!     .mode(EncodingMode::Radix)
 //!     .build()?;
 //!
 //! let encoded = encode(b"Hi", &dictionary);
@@ -155,7 +155,7 @@ pub use features::{
 /// Encodes binary data using the specified dictionary.
 ///
 /// Automatically selects the appropriate encoding strategy based on the
-/// dictionary's mode (BaseConversion, Chunked, or ByteRange).
+/// dictionary's mode (Radix, Chunked, or ByteRange).
 ///
 /// # Arguments
 ///
@@ -175,7 +175,7 @@ pub use features::{
 /// let chars: Vec<char> = "01".chars().collect();
 /// let dictionary = Dictionary::builder()
 ///     .chars(chars)
-///     .mode(EncodingMode::BaseConversion)
+///     .mode(EncodingMode::Radix)
 ///     .build()?;
 /// let encoded = base_d::encode(b"Hi", &dictionary);
 /// # Ok(())
@@ -183,7 +183,7 @@ pub use features::{
 /// ```
 pub fn encode(data: &[u8], dictionary: &Dictionary) -> String {
     match dictionary.mode() {
-        EncodingMode::BaseConversion => encoders::algorithms::math::encode(data, dictionary),
+        EncodingMode::Radix => encoders::algorithms::radix::encode(data, dictionary),
         EncodingMode::Chunked => encoders::algorithms::chunked::encode_chunked(data, dictionary),
         EncodingMode::ByteRange => {
             encoders::algorithms::byte_range::encode_byte_range(data, dictionary)
@@ -194,7 +194,7 @@ pub fn encode(data: &[u8], dictionary: &Dictionary) -> String {
 /// Decodes a string back to binary data using the specified dictionary.
 ///
 /// Automatically selects the appropriate decoding strategy based on the
-/// dictionary's mode (BaseConversion, Chunked, or ByteRange).
+/// dictionary's mode (Radix, Chunked, or ByteRange).
 ///
 /// # Arguments
 ///
@@ -222,7 +222,7 @@ pub fn encode(data: &[u8], dictionary: &Dictionary) -> String {
 /// let chars: Vec<char> = "01".chars().collect();
 /// let dictionary = Dictionary::builder()
 ///     .chars(chars)
-///     .mode(EncodingMode::BaseConversion)
+///     .mode(EncodingMode::Radix)
 ///     .build()?;
 /// let data = b"Hi";
 /// let encoded = encode(data, &dictionary);
@@ -233,7 +233,7 @@ pub fn encode(data: &[u8], dictionary: &Dictionary) -> String {
 /// ```
 pub fn decode(encoded: &str, dictionary: &Dictionary) -> Result<Vec<u8>, DecodeError> {
     match dictionary.mode() {
-        EncodingMode::BaseConversion => encoders::algorithms::math::decode(encoded, dictionary),
+        EncodingMode::Radix => encoders::algorithms::radix::decode(encoded, dictionary),
         EncodingMode::Chunked => encoders::algorithms::chunked::decode_chunked(encoded, dictionary),
         EncodingMode::ByteRange => {
             encoders::algorithms::byte_range::decode_byte_range(encoded, dictionary)

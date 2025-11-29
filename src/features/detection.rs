@@ -281,8 +281,8 @@ impl DictionaryDetector {
                 // ByteRange is 1:1 mapping, any length is valid
                 1.0
             }
-            EncodingMode::BaseConversion => {
-                // Mathematical conversion can produce any length
+            EncodingMode::Radix => {
+                // Radix conversion can produce any length
                 if length > 0 { 1.0 } else { 0.0 }
             }
         }

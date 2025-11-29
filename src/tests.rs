@@ -120,9 +120,9 @@ fn test_base64_chunked_mode() {
 #[test]
 fn test_base64_math_mode() {
     let dictionary = get_dictionary("base64_math");
-    assert_eq!(dictionary.mode(), &EncodingMode::BaseConversion);
+    assert_eq!(dictionary.mode(), &EncodingMode::Radix);
 
-    // This should use mathematical base conversion
+    // This should use radix base conversion
     let data = b"Hello, World!";
     let encoded = encode(data, &dictionary);
     println!("base64_math encoded: {}", encoded);
@@ -275,13 +275,13 @@ fn test_base256_matrix_like_hex() {
     // Verify it's a 256-character dictionary
     assert_eq!(dictionary_chunked.base(), 256);
 
-    // Create mathematical mode version
+    // Create radix mode version
     let config = DictionaryRegistry::load_default().unwrap();
     let matrix_config = config.get_dictionary("base256_matrix").unwrap();
     let chars: Vec<char> = matrix_config.chars.chars().collect();
-    let dictionary_math = Dictionary::builder()
+    let dictionary_radix = Dictionary::builder()
         .chars(chars)
-        .mode(EncodingMode::BaseConversion)
+        .mode(EncodingMode::Radix)
         .build()
         .unwrap();
 
@@ -296,12 +296,12 @@ fn test_base256_matrix_like_hex() {
 
     for data in test_data {
         let chunked_encoded = encode(&data, &dictionary_chunked);
-        let math_encoded = encode(&data, &dictionary_math);
+        let radix_encoded = encode(&data, &dictionary_radix);
 
         // Both modes should produce IDENTICAL output (like hexadecimal)
         assert_eq!(
             chunked_encoded,
-            math_encoded,
+            radix_encoded,
             "Modes should produce identical output for {} bytes (like hex!)",
             data.len()
         );

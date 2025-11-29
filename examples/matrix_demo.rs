@@ -56,19 +56,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build()?;
     let chunked_encoded = encode(test_data, &chunked_dictionary);
 
-    // Test with mathematical mode
-    let math_dictionary = Dictionary::builder()
+    // Test with radix mode
+    let radix_dictionary = Dictionary::builder()
         .chars(matrix_config.chars.chars().collect())
-        .mode(base_d::EncodingMode::BaseConversion)
+        .mode(base_d::EncodingMode::Radix)
         .build()?;
-    let math_encoded = encode(test_data, &math_dictionary);
+    let radix_encoded = encode(test_data, &radix_dictionary);
 
-    println!("Input:       '{}'", String::from_utf8_lossy(test_data));
-    println!("Chunked:     {}", chunked_encoded);
-    println!("Mathematical: {}", math_encoded);
+    println!("Input:   '{}'", String::from_utf8_lossy(test_data));
+    println!("Chunked: {}", chunked_encoded);
+    println!("Radix:   {}", radix_encoded);
     println!();
 
-    if chunked_encoded == math_encoded {
+    if chunked_encoded == radix_encoded {
         println!("IDENTICAL OUTPUT");
         println!("This works because:");
         println!("  - base256 = 2^8 (8 bits per character)");

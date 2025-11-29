@@ -24,7 +24,7 @@ fn main() {
             }
         };
         let mode_str = match dictionary_config.mode {
-            base_d::EncodingMode::BaseConversion => "math",
+            base_d::EncodingMode::Radix => "radix",
             base_d::EncodingMode::Chunked => "chunk",
             base_d::EncodingMode::ByteRange => "range",
         };

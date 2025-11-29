@@ -9,10 +9,12 @@ use std::collections::HashMap;
 #[serde(rename_all = "snake_case")]
 #[derive(Default)]
 pub enum EncodingMode {
-    /// Mathematical base conversion treating data as a large number.
+    /// True radix/base conversion treating data as a large number.
     /// Works with any dictionary size. Output length varies with input.
+    /// Requires entire input before producing output (not streamable).
     #[default]
-    BaseConversion,
+    #[serde(alias = "base_conversion")]
+    Radix,
     /// Fixed-size bit chunking per RFC 4648.
     /// Requires power-of-two dictionary size. Supports padding.
     Chunked,
@@ -200,7 +202,7 @@ mod tests {
     fn test_base64_math_mode() {
         let config = DictionaryRegistry::load_default().unwrap();
         let base64_math = config.get_dictionary("base64_math").unwrap();
-        assert_eq!(base64_math.mode, EncodingMode::BaseConversion);
+        assert_eq!(base64_math.mode, EncodingMode::Radix);
     }
 
     #[test]
@@ -214,7 +216,7 @@ mod tests {
             "test1".to_string(),
             DictionaryConfig {
                 chars: "ABC".to_string(),
-                mode: EncodingMode::BaseConversion,
+                mode: EncodingMode::Radix,
                 padding: None,
                 start_codepoint: None,
                 common: true,
@@ -230,7 +232,7 @@ mod tests {
             "test2".to_string(),
             DictionaryConfig {
                 chars: "XYZ".to_string(),
-                mode: EncodingMode::BaseConversion,
+                mode: EncodingMode::Radix,
                 padding: None,
                 start_codepoint: None,
                 common: true,
@@ -240,7 +242,7 @@ mod tests {
             "test1".to_string(),
             DictionaryConfig {
                 chars: "DEF".to_string(),
-                mode: EncodingMode::BaseConversion,
+                mode: EncodingMode::Radix,
                 padding: None,
                 start_codepoint: None,
                 common: true,

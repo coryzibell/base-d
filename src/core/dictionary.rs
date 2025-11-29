@@ -29,7 +29,7 @@ impl Dictionary {
     /// use base_d::{Dictionary, EncodingMode};
     /// let dict = Dictionary::builder()
     ///     .chars_from_str("0123456789ABCDEF")
-    ///     .mode(EncodingMode::BaseConversion)
+    ///     .mode(EncodingMode::Radix)
     ///     .build()
     ///     .unwrap();
     /// ```
@@ -37,7 +37,7 @@ impl Dictionary {
         DictionaryBuilder::new()
     }
 
-    /// Creates a new dictionary with default settings (BaseConversion mode, no padding).
+    /// Creates a new dictionary with default settings (Radix mode, no padding).
     ///
     /// # Arguments
     ///
@@ -53,7 +53,7 @@ impl Dictionary {
     #[deprecated(since = "0.1.0", note = "Use Dictionary::builder() instead")]
     #[allow(deprecated)]
     pub fn new(chars: Vec<char>) -> Result<Self, String> {
-        Self::new_with_mode(chars, EncodingMode::BaseConversion, None)
+        Self::new_with_mode(chars, EncodingMode::Radix, None)
     }
 
     /// Creates a new dictionary with specified encoding mode and optional padding.
@@ -61,7 +61,7 @@ impl Dictionary {
     /// # Arguments
     ///
     /// * `chars` - Vector of characters to use in the dictionary
-    /// * `mode` - Encoding mode (BaseConversion, Chunked, or ByteRange)
+    /// * `mode` - Encoding mode (Radix, Chunked, or ByteRange)
     /// * `padding` - Optional padding character (typically '=' for RFC modes)
     ///
     /// # Errors
@@ -355,7 +355,7 @@ impl Dictionary {
 /// use base_d::{Dictionary, EncodingMode};
 /// let dict = Dictionary::builder()
 ///     .chars_from_str("0123456789ABCDEF")
-///     .mode(EncodingMode::BaseConversion)
+///     .mode(EncodingMode::Radix)
 ///     .build()
 ///     .unwrap();
 /// ```
@@ -402,7 +402,7 @@ impl DictionaryBuilder {
     ///
     /// # Arguments
     ///
-    /// * `mode` - Encoding mode (BaseConversion, Chunked, or ByteRange)
+    /// * `mode` - Encoding mode (Radix, Chunked, or ByteRange)
     pub fn mode(mut self, mode: EncodingMode) -> Self {
         self.mode = Some(mode);
         self
@@ -438,7 +438,7 @@ impl DictionaryBuilder {
     /// - Validation fails (duplicates, invalid characters, etc.)
     #[allow(deprecated)]
     pub fn build(self) -> Result<Dictionary, String> {
-        let mode = self.mode.unwrap_or(EncodingMode::BaseConversion);
+        let mode = self.mode.unwrap_or(EncodingMode::Radix);
         let chars = self.chars.unwrap_or_default();
 
         Dictionary::new_with_mode_and_range(chars, mode, self.padding, self.start_codepoint)
@@ -515,7 +515,7 @@ mod tests {
         let chars = vec!['a', 'b', 'c', 'd'];
         let result = Dictionary::builder()
             .chars(chars)
-            .mode(EncodingMode::BaseConversion)
+            .mode(EncodingMode::Radix)
             .padding('b')
             .build();
         assert!(result.is_err());
@@ -529,7 +529,7 @@ mod tests {
         let chars = vec!['a', 'b', 'c', 'd'];
         let result = Dictionary::builder()
             .chars(chars)
-            .mode(EncodingMode::BaseConversion)
+            .mode(EncodingMode::Radix)
             .padding('=')
             .build();
         assert!(result.is_ok());
@@ -578,7 +578,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(dict.base(), 4);
-        assert_eq!(dict.mode(), &EncodingMode::BaseConversion);
+        assert_eq!(dict.mode(), &EncodingMode::Radix);
         assert_eq!(dict.padding(), None);
     }
 
