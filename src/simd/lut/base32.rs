@@ -20,74 +20,76 @@ impl Base64LutCodec {
     #[cfg(target_arch = "aarch64")]
     #[target_feature(enable = "neon")]
     pub(super) unsafe fn encode_neon_base32(&self, data: &[u8], result: &mut String) {
-        use std::arch::aarch64::*;
+        unsafe {
+            use std::arch::aarch64::*;
 
-        const BLOCK_SIZE: usize = 5; // 5 bytes -> 8 chars (40 bits)
+            const BLOCK_SIZE: usize = 5; // 5 bytes -> 8 chars (40 bits)
 
-        if data.len() < BLOCK_SIZE {
-            self.encode_scalar_base32(data, result);
-            return;
-        }
-
-        let num_blocks = data.len() / BLOCK_SIZE;
-        let simd_bytes = num_blocks * BLOCK_SIZE;
-
-        // Load 64-byte LUT into four 16-byte tables
-        let lut_tables = uint8x16x4_t(
-            vld1q_u8(self.encode_lut.as_ptr()),
-            vld1q_u8(self.encode_lut.as_ptr().add(16)),
-            vld1q_u8(self.encode_lut.as_ptr().add(32)),
-            vld1q_u8(self.encode_lut.as_ptr().add(48)),
-        );
-
-        let mut offset = 0;
-        for _ in 0..num_blocks {
-            // SAFETY: offset + BLOCK_SIZE <= simd_bytes <= data.len() by construction
-            // (num_blocks = data.len() / BLOCK_SIZE, simd_bytes = num_blocks * BLOCK_SIZE)
-            debug_assert!(offset + BLOCK_SIZE <= data.len());
-
-            // Process 5 bytes -> 8 chars
-            // Load 5 bytes and extract 5-bit indices
-            let bytes = [
-                *data.get_unchecked(offset),
-                *data.get_unchecked(offset + 1),
-                *data.get_unchecked(offset + 2),
-                *data.get_unchecked(offset + 3),
-                *data.get_unchecked(offset + 4),
-            ];
-
-            // Extract 8 x 5-bit indices from 5 bytes (40 bits)
-            let mut indices = [0u8; 16];
-            indices[0] = (bytes[0] >> 3) & 0x1F; // bits 7-3
-            indices[1] = ((bytes[0] << 2) | (bytes[1] >> 6)) & 0x1F; // bits 2-0, 7-6
-            indices[2] = (bytes[1] >> 1) & 0x1F; // bits 5-1
-            indices[3] = ((bytes[1] << 4) | (bytes[2] >> 4)) & 0x1F; // bits 0, 7-4
-            indices[4] = ((bytes[2] << 1) | (bytes[3] >> 7)) & 0x1F; // bits 3-0, 7
-            indices[5] = (bytes[3] >> 2) & 0x1F; // bits 6-2
-            indices[6] = ((bytes[3] << 3) | (bytes[4] >> 5)) & 0x1F; // bits 1-0, 7-5
-            indices[7] = bytes[4] & 0x1F; // bits 4-0
-
-            // Load indices into NEON register
-            let idx_vec = vld1q_u8(indices.as_ptr());
-
-            // Translate using vqtbl4q_u8 (64-byte lookup)
-            let chars = vqtbl4q_u8(lut_tables, idx_vec);
-
-            // Store 16 output characters (only first 8 are valid)
-            let mut output_buf = [0u8; 16];
-            vst1q_u8(output_buf.as_mut_ptr(), chars);
-
-            // Append to result (only first 8 chars)
-            for &byte in &output_buf[0..8] {
-                result.push(byte as char);
+            if data.len() < BLOCK_SIZE {
+                self.encode_scalar_base32(data, result);
+                return;
             }
 
-            offset += BLOCK_SIZE;
-        }
+            let num_blocks = data.len() / BLOCK_SIZE;
+            let simd_bytes = num_blocks * BLOCK_SIZE;
 
-        // Handle remainder with scalar
-        if simd_bytes < data.len() {
-            self.encode_scalar_base32(&data[simd_bytes..], result);
+            // Load 64-byte LUT into four 16-byte tables
+            let lut_tables = uint8x16x4_t(
+                vld1q_u8(self.encode_lut.as_ptr()),
+                vld1q_u8(self.encode_lut.as_ptr().add(16)),
+                vld1q_u8(self.encode_lut.as_ptr().add(32)),
+                vld1q_u8(self.encode_lut.as_ptr().add(48)),
+            );
+
+            let mut offset = 0;
+            for _ in 0..num_blocks {
+                // SAFETY: offset + BLOCK_SIZE <= simd_bytes <= data.len() by construction
+                // (num_blocks = data.len() / BLOCK_SIZE, simd_bytes = num_blocks * BLOCK_SIZE)
+                debug_assert!(offset + BLOCK_SIZE <= data.len());
+
+                // Process 5 bytes -> 8 chars
+                // Load 5 bytes and extract 5-bit indices
+                let bytes = [
+                    *data.get_unchecked(offset),
+                    *data.get_unchecked(offset + 1),
+                    *data.get_unchecked(offset + 2),
+                    *data.get_unchecked(offset + 3),
+                    *data.get_unchecked(offset + 4),
+                ];
+
+                // Extract 8 x 5-bit indices from 5 bytes (40 bits)
+                let mut indices = [0u8; 16];
+                indices[0] = (bytes[0] >> 3) & 0x1F; // bits 7-3
+                indices[1] = ((bytes[0] << 2) | (bytes[1] >> 6)) & 0x1F; // bits 2-0, 7-6
+                indices[2] = (bytes[1] >> 1) & 0x1F; // bits 5-1
+                indices[3] = ((bytes[1] << 4) | (bytes[2] >> 4)) & 0x1F; // bits 0, 7-4
+                indices[4] = ((bytes[2] << 1) | (bytes[3] >> 7)) & 0x1F; // bits 3-0, 7
+                indices[5] = (bytes[3] >> 2) & 0x1F; // bits 6-2
+                indices[6] = ((bytes[3] << 3) | (bytes[4] >> 5)) & 0x1F; // bits 1-0, 7-5
+                indices[7] = bytes[4] & 0x1F; // bits 4-0
+
+                // Load indices into NEON register
+                let idx_vec = vld1q_u8(indices.as_ptr());
+
+                // Translate using vqtbl4q_u8 (64-byte lookup)
+                let chars = vqtbl4q_u8(lut_tables, idx_vec);
+
+                // Store 16 output characters (only first 8 are valid)
+                let mut output_buf = [0u8; 16];
+                vst1q_u8(output_buf.as_mut_ptr(), chars);
+
+                // Append to result (only first 8 chars)
+                for &byte in &output_buf[0..8] {
+                    result.push(byte as char);
+                }
+
+                offset += BLOCK_SIZE;
+            }
+
+            // Handle remainder with scalar
+            if simd_bytes < data.len() {
+                self.encode_scalar_base32(&data[simd_bytes..], result);
+            }
         }
     }
 
@@ -499,69 +501,71 @@ impl Base64LutCodec {
         encoded: &[u8],
         result: &mut Vec<u8>,
     ) -> bool {
-        use std::arch::aarch64::*;
+        unsafe {
+            use std::arch::aarch64::*;
 
-        const BLOCK_SIZE: usize = 16;
+            const BLOCK_SIZE: usize = 16;
 
-        let num_blocks = encoded.len() / BLOCK_SIZE;
-        let simd_bytes = num_blocks * BLOCK_SIZE;
+            let num_blocks = encoded.len() / BLOCK_SIZE;
+            let simd_bytes = num_blocks * BLOCK_SIZE;
 
-        for i in 0..num_blocks {
-            let offset = i * BLOCK_SIZE;
+            for i in 0..num_blocks {
+                let offset = i * BLOCK_SIZE;
 
-            // SAFETY: offset + BLOCK_SIZE <= simd_bytes <= encoded.len() by construction
-            // (num_blocks = encoded.len() / BLOCK_SIZE, offset = i * BLOCK_SIZE where i < num_blocks)
-            debug_assert!(offset + BLOCK_SIZE <= encoded.len());
+                // SAFETY: offset + BLOCK_SIZE <= simd_bytes <= encoded.len() by construction
+                // (num_blocks = encoded.len() / BLOCK_SIZE, offset = i * BLOCK_SIZE where i < num_blocks)
+                debug_assert!(offset + BLOCK_SIZE <= encoded.len());
 
-            let input_vec = vld1q_u8(encoded.as_ptr().add(offset));
+                let input_vec = vld1q_u8(encoded.as_ptr().add(offset));
 
-            // === VALIDATION (Range Checks) ===
-            // Range 1: 'A'-'Z' (65-90)
-            let ge_a = vcgtq_u8(input_vec, vdupq_n_u8(64));
-            let le_z = vcltq_u8(input_vec, vdupq_n_u8(91));
-            let in_range1 = vandq_u8(ge_a, le_z);
+                // === VALIDATION (Range Checks) ===
+                // Range 1: 'A'-'Z' (65-90)
+                let ge_a = vcgtq_u8(input_vec, vdupq_n_u8(64));
+                let le_z = vcltq_u8(input_vec, vdupq_n_u8(91));
+                let in_range1 = vandq_u8(ge_a, le_z);
 
-            // Range 2: '2'-'7' (50-55)
-            let ge_2 = vcgtq_u8(input_vec, vdupq_n_u8(49));
-            let le_7 = vcltq_u8(input_vec, vdupq_n_u8(56));
-            let in_range2 = vandq_u8(ge_2, le_7);
+                // Range 2: '2'-'7' (50-55)
+                let ge_2 = vcgtq_u8(input_vec, vdupq_n_u8(49));
+                let le_7 = vcltq_u8(input_vec, vdupq_n_u8(56));
+                let in_range2 = vandq_u8(ge_2, le_7);
 
-            let valid_mask = vorrq_u8(in_range1, in_range2);
-            if vminvq_u8(valid_mask) != 0xFF {
-                return false;
-            }
+                let valid_mask = vorrq_u8(in_range1, in_range2);
+                if vminvq_u8(valid_mask) != 0xFF {
+                    return false;
+                }
 
-            // === TRANSLATION (char → 5-bit index) ===
-            let letter_indices = vsubq_u8(input_vec, vdupq_n_u8(65)); // 'A' → 0
-            let digit_indices = vaddq_u8(vsubq_u8(input_vec, vdupq_n_u8(50)), vdupq_n_u8(26)); // '2' → 26
-            let indices = vbslq_u8(in_range1, letter_indices, digit_indices);
+                // === TRANSLATION (char → 5-bit index) ===
+                let letter_indices = vsubq_u8(input_vec, vdupq_n_u8(65)); // 'A' → 0
+                let digit_indices = vaddq_u8(vsubq_u8(input_vec, vdupq_n_u8(50)), vdupq_n_u8(26)); // '2' → 26
+                let indices = vbslq_u8(in_range1, letter_indices, digit_indices);
 
-            // === UNPACKING ===
-            let mut idx_buf = [0u8; 16];
-            vst1q_u8(idx_buf.as_mut_ptr(), indices);
+                // === UNPACKING ===
+                let mut idx_buf = [0u8; 16];
+                vst1q_u8(idx_buf.as_mut_ptr(), indices);
 
-            let mut bit_buffer = 0u32;
-            let mut bits_in_buffer = 0;
+                let mut bit_buffer = 0u32;
+                let mut bits_in_buffer = 0;
 
-            for &idx in &idx_buf {
-                bit_buffer = (bit_buffer << 5) | (idx as u32);
-                bits_in_buffer += 5;
+                for &idx in &idx_buf {
+                    bit_buffer = (bit_buffer << 5) | (idx as u32);
+                    bits_in_buffer += 5;
 
-                while bits_in_buffer >= 8 {
-                    bits_in_buffer -= 8;
-                    let byte = ((bit_buffer >> bits_in_buffer) & 0xFF) as u8;
-                    result.push(byte);
+                    while bits_in_buffer >= 8 {
+                        bits_in_buffer -= 8;
+                        let byte = ((bit_buffer >> bits_in_buffer) & 0xFF) as u8;
+                        result.push(byte);
+                    }
                 }
             }
-        }
 
-        // Scalar remainder
-        if simd_bytes < encoded.len() {
-            if !self.decode_scalar(&encoded[simd_bytes..], result) {
-                return false;
+            // Scalar remainder
+            if simd_bytes < encoded.len() {
+                if !self.decode_scalar(&encoded[simd_bytes..], result) {
+                    return false;
+                }
             }
-        }
 
-        true
+            true
+        }
     }
 }

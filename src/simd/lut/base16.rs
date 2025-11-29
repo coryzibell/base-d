@@ -248,57 +248,59 @@ impl SmallLutCodec {
     #[cfg(target_arch = "aarch64")]
     #[target_feature(enable = "neon")]
     unsafe fn encode_neon_impl(&self, data: &[u8], result: &mut String) {
-        use std::arch::aarch64::*;
+        unsafe {
+            use std::arch::aarch64::*;
 
-        const BLOCK_SIZE: usize = 16;
+            const BLOCK_SIZE: usize = 16;
 
-        if data.len() < BLOCK_SIZE {
-            self.encode_scalar(data, result);
-            return;
-        }
-
-        let num_blocks = data.len() / BLOCK_SIZE;
-        let simd_bytes = num_blocks * BLOCK_SIZE;
-
-        // Load LUT into NEON register
-        let lut_vec = vld1q_u8(self.encode_lut.as_ptr());
-        let mask_0f = vdupq_n_u8(0x0F);
-
-        let mut offset = 0;
-        for _ in 0..num_blocks {
-            // Load 16 bytes
-            let input_vec = vld1q_u8(data.as_ptr().add(offset));
-
-            // Extract high nibbles (shift right by 4)
-            let hi_nibbles = vandq_u8(vshrq_n_u8(input_vec, 4), mask_0f);
-
-            // Extract low nibbles
-            let lo_nibbles = vandq_u8(input_vec, mask_0f);
-
-            // Translate nibbles to ASCII using vqtbl1q_u8
-            let hi_ascii = vqtbl1q_u8(lut_vec, hi_nibbles);
-            let lo_ascii = vqtbl1q_u8(lut_vec, lo_nibbles);
-
-            // Interleave high and low bytes: hi[0], lo[0], hi[1], lo[1], ...
-            let result_lo = vzip1q_u8(hi_ascii, lo_ascii);
-            let result_hi = vzip2q_u8(hi_ascii, lo_ascii);
-
-            // Store 32 output characters
-            let mut output_buf = [0u8; 32];
-            vst1q_u8(output_buf.as_mut_ptr(), result_lo);
-            vst1q_u8(output_buf.as_mut_ptr().add(16), result_hi);
-
-            // Append to result (ASCII characters)
-            for &byte in &output_buf {
-                result.push(byte as char);
+            if data.len() < BLOCK_SIZE {
+                self.encode_scalar(data, result);
+                return;
             }
 
-            offset += BLOCK_SIZE;
-        }
+            let num_blocks = data.len() / BLOCK_SIZE;
+            let simd_bytes = num_blocks * BLOCK_SIZE;
 
-        // Handle remainder with scalar
-        if simd_bytes < data.len() {
-            self.encode_scalar(&data[simd_bytes..], result);
+            // Load LUT into NEON register
+            let lut_vec = vld1q_u8(self.encode_lut.as_ptr());
+            let mask_0f = vdupq_n_u8(0x0F);
+
+            let mut offset = 0;
+            for _ in 0..num_blocks {
+                // Load 16 bytes
+                let input_vec = vld1q_u8(data.as_ptr().add(offset));
+
+                // Extract high nibbles (shift right by 4)
+                let hi_nibbles = vandq_u8(vshrq_n_u8(input_vec, 4), mask_0f);
+
+                // Extract low nibbles
+                let lo_nibbles = vandq_u8(input_vec, mask_0f);
+
+                // Translate nibbles to ASCII using vqtbl1q_u8
+                let hi_ascii = vqtbl1q_u8(lut_vec, hi_nibbles);
+                let lo_ascii = vqtbl1q_u8(lut_vec, lo_nibbles);
+
+                // Interleave high and low bytes: hi[0], lo[0], hi[1], lo[1], ...
+                let result_lo = vzip1q_u8(hi_ascii, lo_ascii);
+                let result_hi = vzip2q_u8(hi_ascii, lo_ascii);
+
+                // Store 32 output characters
+                let mut output_buf = [0u8; 32];
+                vst1q_u8(output_buf.as_mut_ptr(), result_lo);
+                vst1q_u8(output_buf.as_mut_ptr().add(16), result_hi);
+
+                // Append to result (ASCII characters)
+                for &byte in &output_buf {
+                    result.push(byte as char);
+                }
+
+                offset += BLOCK_SIZE;
+            }
+
+            // Handle remainder with scalar
+            if simd_bytes < data.len() {
+                self.encode_scalar(&data[simd_bytes..], result);
+            }
         }
     }
 
@@ -496,60 +498,62 @@ impl SmallLutCodec {
     #[cfg(target_arch = "aarch64")]
     #[target_feature(enable = "neon")]
     unsafe fn decode_neon_impl(&self, encoded: &[u8], result: &mut Vec<u8>) -> bool {
-        use std::arch::aarch64::*;
+        unsafe {
+            use std::arch::aarch64::*;
 
-        const BLOCK_SIZE: usize = 16;
+            const BLOCK_SIZE: usize = 16;
 
-        let lut_vec = vld1q_u8(self.encode_lut.as_ptr());
+            let lut_vec = vld1q_u8(self.encode_lut.as_ptr());
 
-        let num_blocks = encoded.len() / BLOCK_SIZE;
-        let simd_bytes = num_blocks * BLOCK_SIZE;
+            let num_blocks = encoded.len() / BLOCK_SIZE;
+            let simd_bytes = num_blocks * BLOCK_SIZE;
 
-        for i in 0..num_blocks {
-            let offset = i * BLOCK_SIZE;
-            let input_vec = vld1q_u8(encoded.as_ptr().add(offset));
+            for i in 0..num_blocks {
+                let offset = i * BLOCK_SIZE;
+                let input_vec = vld1q_u8(encoded.as_ptr().add(offset));
 
-            // Exhaustive search (16 comparisons)
-            let mut indices = vdupq_n_u8(0xFF); // Start with sentinel
-            for j in 0..16 {
-                let candidate = vdupq_n_u8(self.encode_lut[j]);
-                let match_mask = vceqq_u8(input_vec, candidate);
-                let idx_vec = vdupq_n_u8(j as u8);
-                indices = vbslq_u8(match_mask, idx_vec, indices);
+                // Exhaustive search (16 comparisons)
+                let mut indices = vdupq_n_u8(0xFF); // Start with sentinel
+                for j in 0..16 {
+                    let candidate = vdupq_n_u8(self.encode_lut[j]);
+                    let match_mask = vceqq_u8(input_vec, candidate);
+                    let idx_vec = vdupq_n_u8(j as u8);
+                    indices = vbslq_u8(match_mask, idx_vec, indices);
+                }
+
+                // Validate
+                let validated = vqtbl1q_u8(lut_vec, indices);
+                let is_valid = vceqq_u8(validated, input_vec);
+                let valid_mask = vminvq_u8(is_valid); // All lanes must be 0xFF
+                if valid_mask != 0xFF {
+                    return false;
+                }
+
+                // Pack nibbles (same shuffle strategy as x86)
+                let shuffle_even =
+                    vld1q_u8([0, 2, 4, 6, 8, 10, 12, 14, 0, 0, 0, 0, 0, 0, 0, 0].as_ptr());
+                let shuffle_odd =
+                    vld1q_u8([1, 3, 5, 7, 9, 11, 13, 15, 0, 0, 0, 0, 0, 0, 0, 0].as_ptr());
+
+                let hi_nibbles = vqtbl1q_u8(indices, shuffle_even);
+                let lo_nibbles = vqtbl1q_u8(indices, shuffle_odd);
+
+                let packed = vorrq_u8(vshlq_n_u8(hi_nibbles, 4), lo_nibbles);
+
+                let mut output_buf = [0u8; 16];
+                vst1q_u8(output_buf.as_mut_ptr(), packed);
+                result.extend_from_slice(&output_buf[0..8]);
             }
 
-            // Validate
-            let validated = vqtbl1q_u8(lut_vec, indices);
-            let is_valid = vceqq_u8(validated, input_vec);
-            let valid_mask = vminvq_u8(is_valid); // All lanes must be 0xFF
-            if valid_mask != 0xFF {
-                return false;
+            // Scalar remainder
+            if simd_bytes < encoded.len() {
+                if !self.decode_scalar(&encoded[simd_bytes..], result) {
+                    return false;
+                }
             }
 
-            // Pack nibbles (same shuffle strategy as x86)
-            let shuffle_even =
-                vld1q_u8([0, 2, 4, 6, 8, 10, 12, 14, 0, 0, 0, 0, 0, 0, 0, 0].as_ptr());
-            let shuffle_odd =
-                vld1q_u8([1, 3, 5, 7, 9, 11, 13, 15, 0, 0, 0, 0, 0, 0, 0, 0].as_ptr());
-
-            let hi_nibbles = vqtbl1q_u8(indices, shuffle_even);
-            let lo_nibbles = vqtbl1q_u8(indices, shuffle_odd);
-
-            let packed = vorrq_u8(vshlq_n_u8(hi_nibbles, 4), lo_nibbles);
-
-            let mut output_buf = [0u8; 16];
-            vst1q_u8(output_buf.as_mut_ptr(), packed);
-            result.extend_from_slice(&output_buf[0..8]);
+            true
         }
-
-        // Scalar remainder
-        if simd_bytes < encoded.len() {
-            if !self.decode_scalar(&encoded[simd_bytes..], result) {
-                return false;
-            }
-        }
-
-        true
     }
 
     /// Scalar fallback for decoding

@@ -14,7 +14,10 @@
 use crate::core::dictionary::Dictionary;
 use crate::simd::variants::{DictionaryMetadata, LutStrategy, TranslationStrategy};
 
-use super::common::{CharRange, RangeInfo, RangeStrategy};
+use super::common::{CharRange, RangeStrategy};
+
+#[cfg(target_arch = "x86_64")]
+use super::common::RangeInfo;
 
 /// SIMD codec for base64-scale arbitrary dictionaries (17-64 characters)
 ///
@@ -189,58 +192,60 @@ impl Base64LutCodec {
     #[cfg(target_arch = "aarch64")]
     #[target_feature(enable = "neon")]
     unsafe fn encode_neon_base64(&self, data: &[u8], result: &mut String) {
-        use std::arch::aarch64::*;
+        unsafe {
+            use std::arch::aarch64::*;
 
-        const BLOCK_SIZE: usize = 12; // 12 bytes -> 16 chars
-        const SIMD_READ: usize = 16; // Actually reads 16 bytes for reshuffle
+            const BLOCK_SIZE: usize = 12; // 12 bytes -> 16 chars
+            const SIMD_READ: usize = 16; // Actually reads 16 bytes for reshuffle
 
-        if data.len() < SIMD_READ {
-            self.encode_scalar_base64(data, result);
-            return;
-        }
-
-        let safe_len = if data.len() >= 4 { data.len() - 4 } else { 0 };
-        let num_blocks = safe_len / BLOCK_SIZE;
-        let simd_bytes = num_blocks * BLOCK_SIZE;
-
-        // Load 64-byte LUT into four 16-byte tables
-        let lut_tables = uint8x16x4_t(
-            vld1q_u8(self.encode_lut.as_ptr()),
-            vld1q_u8(self.encode_lut.as_ptr().add(16)),
-            vld1q_u8(self.encode_lut.as_ptr().add(32)),
-            vld1q_u8(self.encode_lut.as_ptr().add(48)),
-        );
-
-        let mut offset = 0;
-        for _ in 0..num_blocks {
-            // SAFETY: offset + SIMD_READ <= data.len() guaranteed by safe_len calculation
-            // (safe_len ensures data.len() - 4, num_blocks uses BLOCK_SIZE=12, leaving 4-byte buffer)
-            debug_assert!(offset + SIMD_READ <= data.len());
-
-            // Load 16 bytes (will use first 12)
-            let input_vec = vld1q_u8(data.as_ptr().add(offset));
-
-            // Reshuffle to extract 6-bit indices (same as specialized base64)
-            let reshuffled = self.reshuffle_neon_base64(input_vec);
-
-            // Translate using vqtbl4q_u8 (64-byte lookup)
-            let chars = vqtbl4q_u8(lut_tables, reshuffled);
-
-            // Store 16 output characters
-            let mut output_buf = [0u8; 16];
-            vst1q_u8(output_buf.as_mut_ptr(), chars);
-
-            // Append to result
-            for &byte in &output_buf {
-                result.push(byte as char);
+            if data.len() < SIMD_READ {
+                self.encode_scalar_base64(data, result);
+                return;
             }
 
-            offset += BLOCK_SIZE;
-        }
+            let safe_len = if data.len() >= 4 { data.len() - 4 } else { 0 };
+            let num_blocks = safe_len / BLOCK_SIZE;
+            let simd_bytes = num_blocks * BLOCK_SIZE;
 
-        // Handle remainder with scalar
-        if simd_bytes < data.len() {
-            self.encode_scalar_base64(&data[simd_bytes..], result);
+            // Load 64-byte LUT into four 16-byte tables
+            let lut_tables = uint8x16x4_t(
+                vld1q_u8(self.encode_lut.as_ptr()),
+                vld1q_u8(self.encode_lut.as_ptr().add(16)),
+                vld1q_u8(self.encode_lut.as_ptr().add(32)),
+                vld1q_u8(self.encode_lut.as_ptr().add(48)),
+            );
+
+            let mut offset = 0;
+            for _ in 0..num_blocks {
+                // SAFETY: offset + SIMD_READ <= data.len() guaranteed by safe_len calculation
+                // (safe_len ensures data.len() - 4, num_blocks uses BLOCK_SIZE=12, leaving 4-byte buffer)
+                debug_assert!(offset + SIMD_READ <= data.len());
+
+                // Load 16 bytes (will use first 12)
+                let input_vec = vld1q_u8(data.as_ptr().add(offset));
+
+                // Reshuffle to extract 6-bit indices (same as specialized base64)
+                let reshuffled = self.reshuffle_neon_base64(input_vec);
+
+                // Translate using vqtbl4q_u8 (64-byte lookup)
+                let chars = vqtbl4q_u8(lut_tables, reshuffled);
+
+                // Store 16 output characters
+                let mut output_buf = [0u8; 16];
+                vst1q_u8(output_buf.as_mut_ptr(), chars);
+
+                // Append to result
+                for &byte in &output_buf {
+                    result.push(byte as char);
+                }
+
+                offset += BLOCK_SIZE;
+            }
+
+            // Handle remainder with scalar
+            if simd_bytes < data.len() {
+                self.encode_scalar_base64(&data[simd_bytes..], result);
+            }
         }
     }
 
@@ -252,60 +257,62 @@ impl Base64LutCodec {
         &self,
         input: std::arch::aarch64::uint8x16_t,
     ) -> std::arch::aarch64::uint8x16_t {
-        use std::arch::aarch64::*;
+        unsafe {
+            use std::arch::aarch64::*;
 
-        // Shuffle mask: Reshuffle bytes to prepare for 6-bit extraction
-        // For each group of 3 input bytes ABC (24 bits) -> 4 output indices (4 x 6 bits)
-        // Matches x86_64 base64.rs pattern: [1,0,2,1, 4,3,5,4, 7,6,8,7, 10,9,11,10]
-        let shuffle_indices = vld1q_u8(
-            [
-                1, 0, 2, 1, // bytes 0-2 -> positions 0-3
-                4, 3, 5, 4, // bytes 3-5 -> positions 4-7
-                7, 6, 8, 7, // bytes 6-8 -> positions 8-11
-                10, 9, 11, 10, // bytes 9-11 -> positions 12-15
-            ]
-            .as_ptr(),
-        );
+            // Shuffle mask: Reshuffle bytes to prepare for 6-bit extraction
+            // For each group of 3 input bytes ABC (24 bits) -> 4 output indices (4 x 6 bits)
+            // Matches x86_64 base64.rs pattern: [1,0,2,1, 4,3,5,4, 7,6,8,7, 10,9,11,10]
+            let shuffle_indices = vld1q_u8(
+                [
+                    1, 0, 2, 1, // bytes 0-2 -> positions 0-3
+                    4, 3, 5, 4, // bytes 3-5 -> positions 4-7
+                    7, 6, 8, 7, // bytes 6-8 -> positions 8-11
+                    10, 9, 11, 10, // bytes 9-11 -> positions 12-15
+                ]
+                .as_ptr(),
+            );
 
-        let shuffled = vqtbl1q_u8(input, shuffle_indices);
-        let shuffled_u32 = vreinterpretq_u32_u8(shuffled);
+            let shuffled = vqtbl1q_u8(input, shuffle_indices);
+            let shuffled_u32 = vreinterpretq_u32_u8(shuffled);
 
-        // Extract 6-bit groups using shifts and masks
-        // This matches the x86_64 algorithm which uses mulhi_epu16 and mullo_epi16.
-        // NEON doesn't have a direct mulhi equivalent, so we use vmull/vshrn pattern.
+            // Extract 6-bit groups using shifts and masks
+            // This matches the x86_64 algorithm which uses mulhi_epu16 and mullo_epi16.
+            // NEON doesn't have a direct mulhi equivalent, so we use vmull/vshrn pattern.
 
-        // First extraction: get bits for positions 0 and 2 in each group of 4
-        // x86: mulhi_epu16(and(shuffled, 0x0FC0FC00), 0x04000040)
-        let t0 = vandq_u32(shuffled_u32, vdupq_n_u32(0x0FC0FC00));
-        let t1 = {
-            let t0_u16 = vreinterpretq_u16_u32(t0);
-            // Implement mulhi_epu16 using vmull + vshrn
-            // 0x04000040 as 16-bit lanes: [0x0040, 0x0400, 0x0040, 0x0400, ...]
-            let mult_pattern = vreinterpretq_u16_u32(vdupq_n_u32(0x04000040));
-            let lo = vget_low_u16(t0_u16);
-            let hi = vget_high_u16(t0_u16);
-            let mult_lo = vget_low_u16(mult_pattern);
-            let mult_hi = vget_high_u16(mult_pattern);
-            let lo_32 = vmull_u16(lo, mult_lo);
-            let hi_32 = vmull_u16(hi, mult_hi);
-            let lo_result = vshrn_n_u32(lo_32, 16);
-            let hi_result = vshrn_n_u32(hi_32, 16);
-            vreinterpretq_u32_u16(vcombine_u16(lo_result, hi_result))
-        };
+            // First extraction: get bits for positions 0 and 2 in each group of 4
+            // x86: mulhi_epu16(and(shuffled, 0x0FC0FC00), 0x04000040)
+            let t0 = vandq_u32(shuffled_u32, vdupq_n_u32(0x0FC0FC00));
+            let t1 = {
+                let t0_u16 = vreinterpretq_u16_u32(t0);
+                // Implement mulhi_epu16 using vmull + vshrn
+                // 0x04000040 as 16-bit lanes: [0x0040, 0x0400, 0x0040, 0x0400, ...]
+                let mult_pattern = vreinterpretq_u16_u32(vdupq_n_u32(0x04000040));
+                let lo = vget_low_u16(t0_u16);
+                let hi = vget_high_u16(t0_u16);
+                let mult_lo = vget_low_u16(mult_pattern);
+                let mult_hi = vget_high_u16(mult_pattern);
+                let lo_32 = vmull_u16(lo, mult_lo);
+                let hi_32 = vmull_u16(hi, mult_hi);
+                let lo_result = vshrn_n_u32(lo_32, 16);
+                let hi_result = vshrn_n_u32(hi_32, 16);
+                vreinterpretq_u32_u16(vcombine_u16(lo_result, hi_result))
+            };
 
-        // Second extraction: get bits for positions 1 and 3 in each group of 4
-        // x86: mullo_epi16(and(shuffled, 0x003F03F0), 0x01000010)
-        let t2 = vandq_u32(shuffled_u32, vdupq_n_u32(0x003F03F0));
-        let t3 = {
-            let t2_u16 = vreinterpretq_u16_u32(t2);
-            // mullo is just regular multiply (keep low 16 bits)
-            // 0x01000010 as 16-bit lanes: [0x0010, 0x0100, 0x0010, 0x0100, ...]
-            let mult_pattern = vreinterpretq_u16_u32(vdupq_n_u32(0x01000010));
-            vreinterpretq_u32_u16(vmulq_u16(t2_u16, mult_pattern))
-        };
+            // Second extraction: get bits for positions 1 and 3 in each group of 4
+            // x86: mullo_epi16(and(shuffled, 0x003F03F0), 0x01000010)
+            let t2 = vandq_u32(shuffled_u32, vdupq_n_u32(0x003F03F0));
+            let t3 = {
+                let t2_u16 = vreinterpretq_u16_u32(t2);
+                // mullo is just regular multiply (keep low 16 bits)
+                // 0x01000010 as 16-bit lanes: [0x0010, 0x0100, 0x0010, 0x0100, ...]
+                let mult_pattern = vreinterpretq_u16_u32(vdupq_n_u32(0x01000010));
+                vreinterpretq_u32_u16(vmulq_u16(t2_u16, mult_pattern))
+            };
 
-        // Combine the two results
-        vreinterpretq_u8_u32(vorrq_u32(t1, t3))
+            // Combine the two results
+            vreinterpretq_u8_u32(vorrq_u32(t1, t3))
+        }
     }
 
     /// Scalar fallback for base64 encoding
@@ -944,63 +951,65 @@ impl Base64LutCodec {
     #[cfg(target_arch = "aarch64")]
     #[target_feature(enable = "neon")]
     unsafe fn decode_neon_base64_standard(&self, encoded: &[u8], result: &mut Vec<u8>) -> bool {
-        use std::arch::aarch64::*;
+        unsafe {
+            use std::arch::aarch64::*;
 
-        const BLOCK_SIZE: usize = 16;
+            const BLOCK_SIZE: usize = 16;
 
-        let input_no_padding = if let Some(last_non_pad) = encoded.iter().rposition(|&b| b != b'=')
-        {
-            &encoded[..=last_non_pad]
-        } else {
-            encoded
-        };
+            let input_no_padding =
+                if let Some(last_non_pad) = encoded.iter().rposition(|&b| b != b'=') {
+                    &encoded[..=last_non_pad]
+                } else {
+                    encoded
+                };
 
-        let num_blocks = input_no_padding.len() / BLOCK_SIZE;
-        let simd_bytes = num_blocks * BLOCK_SIZE;
+            let num_blocks = input_no_padding.len() / BLOCK_SIZE;
+            let simd_bytes = num_blocks * BLOCK_SIZE;
 
-        for i in 0..num_blocks {
-            let offset = i * BLOCK_SIZE;
+            for i in 0..num_blocks {
+                let offset = i * BLOCK_SIZE;
 
-            // SAFETY: offset + BLOCK_SIZE <= simd_bytes <= input_no_padding.len() by construction
-            // (num_blocks = input_no_padding.len() / BLOCK_SIZE, offset = i * BLOCK_SIZE where i < num_blocks)
-            debug_assert!(offset + BLOCK_SIZE <= input_no_padding.len());
+                // SAFETY: offset + BLOCK_SIZE <= simd_bytes <= input_no_padding.len() by construction
+                // (num_blocks = input_no_padding.len() / BLOCK_SIZE, offset = i * BLOCK_SIZE where i < num_blocks)
+                debug_assert!(offset + BLOCK_SIZE <= input_no_padding.len());
 
-            let input_vec = vld1q_u8(input_no_padding.as_ptr().add(offset));
+                let input_vec = vld1q_u8(input_no_padding.as_ptr().add(offset));
 
-            // === VALIDATION & TRANSLATION ===
-            let mut char_buf = [0u8; 16];
-            vst1q_u8(char_buf.as_mut_ptr(), input_vec);
+                // === VALIDATION & TRANSLATION ===
+                let mut char_buf = [0u8; 16];
+                vst1q_u8(char_buf.as_mut_ptr(), input_vec);
 
-            let mut indices_buf = [0u8; 16];
+                let mut indices_buf = [0u8; 16];
 
-            // For range-reduced dictionaries, reverse the transformation
-            // Note: aarch64 doesn't have range_info, so always use decode_lut
-            for j in 0..16 {
-                let idx = self.decode_lut[char_buf[j] as usize];
-                if idx == 0xFF {
+                // For range-reduced dictionaries, reverse the transformation
+                // Note: aarch64 doesn't have range_info, so always use decode_lut
+                for j in 0..16 {
+                    let idx = self.decode_lut[char_buf[j] as usize];
+                    if idx == 0xFF {
+                        return false;
+                    }
+                    indices_buf[j] = idx;
+                }
+
+                let indices = vld1q_u8(indices_buf.as_ptr());
+
+                // === UNPACKING ===
+                let decoded = self.reshuffle_decode_neon(indices);
+
+                let mut output_buf = [0u8; 16];
+                vst1q_u8(output_buf.as_mut_ptr(), decoded);
+                result.extend_from_slice(&output_buf[0..12]);
+            }
+
+            // Scalar remainder
+            if simd_bytes < input_no_padding.len() {
+                if !self.decode_scalar(&input_no_padding[simd_bytes..], result) {
                     return false;
                 }
-                indices_buf[j] = idx;
             }
 
-            let indices = vld1q_u8(indices_buf.as_ptr());
-
-            // === UNPACKING ===
-            let decoded = self.reshuffle_decode_neon(indices);
-
-            let mut output_buf = [0u8; 16];
-            vst1q_u8(output_buf.as_mut_ptr(), decoded);
-            result.extend_from_slice(&output_buf[0..12]);
+            true
         }
-
-        // Scalar remainder
-        if simd_bytes < input_no_padding.len() {
-            if !self.decode_scalar(&input_no_padding[simd_bytes..], result) {
-                return false;
-            }
-        }
-
-        true
     }
 
     /// Reshuffle 6-bit indices to packed 8-bit bytes (x86 SSSE3)
@@ -1039,50 +1048,52 @@ impl Base64LutCodec {
         &self,
         indices: std::arch::aarch64::uint8x16_t,
     ) -> std::arch::aarch64::uint8x16_t {
-        use std::arch::aarch64::*;
+        unsafe {
+            use std::arch::aarch64::*;
 
-        // Simulate _mm_maddubs_epi16: multiply adjacent u8 pairs and add
-        // Input: [a0 b0 a1 b1 a2 b2 ...] u8x16
-        // Multiply pattern: [0x01 0x40 0x01 0x40 ...]
-        // Result: [a0*1 + b0*64, a1*1 + b1*64, ...] as i16x8
+            // Simulate _mm_maddubs_epi16: multiply adjacent u8 pairs and add
+            // Input: [a0 b0 a1 b1 a2 b2 ...] u8x16
+            // Multiply pattern: [0x01 0x40 0x01 0x40 ...]
+            // Result: [a0*1 + b0*64, a1*1 + b1*64, ...] as i16x8
 
-        let pairs = vreinterpretq_u16_u8(indices);
+            let pairs = vreinterpretq_u16_u8(indices);
 
-        // Extract even bytes (a0, a1, a2, ...) and odd bytes (b0, b1, b2, ...)
-        let even = vandq_u16(pairs, vdupq_n_u16(0xFF)); // Low byte of each pair
-        let odd = vshrq_n_u16(pairs, 8); // High byte of each pair
+            // Extract even bytes (a0, a1, a2, ...) and odd bytes (b0, b1, b2, ...)
+            let even = vandq_u16(pairs, vdupq_n_u16(0xFF)); // Low byte of each pair
+            let odd = vshrq_n_u16(pairs, 8); // High byte of each pair
 
-        // Stage 1: Emulate maddubs: even * 64 + odd * 1
-        let merge_result = vmlaq_n_u16(odd, even, 64);
+            // Stage 1: Emulate maddubs: even * 64 + odd * 1
+            let merge_result = vmlaq_n_u16(odd, even, 64);
 
-        // Stage 2: Combine 16-bit pairs using multiply-add
-        // _mm_madd_epi16: multiply adjacent i16 and add horizontally
-        // Pattern: [0x1000 0x0001 0x1000 0x0001 ...]
-        // Result: [p0*0x1000 + p1*0x0001, ...] as i32x4
+            // Stage 2: Combine 16-bit pairs using multiply-add
+            // _mm_madd_epi16: multiply adjacent i16 and add horizontally
+            // Pattern: [0x1000 0x0001 0x1000 0x0001 ...]
+            // Result: [p0*0x1000 + p1*0x0001, ...] as i32x4
 
-        let merge_u32 = vreinterpretq_u32_u16(merge_result);
+            let merge_u32 = vreinterpretq_u32_u16(merge_result);
 
-        // Extract low and high 16-bit values from each 32-bit pair
-        let lo = vandq_u32(merge_u32, vdupq_n_u32(0xFFFF));
-        let hi = vshrq_n_u32(merge_u32, 16);
+            // Extract low and high 16-bit values from each 32-bit pair
+            let lo = vandq_u32(merge_u32, vdupq_n_u32(0xFFFF));
+            let hi = vshrq_n_u32(merge_u32, 16);
 
-        // Combine: lo << 12 | hi
-        let final_32bit = vorrq_u32(vshlq_n_u32(lo, 12), hi);
+            // Combine: lo << 12 | hi
+            let final_32bit = vorrq_u32(vshlq_n_u32(lo, 12), hi);
 
-        // Stage 3: Extract valid bytes (3 bytes per 32-bit group)
-        let shuffle_mask = vld1q_u8(
-            [
-                2, 1, 0, // first group (reversed byte order)
-                6, 5, 4, // second group
-                10, 9, 8, // third group
-                14, 13, 12, // fourth group
-                255, 255, 255, 255,
-            ]
-            .as_ptr(),
-        );
+            // Stage 3: Extract valid bytes (3 bytes per 32-bit group)
+            let shuffle_mask = vld1q_u8(
+                [
+                    2, 1, 0, // first group (reversed byte order)
+                    6, 5, 4, // second group
+                    10, 9, 8, // third group
+                    14, 13, 12, // fourth group
+                    255, 255, 255, 255,
+                ]
+                .as_ptr(),
+            );
 
-        let result_bytes = vreinterpretq_u8_u32(final_32bit);
-        vqtbl1q_u8(result_bytes, shuffle_mask)
+            let result_bytes = vreinterpretq_u8_u32(final_32bit);
+            vqtbl1q_u8(result_bytes, shuffle_mask)
+        }
     }
 
     /// Scalar fallback for decoding
