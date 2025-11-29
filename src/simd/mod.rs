@@ -398,8 +398,6 @@ fn is_standard_hex(dict: &Dictionary) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::core::config::EncodingMode;
 
     #[test]
     #[cfg(target_arch = "x86_64")]

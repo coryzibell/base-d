@@ -123,7 +123,8 @@ enum Commands {
 
 /// Check if output contains problematic control characters (0x00-0x1F except \t, \n, \r)
 fn contains_control_chars(s: &str) -> bool {
-    s.bytes().any(|b| b < 0x20 && b != b'\t' && b != b'\n' && b != b'\r')
+    s.bytes()
+        .any(|b| b < 0x20 && b != b'\t' && b != b'\n' && b != b'\r')
 }
 
 /// Output encoded string, failing if it contains control characters
@@ -132,8 +133,15 @@ fn output_encoded(encoded: &str, dict_name: &str) -> Result<(), Box<dyn std::err
         // Log debug info to stderr
         eprintln!("ERROR: Encoded output contains control characters");
         eprintln!("  Dictionary: {}", dict_name);
-        eprintln!("  Output bytes: {:?}", encoded.as_bytes().iter().take(50).collect::<Vec<_>>());
-        return Err(format!("Encoded output contains control characters (dictionary: {})", dict_name).into());
+        eprintln!(
+            "  Output bytes: {:?}",
+            encoded.as_bytes().iter().take(50).collect::<Vec<_>>()
+        );
+        return Err(format!(
+            "Encoded output contains control characters (dictionary: {})",
+            dict_name
+        )
+        .into());
     }
     println!("{}", encoded);
     Ok(())
@@ -181,9 +189,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         // Determine initial dictionary
         // If --dejavu is set and no explicit dictionary, pick random
         let initial_dictionary = if cli.dejavu && dictionary_opt.is_none() {
-            let random_dict = commands::select_random_dictionary(&config, false)?;
             // Silently select - the puzzle is figuring out which dictionary was used
-            random_dict
+            commands::select_random_dictionary(&config, false)?
         } else {
             dictionary_opt
                 .as_deref()

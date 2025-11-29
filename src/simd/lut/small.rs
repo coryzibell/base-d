@@ -101,28 +101,24 @@ impl SmallLutCodec {
         unsafe {
             if is_x86_feature_detected!("avx2") {
                 self.encode_avx2_impl(data, &mut result);
-                return Some(result);
-            }
-            if is_x86_feature_detected!("ssse3") {
+            } else if is_x86_feature_detected!("ssse3") {
                 self.encode_ssse3_impl(data, &mut result);
-                return Some(result);
+            } else {
+                self.encode_scalar(data, &mut result);
             }
         }
 
         #[cfg(target_arch = "aarch64")]
         unsafe {
             self.encode_neon_impl(data, &mut result);
-            return Some(result);
         }
 
         #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
         {
-            // Scalar fallback for unsupported architectures
             self.encode_scalar(data, &mut result);
-            return Some(result);
         }
 
-        None
+        Some(result)
     }
 
     /// x86_64 AVX2 encode implementation
@@ -336,34 +332,27 @@ impl SmallLutCodec {
         let encoded_bytes = encoded.as_bytes();
 
         #[cfg(target_arch = "x86_64")]
-        unsafe {
+        let success = unsafe {
             if is_x86_feature_detected!("avx2") {
-                if !self.decode_avx2_impl(encoded_bytes, &mut result) {
-                    return None;
-                }
-                return Some(result);
+                self.decode_avx2_impl(encoded_bytes, &mut result)
+            } else if is_x86_feature_detected!("ssse3") {
+                self.decode_ssse3_impl(encoded_bytes, &mut result)
+            } else {
+                self.decode_scalar(encoded_bytes, &mut result)
             }
-            if is_x86_feature_detected!("ssse3") {
-                if !self.decode_ssse3_impl(encoded_bytes, &mut result) {
-                    return None;
-                }
-                return Some(result);
-            }
-        }
+        };
 
         #[cfg(target_arch = "aarch64")]
-        unsafe {
-            if !self.decode_neon_impl(encoded_bytes, &mut result) {
-                return None;
-            }
-            return Some(result);
-        }
+        let success = unsafe { self.decode_neon_impl(encoded_bytes, &mut result) };
 
-        // Scalar fallback
-        if !self.decode_scalar(encoded_bytes, &mut result) {
-            return None;
+        #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+        let success = self.decode_scalar(encoded_bytes, &mut result);
+
+        if success {
+            Some(result)
+        } else {
+            None
         }
-        Some(result)
     }
 
     /// x86_64 AVX2 decode implementation

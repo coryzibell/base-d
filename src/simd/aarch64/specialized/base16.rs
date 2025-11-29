@@ -181,7 +181,7 @@ unsafe fn decode_neon_impl(encoded: &[u8], result: &mut Vec<u8>) -> bool {
 
     // Process full blocks
     for round in 0..num_blocks {
-        let mut offset = round * INPUT_BLOCK_SIZE;
+        let offset = round * INPUT_BLOCK_SIZE;
 
         // Load 32 bytes (16 pairs of hex chars)
         let input_lo = vld1q_u8(encoded.as_ptr().add(offset));
@@ -213,8 +213,6 @@ unsafe fn decode_neon_impl(encoded: &[u8], result: &mut Vec<u8>) -> bool {
         let mut output_buf = [0u8; OUTPUT_BLOCK_SIZE];
         vst1q_u8(output_buf.as_mut_ptr(), packed);
         result.extend_from_slice(&output_buf);
-
-        offset += INPUT_BLOCK_SIZE;
     }
 
     // Handle remainder with scalar fallback

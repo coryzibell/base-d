@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 #![allow(clippy::should_implement_trait)]
 #![allow(clippy::derivable_impls)]
 #![allow(clippy::manual_div_ceil)]
