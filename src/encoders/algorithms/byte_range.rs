@@ -1,4 +1,4 @@
-use super::math::DecodeError;
+use super::errors::DecodeError;
 use crate::core::dictionary::Dictionary;
 
 /// Encode data using byte range mode (direct byte-to-character mapping)
@@ -43,6 +43,12 @@ pub fn decode_byte_range(encoded: &str, dictionary: &Dictionary) -> Result<Vec<u
     let char_count = encoded.chars().count();
     let mut result = Vec::with_capacity(char_count);
 
+    // Build valid range string for error messages
+    let valid_chars = format!("U+{:04X} to U+{:04X}", start, start + 255);
+
+    // Track position for error reporting
+    let mut char_position = 0;
+
     // Process in chunks for better cache utilization
     const CHUNK_SIZE: usize = 64;
     let chars: Vec<char> = encoded.chars().collect();
@@ -55,8 +61,14 @@ pub fn decode_byte_range(encoded: &str, dictionary: &Dictionary) -> Result<Vec<u
             if codepoint >= start && codepoint < start + 256 {
                 result.push((codepoint - start) as u8);
             } else {
-                return Err(DecodeError::InvalidCharacter(c));
+                return Err(DecodeError::invalid_character(
+                    c,
+                    char_position,
+                    encoded,
+                    &valid_chars,
+                ));
             }
+            char_position += 1;
         }
     }
 
@@ -66,8 +78,14 @@ pub fn decode_byte_range(encoded: &str, dictionary: &Dictionary) -> Result<Vec<u
         if codepoint >= start && codepoint < start + 256 {
             result.push((codepoint - start) as u8);
         } else {
-            return Err(DecodeError::InvalidCharacter(c));
+            return Err(DecodeError::invalid_character(
+                c,
+                char_position,
+                encoded,
+                &valid_chars,
+            ));
         }
+        char_position += 1;
     }
 
     Ok(result)

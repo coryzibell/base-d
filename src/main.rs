@@ -1,5 +1,8 @@
 mod cli;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    cli::run()
+fn main() {
+    if let Err(e) = cli::run() {
+        eprintln!("{e}");
+        std::process::exit(1);
+    }
 }
