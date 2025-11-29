@@ -620,6 +620,10 @@ impl LargeLutCodec {
 
         let mut offset = 0;
         for _ in 0..num_blocks {
+            // SAFETY: offset + BLOCK_SIZE <= simd_bytes <= data.len() by construction
+            // (num_blocks = data.len() / BLOCK_SIZE, simd_bytes = num_blocks * BLOCK_SIZE)
+            debug_assert!(offset + BLOCK_SIZE <= data.len());
+
             // Process 5 bytes -> 8 chars
             // Load 5 bytes and extract 5-bit indices
             let bytes = [
@@ -672,8 +676,9 @@ impl LargeLutCodec {
         use std::arch::aarch64::*;
 
         const BLOCK_SIZE: usize = 12; // 12 bytes -> 16 chars
+        const SIMD_READ: usize = 16; // Actually reads 16 bytes for reshuffle
 
-        if data.len() < 16 {
+        if data.len() < SIMD_READ {
             self.encode_scalar_base64(data, result);
             return;
         }
@@ -692,6 +697,10 @@ impl LargeLutCodec {
 
         let mut offset = 0;
         for _ in 0..num_blocks {
+            // SAFETY: offset + SIMD_READ <= data.len() guaranteed by safe_len calculation
+            // (safe_len ensures data.len() - 4, num_blocks uses BLOCK_SIZE=12, leaving 4-byte buffer)
+            debug_assert!(offset + SIMD_READ <= data.len());
+
             // Load 16 bytes (will use first 12)
             let input_vec = vld1q_u8(data.as_ptr().add(offset));
 
@@ -898,6 +907,10 @@ impl LargeLutCodec {
 
         let mut offset = 0;
         for _ in 0..num_blocks {
+            // SAFETY: offset + BLOCK_SIZE <= simd_bytes <= data.len() by construction
+            // (num_blocks = data.len() / BLOCK_SIZE, simd_bytes = num_blocks * BLOCK_SIZE)
+            debug_assert!(offset + BLOCK_SIZE <= data.len());
+
             // Extract 5 bytes → 8 x 5-bit indices from 5 bytes (40 bits)
             let bytes = [
                 *data.get_unchecked(offset),
@@ -997,8 +1010,9 @@ impl LargeLutCodec {
         use std::arch::x86_64::*;
 
         const BLOCK_SIZE: usize = 12; // 12 bytes → 16 chars
+        const SIMD_READ: usize = 16; // Actually reads 16 bytes for reshuffle
 
-        if data.len() < 16 {
+        if data.len() < SIMD_READ {
             self.encode_scalar_base64_x86(data, result);
             return;
         }
@@ -1014,6 +1028,10 @@ impl LargeLutCodec {
 
         let mut offset = 0;
         for _ in 0..num_blocks {
+            // SAFETY: offset + SIMD_READ <= data.len() guaranteed by safe_len calculation
+            // (safe_len ensures data.len() - 4, num_blocks uses BLOCK_SIZE=12, leaving 4-byte buffer)
+            debug_assert!(offset + SIMD_READ <= data.len());
+
             // Load 16 bytes and extract 6-bit indices (reuse existing reshuffle logic)
             let input_vec = _mm_loadu_si128(data.as_ptr().add(offset) as *const __m128i);
             let idx_vec = self.reshuffle_x86_base64(input_vec);
@@ -1102,6 +1120,10 @@ impl LargeLutCodec {
 
         let mut offset = 0;
         for _ in 0..num_blocks {
+            // SAFETY: offset + BLOCK_SIZE <= simd_bytes <= data.len() by construction
+            // (num_blocks = data.len() / BLOCK_SIZE, simd_bytes = num_blocks * BLOCK_SIZE)
+            debug_assert!(offset + BLOCK_SIZE <= data.len());
+
             // Process 5 bytes -> 8 chars
             let bytes = [
                 *data.get_unchecked(offset),
@@ -1153,8 +1175,9 @@ impl LargeLutCodec {
         use std::arch::x86_64::*;
 
         const BLOCK_SIZE: usize = 12; // 12 bytes -> 16 chars
+        const SIMD_READ: usize = 16; // Actually reads 16 bytes for reshuffle
 
-        if data.len() < 16 {
+        if data.len() < SIMD_READ {
             self.encode_scalar_base64_x86(data, result);
             return;
         }
@@ -1168,6 +1191,10 @@ impl LargeLutCodec {
 
         let mut offset = 0;
         for _ in 0..num_blocks {
+            // SAFETY: offset + SIMD_READ <= data.len() guaranteed by safe_len calculation
+            // (safe_len ensures data.len() - 4, num_blocks uses BLOCK_SIZE=12, leaving 4-byte buffer)
+            debug_assert!(offset + SIMD_READ <= data.len());
+
             // Load 16 bytes (will use first 12)
             let input_vec = _mm_loadu_si128(data.as_ptr().add(offset) as *const __m128i);
 
@@ -1421,6 +1448,11 @@ impl LargeLutCodec {
 
         for i in 0..num_blocks {
             let offset = i * BLOCK_SIZE;
+
+            // SAFETY: offset + BLOCK_SIZE <= simd_bytes <= encoded.len() by construction
+            // (num_blocks = encoded.len() / BLOCK_SIZE, offset = i * BLOCK_SIZE where i < num_blocks)
+            debug_assert!(offset + BLOCK_SIZE <= encoded.len());
+
             let chars = _mm_loadu_si128(encoded.as_ptr().add(offset) as *const __m128i);
 
             // === VALIDATION + TRANSLATION ===
@@ -1468,6 +1500,11 @@ impl LargeLutCodec {
 
         for i in 0..num_blocks {
             let offset = i * BLOCK_SIZE;
+
+            // SAFETY: offset + BLOCK_SIZE <= simd_bytes <= input_no_padding.len() by construction
+            // (num_blocks = input_no_padding.len() / BLOCK_SIZE, offset = i * BLOCK_SIZE where i < num_blocks)
+            debug_assert!(offset + BLOCK_SIZE <= input_no_padding.len());
+
             let chars = _mm_loadu_si128(input_no_padding.as_ptr().add(offset) as *const __m128i);
 
             // === VALIDATION + TRANSLATION ===
@@ -1585,6 +1622,11 @@ impl LargeLutCodec {
 
         for i in 0..num_blocks {
             let offset = i * BLOCK_SIZE;
+
+            // SAFETY: offset + BLOCK_SIZE <= simd_bytes <= encoded.len() by construction
+            // (num_blocks = encoded.len() / BLOCK_SIZE, offset = i * BLOCK_SIZE where i < num_blocks)
+            debug_assert!(offset + BLOCK_SIZE <= encoded.len());
+
             let input = _mm_loadu_si128(encoded.as_ptr().add(offset) as *const __m128i);
 
             // === VALIDATION (Range Checks) ===
@@ -1653,6 +1695,11 @@ impl LargeLutCodec {
 
         for i in 0..num_blocks {
             let offset = i * BLOCK_SIZE;
+
+            // SAFETY: offset + BLOCK_SIZE <= simd_bytes <= encoded.len() by construction
+            // (num_blocks = encoded.len() / BLOCK_SIZE, offset = i * BLOCK_SIZE where i < num_blocks)
+            debug_assert!(offset + BLOCK_SIZE <= encoded.len());
+
             let input_vec = vld1q_u8(encoded.as_ptr().add(offset));
 
             // === VALIDATION (Range Checks) ===
@@ -1726,6 +1773,11 @@ impl LargeLutCodec {
 
         for i in 0..num_blocks {
             let offset = i * BLOCK_SIZE;
+
+            // SAFETY: offset + BLOCK_SIZE <= simd_bytes <= input_no_padding.len() by construction
+            // (num_blocks = input_no_padding.len() / BLOCK_SIZE, offset = i * BLOCK_SIZE where i < num_blocks)
+            debug_assert!(offset + BLOCK_SIZE <= input_no_padding.len());
+
             let input_vec =
                 _mm_loadu_si128(input_no_padding.as_ptr().add(offset) as *const __m128i);
 
@@ -1813,6 +1865,11 @@ impl LargeLutCodec {
 
         for i in 0..num_blocks {
             let offset = i * BLOCK_SIZE;
+
+            // SAFETY: offset + BLOCK_SIZE <= simd_bytes <= input_no_padding.len() by construction
+            // (num_blocks = input_no_padding.len() / BLOCK_SIZE, offset = i * BLOCK_SIZE where i < num_blocks)
+            debug_assert!(offset + BLOCK_SIZE <= input_no_padding.len());
+
             let input_vec = vld1q_u8(input_no_padding.as_ptr().add(offset));
 
             // === VALIDATION & TRANSLATION ===

@@ -99,6 +99,7 @@ pub fn matrix_mode(
     config: &DictionaryRegistry,
     initial_dictionary: &str,
     switch_mode: SwitchMode,
+    no_color: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use std::thread;
     use std::time::Instant;
@@ -109,8 +110,10 @@ pub fn matrix_mode(
         None => 80,
     };
 
-    println!("\x1b[2J\x1b[H"); // Clear screen
-    println!("\x1b[32m"); // Green text
+    if !no_color {
+        println!("\x1b[2J\x1b[H"); // Clear screen
+        println!("\x1b[32m"); // Green text
+    }
 
     // Iconic Matrix messages
     let messages = [
@@ -131,7 +134,11 @@ pub fn matrix_mode(
                     code: KeyCode::Esc, ..
                 }) = read()?
                 {
-                    print!("\r\x1b[K");
+                    if !no_color {
+                        print!("\r\x1b[K");
+                    } else {
+                        print!("\r");
+                    }
                     break 'intro_loop;
                 }
             } else {
@@ -139,7 +146,11 @@ pub fn matrix_mode(
             }
         }
         thread::sleep(Duration::from_millis(800));
-        print!("\r\x1b[K");
+        if !no_color {
+            print!("\r\x1b[K");
+        } else {
+            print!("\r");
+        }
         io::stdout().flush()?;
         thread::sleep(Duration::from_millis(200));
     }
@@ -178,7 +189,11 @@ pub fn matrix_mode(
         .unwrap_or(0);
 
     // Display current dictionary name
-    eprintln!("\x1b[32mDictionary: {}\x1b[0m", current_dictionary_name);
+    if !no_color {
+        eprintln!("\x1b[32mDictionary: {}\x1b[0m", current_dictionary_name);
+    } else {
+        eprintln!("Dictionary: {}", current_dictionary_name);
+    }
 
     loop {
         // Load current dictionary
@@ -207,7 +222,11 @@ pub fn matrix_mode(
                 }
                 _ => {}
             }
-            eprintln!("\x1b[32mDictionary: {}\x1b[0m", current_dictionary_name);
+            if !no_color {
+                eprintln!("\x1b[32mDictionary: {}\x1b[0m", current_dictionary_name);
+            } else {
+                eprintln!("Dictionary: {}", current_dictionary_name);
+            }
             last_switch = Instant::now();
             continue; // Reload dictionary
         }
@@ -230,7 +249,11 @@ pub fn matrix_mode(
                 }
                 _ => {}
             }
-            eprintln!("\x1b[32mDictionary: {}\x1b[0m", current_dictionary_name);
+            if !no_color {
+                eprintln!("\x1b[32mDictionary: {}\x1b[0m", current_dictionary_name);
+            } else {
+                eprintln!("Dictionary: {}", current_dictionary_name);
+            }
             continue; // Reload for next line
         }
 
@@ -262,7 +285,11 @@ pub fn matrix_mode(
                             .iter()
                             .position(|n| n == &current_dictionary_name)
                             .unwrap_or(0);
-                        eprintln!("\r\x1b[32m[Matrix: {}]\x1b[0m", current_dictionary_name);
+                        if !no_color {
+                            eprintln!("\r\x1b[32m[Matrix: {}]\x1b[0m", current_dictionary_name);
+                        } else {
+                            eprintln!("\r[Matrix: {}]", current_dictionary_name);
+                        }
                         continue; // Reload dictionary
                     }
                     KeyCode::Left => {
@@ -273,14 +300,22 @@ pub fn matrix_mode(
                             current_index - 1
                         };
                         current_dictionary_name = dict_names[current_index].clone();
-                        eprintln!("\r\x1b[32m[Matrix: {}]\x1b[0m", current_dictionary_name);
+                        if !no_color {
+                            eprintln!("\r\x1b[32m[Matrix: {}]\x1b[0m", current_dictionary_name);
+                        } else {
+                            eprintln!("\r[Matrix: {}]", current_dictionary_name);
+                        }
                         continue; // Reload dictionary
                     }
                     KeyCode::Right => {
                         // Next dictionary
                         current_index = (current_index + 1) % dict_names.len();
                         current_dictionary_name = dict_names[current_index].clone();
-                        eprintln!("\r\x1b[32m[Matrix: {}]\x1b[0m", current_dictionary_name);
+                        if !no_color {
+                            eprintln!("\r\x1b[32m[Matrix: {}]\x1b[0m", current_dictionary_name);
+                        } else {
+                            eprintln!("\r[Matrix: {}]", current_dictionary_name);
+                        }
                         continue; // Reload dictionary
                     }
                     _ => {}
@@ -298,15 +333,38 @@ pub fn detect_mode(
     file: Option<&PathBuf>,
     show_candidates: Option<usize>,
     decompress: Option<&String>,
+    max_size: usize,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use base_d::DictionaryDetector;
 
     // Read input
     let input = if let Some(file_path) = file {
+        // Check file size BEFORE reading
+        let metadata = fs::metadata(file_path)?;
+        let file_size = metadata.len() as usize;
+
+        if max_size > 0 && file_size > max_size {
+            return Err(format!(
+                "File size ({} bytes) exceeds limit ({} bytes). Use --force to process anyway.",
+                file_size, max_size
+            )
+            .into());
+        }
+
         fs::read_to_string(file_path)?
     } else {
         let mut buffer = String::new();
         io::stdin().read_to_string(&mut buffer)?;
+
+        // Check stdin size AFTER reading (can't pre-check stdin)
+        if max_size > 0 && buffer.len() > max_size {
+            return Err(format!(
+                "Input size ({} bytes) exceeds maximum ({} bytes). Use --file with --force for large inputs.",
+                buffer.len(),
+                max_size
+            ).into());
+        }
+
         buffer
     };
 

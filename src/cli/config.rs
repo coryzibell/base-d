@@ -1,6 +1,31 @@
 use base_d::{Dictionary, DictionaryRegistry};
 use std::fs;
 use std::io::{self, Read};
+use std::path::PathBuf;
+
+/// Validates that a file path is within the allowed base-d config directory.
+///
+/// This prevents path traversal attacks by ensuring that user-provided file paths
+/// (after tilde expansion) canonicalize to a location within `~/.config/base-d/`.
+fn validate_config_path(path: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let expanded = shellexpand::tilde(path);
+    let canonical = fs::canonicalize(expanded.as_ref())
+        .map_err(|e| format!("Cannot access path '{}': {}", path, e))?;
+
+    let allowed_base = dirs::config_dir()
+        .ok_or("Cannot determine config directory")?
+        .join("base-d");
+
+    if !canonical.starts_with(&allowed_base) {
+        return Err(format!(
+            "Path '{}' escapes allowed directory. Files must be within ~/.config/base-d/",
+            path
+        )
+        .into());
+    }
+
+    Ok(canonical)
+}
 
 /// Helper function to create dictionary from config
 pub fn create_dictionary(
@@ -86,7 +111,8 @@ pub fn load_xxhash_config(
         io::stdin().read_to_end(&mut buf)?;
         Some(buf)
     } else if let Some(ref path) = config.settings.xxhash.default_secret_file {
-        Some(fs::read(shellexpand::tilde(path).as_ref())?)
+        let validated_path = validate_config_path(path)?;
+        Some(fs::read(validated_path)?)
     } else {
         None
     };

@@ -97,6 +97,18 @@ struct Cli {
     /// Interval for switching: duration (e.g., "5s", "500ms") or "line"
     #[arg(long, value_name = "INTERVAL")]
     interval: Option<String>,
+
+    /// Maximum input size in bytes (default: 100MB, 0 = unlimited)
+    #[arg(long, value_name = "BYTES", default_value = "104857600")]
+    pub max_size: usize,
+
+    /// Process files exceeding --max-size limit (requires --file, not stdin)
+    #[arg(long)]
+    pub force: bool,
+
+    /// Disable colored output (respects NO_COLOR env var)
+    #[arg(long)]
+    pub no_color: bool,
 }
 
 #[derive(Subcommand)]
@@ -119,6 +131,14 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
+}
+
+/// Determine if color output should be disabled
+fn should_disable_color(cli_flag: bool) -> bool {
+    cli_flag
+        || std::env::var("NO_COLOR")
+            .map(|v| !v.is_empty())
+            .unwrap_or(false)
 }
 
 /// Check if output contains problematic control characters (0x00-0x1F except \t, \n, \r)
@@ -198,7 +218,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 .to_string()
         };
 
-        return commands::matrix_mode(&config, &initial_dictionary, switch_mode);
+        let no_color = should_disable_color(cli.no_color);
+        return commands::matrix_mode(&config, &initial_dictionary, switch_mode, no_color);
     }
 
     // Handle --detect mode (auto-detect dictionary)
@@ -208,6 +229,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             cli.file.as_ref(),
             cli.show_candidates,
             cli.decompress.as_ref(),
+            cli.max_size,
         );
     }
 
@@ -312,6 +334,25 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     // Read input data
     let input_data = if let Some(file_path) = &cli.file {
+        // Check file size BEFORE reading
+        let metadata = fs::metadata(file_path)?;
+        let file_size = metadata.len() as usize;
+
+        if cli.max_size > 0 && file_size > cli.max_size {
+            if cli.force {
+                eprintln!(
+                    "Warning: Processing large file ({} bytes, limit: {} bytes)",
+                    file_size, cli.max_size
+                );
+            } else {
+                return Err(format!(
+                    "File size ({} bytes) exceeds limit ({} bytes). Use --force to process anyway.",
+                    file_size, cli.max_size
+                )
+                .into());
+            }
+        }
+
         if cli.decode.is_some() {
             fs::read_to_string(file_path)?.into_bytes()
         } else {
@@ -320,6 +361,16 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         let mut buffer = Vec::new();
         io::stdin().read_to_end(&mut buffer)?;
+
+        // Check stdin size AFTER reading (can't pre-check stdin)
+        if cli.max_size > 0 && buffer.len() > cli.max_size {
+            return Err(format!(
+                "Input size ({} bytes) exceeds maximum ({} bytes). Use --file with --force for large inputs.",
+                buffer.len(),
+                cli.max_size
+            ).into());
+        }
+
         buffer
     };
 

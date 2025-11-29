@@ -30,15 +30,54 @@ pub fn encode(data: &[u8], dictionary: &Dictionary, variant: Base32Variant) -> O
     Some(result)
 }
 
+/// Validate Base32 padding per RFC 4648
+///
+/// Returns the data portion (without padding) if valid, None otherwise.
+fn validate_base32_padding(input: &str) -> Option<&str> {
+    let padding_count = input.bytes().rev().take_while(|&b| b == b'=').count();
+    let data_len = input.len() - padding_count;
+
+    // If no padding, validate data_len mod 8 is valid
+    if padding_count == 0 {
+        return match data_len % 8 {
+            0 | 2 | 4 | 5 | 7 => Some(input),
+            _ => None,
+        };
+    }
+
+    // With padding, total must be multiple of 8
+    if input.len() % 8 != 0 {
+        return None;
+    }
+
+    // Verify correct padding count for data length
+    let expected_padding = match data_len % 8 {
+        0 => 0,
+        2 => 6,
+        4 => 4,
+        5 => 3,
+        7 => 1,
+        _ => return None,
+    };
+
+    if padding_count == expected_padding {
+        Some(&input[..data_len])
+    } else {
+        None
+    }
+}
+
 /// NEON-accelerated base32 decoding
 ///
 /// Processes 16 input characters -> 10 output bytes per iteration.
 /// Falls back to scalar for remainder.
 pub fn decode(encoded: &str, variant: Base32Variant) -> Option<Vec<u8>> {
-    let encoded_bytes = encoded.as_bytes();
+    // Validate padding before processing
+    let input_no_padding = validate_base32_padding(encoded)?;
+
+    let encoded_bytes = input_no_padding.as_bytes();
 
     // Calculate output size
-    let input_no_padding = encoded.trim_end_matches('=');
     let output_len = (input_no_padding.len() / 8) * 5
         + match input_no_padding.len() % 8 {
             0 => 0,
@@ -228,18 +267,11 @@ unsafe fn decode_neon_impl(encoded: &[u8], variant: Base32Variant, result: &mut 
 
     const INPUT_BLOCK_SIZE: usize = 16;
 
-    // Strip padding
-    let input_no_padding = if let Some(last_non_pad) = encoded.iter().rposition(|&b| b != b'=') {
-        &encoded[..=last_non_pad]
-    } else {
-        encoded
-    };
-
     // Get decode LUTs for this variant
     let (delta_check, delta_rebase) = get_decode_delta_tables_neon(variant);
 
     // Calculate number of full 16-byte blocks
-    let num_blocks = input_no_padding.len() / INPUT_BLOCK_SIZE;
+    let num_blocks = encoded.len() / INPUT_BLOCK_SIZE;
     let simd_bytes = num_blocks * INPUT_BLOCK_SIZE;
 
     // Process full blocks
@@ -247,7 +279,7 @@ unsafe fn decode_neon_impl(encoded: &[u8], variant: Base32Variant, result: &mut 
         let offset = round * INPUT_BLOCK_SIZE;
 
         // Load 16 bytes
-        let input_vec = vld1q_u8(input_no_padding.as_ptr().add(offset));
+        let input_vec = vld1q_u8(encoded.as_ptr().add(offset));
 
         // Validate and translate using hash-based approach
         // 1. Extract hash key (upper 4 bits)
@@ -281,8 +313,8 @@ unsafe fn decode_neon_impl(encoded: &[u8], variant: Base32Variant, result: &mut 
     }
 
     // Handle remainder with scalar fallback
-    if simd_bytes < input_no_padding.len() {
-        let remainder = &input_no_padding[simd_bytes..];
+    if simd_bytes < encoded.len() {
+        let remainder = &encoded[simd_bytes..];
         if !decode_scalar_remainder(
             remainder,
             &mut |c| match variant {
@@ -561,5 +593,37 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_padding_validation_correct() {
+        // Valid padding cases per RFC 4648
+        assert!(decode("MY======", Base32Variant::Rfc4648).is_some()); // 2 data chars, 6 padding
+        assert!(decode("MZXQ====", Base32Variant::Rfc4648).is_some()); // 4 data chars, 4 padding
+        assert!(decode("MZXW6===", Base32Variant::Rfc4648).is_some()); // 5 data chars, 3 padding
+        assert!(decode("MZXW6YQ=", Base32Variant::Rfc4648).is_some()); // 7 data chars, 1 padding
+        assert!(decode("MZXW6YTB", Base32Variant::Rfc4648).is_some()); // 8 data chars, 0 padding
+
+        // Valid unpadded cases
+        assert!(decode("MY", Base32Variant::Rfc4648).is_some()); // 2 data chars, no padding
+        assert!(decode("MZXQ", Base32Variant::Rfc4648).is_some()); // 4 data chars, no padding
+    }
+
+    #[test]
+    fn test_padding_validation_incorrect() {
+        // Invalid padding count for data length
+        assert!(decode("MY=====", Base32Variant::Rfc4648).is_none()); // Wrong padding count (5 instead of 6)
+        assert!(decode("MY=======", Base32Variant::Rfc4648).is_none()); // Wrong padding count (7 instead of 6)
+        assert!(decode("MZXQ===", Base32Variant::Rfc4648).is_none()); // Wrong padding count (3 instead of 4)
+        assert!(decode("MZXW6==", Base32Variant::Rfc4648).is_none()); // Wrong padding count (2 instead of 3)
+        assert!(decode("MZXW6YQ==", Base32Variant::Rfc4648).is_none()); // Wrong padding count (2 instead of 1)
+
+        // Total length not multiple of 8 with padding
+        assert!(decode("MY=", Base32Variant::Rfc4648).is_none()); // Length 3, not multiple of 8
+
+        // Invalid data length (not 0, 2, 4, 5, 7 mod 8)
+        assert!(decode("M", Base32Variant::Rfc4648).is_none()); // 1 char, invalid
+        assert!(decode("MYX", Base32Variant::Rfc4648).is_none()); // 3 chars, invalid
+        assert!(decode("MZXW6Y", Base32Variant::Rfc4648).is_none()); // 6 chars, invalid
     }
 }
