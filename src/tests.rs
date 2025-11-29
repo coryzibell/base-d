@@ -351,3 +351,250 @@ fn test_base256_matrix_all_bytes() {
     assert_eq!(decoded, all_bytes);
     assert_eq!(encoded.chars().count(), 256); // 1:1 ratio
 }
+
+// ============================================================================
+// RFC 4648 Official Test Vectors
+// https://datatracker.ietf.org/doc/html/rfc4648#section-10
+// ============================================================================
+
+#[test]
+fn test_rfc4648_base64_vectors() {
+    let dictionary = get_dictionary("base64");
+
+    // RFC 4648 Section 10 test vectors
+    let test_cases = [
+        (b"".as_slice(), ""),
+        (b"f".as_slice(), "Zg=="),
+        (b"fo".as_slice(), "Zm8="),
+        (b"foo".as_slice(), "Zm9v"),
+        (b"foob".as_slice(), "Zm9vYg=="),
+        (b"fooba".as_slice(), "Zm9vYmE="),
+        (b"foobar".as_slice(), "Zm9vYmFy"),
+    ];
+
+    for (input, expected) in test_cases {
+        let encoded = encode(input, &dictionary);
+        assert_eq!(
+            encoded,
+            expected,
+            "Base64 encoding mismatch for {:?}: got {}, expected {}",
+            String::from_utf8_lossy(input),
+            encoded,
+            expected
+        );
+
+        // Also verify round-trip
+        if !expected.is_empty() {
+            let decoded = decode(&encoded, &dictionary).unwrap();
+            assert_eq!(
+                decoded, input,
+                "Base64 round-trip failed for {:?}",
+                expected
+            );
+        }
+    }
+}
+
+#[test]
+fn test_rfc4648_base32_vectors() {
+    let dictionary = get_dictionary("base32");
+
+    // RFC 4648 Section 10 test vectors
+    let test_cases = [
+        (b"".as_slice(), ""),
+        (b"f".as_slice(), "MY======"),
+        (b"fo".as_slice(), "MZXQ===="),
+        (b"foo".as_slice(), "MZXW6==="),
+        (b"foob".as_slice(), "MZXW6YQ="),
+        (b"fooba".as_slice(), "MZXW6YTB"),
+        (b"foobar".as_slice(), "MZXW6YTBOI======"),
+    ];
+
+    for (input, expected) in test_cases {
+        let encoded = encode(input, &dictionary);
+        assert_eq!(
+            encoded,
+            expected,
+            "Base32 encoding mismatch for {:?}: got {}, expected {}",
+            String::from_utf8_lossy(input),
+            encoded,
+            expected
+        );
+
+        // Also verify round-trip
+        if !expected.is_empty() {
+            let decoded = decode(&encoded, &dictionary).unwrap();
+            assert_eq!(
+                decoded, input,
+                "Base32 round-trip failed for {:?}",
+                expected
+            );
+        }
+    }
+}
+
+#[test]
+fn test_rfc4648_base16_vectors() {
+    let dictionary = get_dictionary("base16");
+
+    // RFC 4648 Section 10 test vectors (uppercase)
+    let test_cases = [
+        (b"".as_slice(), ""),
+        (b"f".as_slice(), "66"),
+        (b"fo".as_slice(), "666F"),
+        (b"foo".as_slice(), "666F6F"),
+        (b"foob".as_slice(), "666F6F62"),
+        (b"fooba".as_slice(), "666F6F6261"),
+        (b"foobar".as_slice(), "666F6F626172"),
+    ];
+
+    for (input, expected) in test_cases {
+        let encoded = encode(input, &dictionary);
+        assert_eq!(
+            encoded,
+            expected,
+            "Base16 encoding mismatch for {:?}: got {}, expected {}",
+            String::from_utf8_lossy(input),
+            encoded,
+            expected
+        );
+
+        // Also verify round-trip
+        if !expected.is_empty() {
+            let decoded = decode(&encoded, &dictionary).unwrap();
+            assert_eq!(
+                decoded, input,
+                "Base16 round-trip failed for {:?}",
+                expected
+            );
+        }
+    }
+}
+
+#[test]
+fn test_rfc4648_base32hex_vectors() {
+    let dictionary = get_dictionary("base32hex");
+
+    // RFC 4648 Section 10 test vectors for base32hex (Extended Hex)
+    // These use 0-9A-V instead of A-Z2-7
+    let test_cases = [
+        (b"".as_slice(), ""),
+        (b"f".as_slice(), "CO======"),
+        (b"fo".as_slice(), "CPNG===="),
+        (b"foo".as_slice(), "CPNMU==="),
+        (b"foob".as_slice(), "CPNMUOG="),
+        (b"fooba".as_slice(), "CPNMUOJ1"),
+        (b"foobar".as_slice(), "CPNMUOJ1E8======"),
+    ];
+
+    for (input, expected) in test_cases {
+        let encoded = encode(input, &dictionary);
+        assert_eq!(
+            encoded,
+            expected,
+            "Base32hex encoding mismatch for {:?}: got {}, expected {}",
+            String::from_utf8_lossy(input),
+            encoded,
+            expected
+        );
+
+        // Also verify round-trip
+        if !expected.is_empty() {
+            let decoded = decode(&encoded, &dictionary).unwrap();
+            assert_eq!(
+                decoded, input,
+                "Base32hex round-trip failed for {:?}",
+                expected
+            );
+        }
+    }
+}
+
+// ============================================================================
+// Base58 Test Vectors (IETF Draft & Bitcoin wiki)
+// https://datatracker.ietf.org/doc/html/draft-msporny-base58-03
+// ============================================================================
+
+#[test]
+fn test_base58_bitcoin_vectors() {
+    let dictionary = get_dictionary("base58");
+
+    // IETF Base58 draft specification test vectors (Bitcoin alphabet)
+    let test_cases = [
+        (b"Hello World!".as_slice(), "2NEpo7TZRRrLZSi2U"),
+        (
+            b"The quick brown fox jumps over the lazy dog.".as_slice(),
+            "USm3fpXnKG5EUBx2ndxBDMPVciP5hGey2Jh4NDv6gmeo1LkMeiKrLJUUBk6Z",
+        ),
+        (b"hello world".as_slice(), "StV1DL6CwTryKyV"),
+    ];
+
+    for (input, expected) in test_cases {
+        let encoded = encode(input, &dictionary);
+        assert_eq!(
+            encoded,
+            expected,
+            "Base58 encoding mismatch for {:?}: got {}, expected {}",
+            String::from_utf8_lossy(input),
+            encoded,
+            expected
+        );
+
+        // Also verify round-trip
+        let decoded = decode(&encoded, &dictionary).unwrap();
+        assert_eq!(
+            decoded, input,
+            "Base58 round-trip failed for {:?}",
+            expected
+        );
+    }
+}
+
+#[test]
+fn test_base58_flickr_vectors() {
+    let dictionary = get_dictionary("base58flickr");
+
+    // Flickr uses lowercase before uppercase
+    // "Hello World" -> "iXf12sRWto45bmC" (from spec)
+    let test_cases = [(b"Hello World".as_slice(), "iXf12sRWto45bmC")];
+
+    for (input, expected) in test_cases {
+        let encoded = encode(input, &dictionary);
+        assert_eq!(
+            encoded,
+            expected,
+            "Base58 Flickr encoding mismatch for {:?}: got {}, expected {}",
+            String::from_utf8_lossy(input),
+            encoded,
+            expected
+        );
+
+        // Also verify round-trip
+        let decoded = decode(&encoded, &dictionary).unwrap();
+        assert_eq!(
+            decoded, input,
+            "Base58 Flickr round-trip failed for {:?}",
+            expected
+        );
+    }
+}
+
+#[test]
+fn test_base58_leading_zeros() {
+    let dictionary = get_dictionary("base58");
+
+    // Leading zeros should be preserved as '1' characters
+    // 0x0000287fb4cd -> "11233QC4"
+    let input = &[0x00, 0x00, 0x28, 0x7f, 0xb4, 0xcd];
+    let expected = "11233QC4";
+
+    let encoded = encode(input, &dictionary);
+    assert_eq!(
+        encoded, expected,
+        "Base58 leading zeros mismatch: got {}, expected {}",
+        encoded, expected
+    );
+
+    let decoded = decode(&encoded, &dictionary).unwrap();
+    assert_eq!(decoded, input, "Base58 leading zeros round-trip failed");
+}

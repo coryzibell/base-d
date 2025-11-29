@@ -339,7 +339,10 @@ mod tests {
         let matches = detector.detect("JBSWY3DPEBLW64TMMQ======");
         assert!(!matches.is_empty());
         // base32 should be in top 10 candidates (more dictionaries now)
-        let base32_found = matches.iter().take(10).any(|m| m.name.starts_with("base32"));
+        let base32_found = matches
+            .iter()
+            .take(10)
+            .any(|m| m.name.starts_with("base32"));
         assert!(base32_found, "base32 should be in top 10 candidates");
     }
 
