@@ -149,14 +149,15 @@ pub fn matrix_mode(
             // Check for ESC/Space/Enter to skip intro
             if poll(Duration::from_millis(100))? {
                 if let Event::Key(KeyEvent { code, .. }) = read()?
-                    && matches!(code, KeyCode::Esc | KeyCode::Char(' ') | KeyCode::Enter) {
-                        if !no_color {
-                            print!("\r\x1b[K");
-                        } else {
-                            print!("\r");
-                        }
-                        break 'intro_loop;
+                    && matches!(code, KeyCode::Esc | KeyCode::Char(' ') | KeyCode::Enter)
+                {
+                    if !no_color {
+                        print!("\r\x1b[K");
+                    } else {
+                        print!("\r");
                     }
+                    break 'intro_loop;
+                }
             } else {
                 thread::sleep(Duration::from_millis(100));
             }
@@ -308,86 +309,78 @@ pub fn matrix_mode(
 
         // Handle keyboard input (all modes)
         if poll(Duration::from_millis(25))?
-            && let Event::Key(key_event) = read()? {
-                match key_event.code {
-                    KeyCode::Char('c')
-                        if key_event
-                            .modifiers
-                            .contains(crossterm::event::KeyModifiers::CONTROL) =>
-                    {
-                        // Ctrl+C to exit
-                        disable_raw_mode()?;
-                        if !no_color {
-                            print!("\x1b[0m"); // Reset color
-                        }
-                        std::process::exit(0);
+            && let Event::Key(key_event) = read()?
+        {
+            match key_event.code {
+                KeyCode::Char('c')
+                    if key_event
+                        .modifiers
+                        .contains(crossterm::event::KeyModifiers::CONTROL) =>
+                {
+                    // Ctrl+C to exit
+                    disable_raw_mode()?;
+                    if !no_color {
+                        print!("\x1b[0m"); // Reset color
                     }
-                    KeyCode::Esc => {
-                        // ESC to exit
-                        disable_raw_mode()?;
-                        if !no_color {
-                            print!("\x1b[0m"); // Reset color
-                        }
-                        std::process::exit(0);
-                    }
-                    KeyCode::Char(' ') => {
-                        // Random switch
-                        current_dictionary_name = select_random_dictionary(config, false)?;
-                        current_index = dict_names
-                            .iter()
-                            .position(|n| n == &current_dictionary_name)
-                            .unwrap_or(0);
-                        if !quiet {
-                            if !no_color {
-                                eprint!(
-                                    "\r\x1b[32m[Matrix: {}]\x1b[0m\r\n",
-                                    current_dictionary_name
-                                );
-                            } else {
-                                eprint!("\r[Matrix: {}]\r\n", current_dictionary_name);
-                            }
-                        }
-                        continue; // Reload dictionary
-                    }
-                    KeyCode::Left => {
-                        // Previous dictionary
-                        current_index = if current_index == 0 {
-                            dict_names.len() - 1
-                        } else {
-                            current_index - 1
-                        };
-                        current_dictionary_name = dict_names[current_index].clone();
-                        if !quiet {
-                            if !no_color {
-                                eprint!(
-                                    "\r\x1b[32m[Matrix: {}]\x1b[0m\r\n",
-                                    current_dictionary_name
-                                );
-                            } else {
-                                eprint!("\r[Matrix: {}]\r\n", current_dictionary_name);
-                            }
-                        }
-                        continue; // Reload dictionary
-                    }
-                    KeyCode::Right => {
-                        // Next dictionary
-                        current_index = (current_index + 1) % dict_names.len();
-                        current_dictionary_name = dict_names[current_index].clone();
-                        if !quiet {
-                            if !no_color {
-                                eprint!(
-                                    "\r\x1b[32m[Matrix: {}]\x1b[0m\r\n",
-                                    current_dictionary_name
-                                );
-                            } else {
-                                eprint!("\r[Matrix: {}]\r\n", current_dictionary_name);
-                            }
-                        }
-                        continue; // Reload dictionary
-                    }
-                    _ => {}
+                    std::process::exit(0);
                 }
+                KeyCode::Esc => {
+                    // ESC to exit
+                    disable_raw_mode()?;
+                    if !no_color {
+                        print!("\x1b[0m"); // Reset color
+                    }
+                    std::process::exit(0);
+                }
+                KeyCode::Char(' ') => {
+                    // Random switch
+                    current_dictionary_name = select_random_dictionary(config, false)?;
+                    current_index = dict_names
+                        .iter()
+                        .position(|n| n == &current_dictionary_name)
+                        .unwrap_or(0);
+                    if !quiet {
+                        if !no_color {
+                            eprint!("\r\x1b[32m[Matrix: {}]\x1b[0m\r\n", current_dictionary_name);
+                        } else {
+                            eprint!("\r[Matrix: {}]\r\n", current_dictionary_name);
+                        }
+                    }
+                    continue; // Reload dictionary
+                }
+                KeyCode::Left => {
+                    // Previous dictionary
+                    current_index = if current_index == 0 {
+                        dict_names.len() - 1
+                    } else {
+                        current_index - 1
+                    };
+                    current_dictionary_name = dict_names[current_index].clone();
+                    if !quiet {
+                        if !no_color {
+                            eprint!("\r\x1b[32m[Matrix: {}]\x1b[0m\r\n", current_dictionary_name);
+                        } else {
+                            eprint!("\r[Matrix: {}]\r\n", current_dictionary_name);
+                        }
+                    }
+                    continue; // Reload dictionary
+                }
+                KeyCode::Right => {
+                    // Next dictionary
+                    current_index = (current_index + 1) % dict_names.len();
+                    current_dictionary_name = dict_names[current_index].clone();
+                    if !quiet {
+                        if !no_color {
+                            eprint!("\r\x1b[32m[Matrix: {}]\x1b[0m\r\n", current_dictionary_name);
+                        } else {
+                            eprint!("\r[Matrix: {}]\r\n", current_dictionary_name);
+                        }
+                    }
+                    continue; // Reload dictionary
+                }
+                _ => {}
             }
+        }
 
         if !superman {
             thread::sleep(Duration::from_millis(250));

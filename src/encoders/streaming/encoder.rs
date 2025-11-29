@@ -177,8 +177,9 @@ impl<'a, W: Write> StreamingEncoder<'a, W> {
                     .map(|algo| crate::features::hashing::hash(&buffer, algo));
 
                 let compressed = match algo {
-                    CompressionAlgorithm::Lz4 => lz4::block::compress(&buffer, None, false)
-                        .map_err(std::io::Error::other)?,
+                    CompressionAlgorithm::Lz4 => {
+                        lz4::block::compress(&buffer, None, false).map_err(std::io::Error::other)?
+                    }
                     CompressionAlgorithm::Snappy => {
                         let mut encoder = snap::raw::Encoder::new();
                         encoder

@@ -63,9 +63,11 @@ fn main() -> std::io::Result<()> {
                 break;
             }
             if let Some(c) = char::from_u32(i)
-                && !c.is_control() && !c.is_whitespace() {
-                    chars.push(c);
-                }
+                && !c.is_control()
+                && !c.is_whitespace()
+            {
+                chars.push(c);
+            }
         }
     }
 

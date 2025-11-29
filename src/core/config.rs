@@ -21,7 +21,6 @@ pub enum EncodingMode {
     ByteRange,
 }
 
-
 /// Configuration for a single dictionary loaded from TOML.
 #[derive(Debug, Deserialize, Clone)]
 pub struct DictionaryConfig {

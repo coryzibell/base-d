@@ -151,8 +151,8 @@ impl<'a, W: Write> StreamingDecoder<'a, W> {
                 Self::copy_with_hash_to_writer(&mut decoder, &mut self.writer, &mut hasher)?;
             }
             CompressionAlgorithm::Zstd => {
-                let mut decoder = zstd::stream::read::Decoder::new(reader)
-                    .map_err(std::io::Error::other)?;
+                let mut decoder =
+                    zstd::stream::read::Decoder::new(reader).map_err(std::io::Error::other)?;
                 Self::copy_with_hash_to_writer(&mut decoder, &mut self.writer, &mut hasher)?;
             }
             CompressionAlgorithm::Brotli => {

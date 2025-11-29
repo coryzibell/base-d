@@ -424,10 +424,10 @@ impl SmallLutCodec {
             }
 
             // Scalar remainder
-            if simd_bytes < encoded.len()
-                && !self.decode_ssse3_impl(&encoded[simd_bytes..], result) {
-                    return false;
-                }
+            if simd_bytes < encoded.len() && !self.decode_ssse3_impl(&encoded[simd_bytes..], result)
+            {
+                return false;
+            }
 
             true
         }
@@ -484,10 +484,9 @@ impl SmallLutCodec {
             }
 
             // Scalar remainder
-            if simd_bytes < encoded.len()
-                && !self.decode_scalar(&encoded[simd_bytes..], result) {
-                    return false;
-                }
+            if simd_bytes < encoded.len() && !self.decode_scalar(&encoded[simd_bytes..], result) {
+                return false;
+            }
 
             true
         }

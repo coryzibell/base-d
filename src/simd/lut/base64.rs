@@ -793,9 +793,10 @@ impl Base64LutCodec {
 
             // Scalar remainder
             if simd_bytes < input_no_padding.len()
-                && !self.decode_scalar(&input_no_padding[simd_bytes..], result) {
-                    return false;
-                }
+                && !self.decode_scalar(&input_no_padding[simd_bytes..], result)
+            {
+                return false;
+            }
 
             true
         }
@@ -930,9 +931,10 @@ impl Base64LutCodec {
 
             // Scalar remainder
             if simd_bytes < input_no_padding.len()
-                && !self.decode_scalar(&input_no_padding[simd_bytes..], result) {
-                    return false;
-                }
+                && !self.decode_scalar(&input_no_padding[simd_bytes..], result)
+            {
+                return false;
+            }
 
             true
         }

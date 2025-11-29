@@ -126,16 +126,17 @@ pub fn load_xxhash_config(
     // Warn if secret provided for non-XXH3
     if secret.is_some()
         && let Some(algo) = hash_algo
-            && !matches!(
-                algo,
-                base_d::HashAlgorithm::XxHash3_64 | base_d::HashAlgorithm::XxHash3_128
-            ) {
-                eprintln!(
-                    "Warning: --hash-secret-stdin only applies to xxh3-64/xxh3-128, ignoring for {}",
-                    algo.as_str()
-                );
-                return Ok(base_d::XxHashConfig::with_seed(seed));
-            }
+        && !matches!(
+            algo,
+            base_d::HashAlgorithm::XxHash3_64 | base_d::HashAlgorithm::XxHash3_128
+        )
+    {
+        eprintln!(
+            "Warning: --hash-secret-stdin only applies to xxh3-64/xxh3-128, ignoring for {}",
+            algo.as_str()
+        );
+        return Ok(base_d::XxHashConfig::with_seed(seed));
+    }
 
     match secret {
         Some(s) => base_d::XxHashConfig::with_secret(seed, s).map_err(|e| e.into()),

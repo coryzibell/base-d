@@ -289,9 +289,10 @@ impl Dictionary {
         match self.mode {
             EncodingMode::ByteRange => {
                 if let Some(start) = self.start_codepoint
-                    && digit < 256 {
-                        return std::char::from_u32(start + digit as u32);
-                    }
+                    && digit < 256
+                {
+                    return std::char::from_u32(start + digit as u32);
+                }
                 None
             }
             _ => self.chars.get(digit).copied(),

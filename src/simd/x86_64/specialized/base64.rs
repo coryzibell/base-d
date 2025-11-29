@@ -826,9 +826,10 @@ mod tests {
             let original: Vec<u8> = (0..len).map(|i| (i * 7) as u8).collect();
 
             if let Some(encoded) = encode(&original, &dictionary, DictionaryVariant::Base64Standard)
-                && let Some(decoded) = decode(&encoded, DictionaryVariant::Base64Standard) {
-                    assert_eq!(decoded, original, "Round-trip failed at length {}", len);
-                }
+                && let Some(decoded) = decode(&encoded, DictionaryVariant::Base64Standard)
+            {
+                assert_eq!(decoded, original, "Round-trip failed at length {}", len);
+            }
         }
     }
 

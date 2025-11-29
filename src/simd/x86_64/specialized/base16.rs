@@ -256,10 +256,9 @@ unsafe fn decode_avx2_impl(encoded: &[u8], result: &mut Vec<u8>) -> bool {
         }
 
         // Handle remainder with SSSE3 fallback
-        if simd_bytes < encoded.len()
-            && !decode_ssse3_impl(&encoded[simd_bytes..], result) {
-                return false;
-            }
+        if simd_bytes < encoded.len() && !decode_ssse3_impl(&encoded[simd_bytes..], result) {
+            return false;
+        }
 
         true
     }
@@ -484,10 +483,9 @@ unsafe fn decode_ssse3_impl(encoded: &[u8], result: &mut Vec<u8>) -> bool {
         }
 
         // Handle remainder with scalar fallback
-        if simd_bytes < encoded.len()
-            && !decode_scalar_remainder(&encoded[simd_bytes..], result) {
-                return false;
-            }
+        if simd_bytes < encoded.len() && !decode_scalar_remainder(&encoded[simd_bytes..], result) {
+            return false;
+        }
 
         true
     }
@@ -671,9 +669,10 @@ mod tests {
             let original: Vec<u8> = (0..len).map(|i| (i * 7) as u8).collect();
 
             if let Some(encoded) = encode(&original, &dictionary, HexVariant::Uppercase)
-                && let Some(decoded) = decode(&encoded, HexVariant::Uppercase) {
-                    assert_eq!(decoded, original, "Round-trip failed at length {}", len);
-                }
+                && let Some(decoded) = decode(&encoded, HexVariant::Uppercase)
+            {
+                assert_eq!(decoded, original, "Round-trip failed at length {}", len);
+            }
         }
     }
 
