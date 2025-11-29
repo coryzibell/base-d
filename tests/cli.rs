@@ -19,7 +19,9 @@ fn test_help() {
         .arg("--help")
         .assert()
         .success()
-        .stdout(predicate::str::contains("Universal multi-dictionary encoder"));
+        .stdout(predicate::str::contains(
+            "Universal multi-dictionary encoder",
+        ));
 }
 
 #[test]
@@ -277,10 +279,7 @@ fn test_invalid_base64_decode() {
 #[test]
 fn test_no_color_flag() {
     // Should succeed without error when --no-color is passed
-    base_d()
-        .args(["--no-color", "--help"])
-        .assert()
-        .success();
+    base_d().args(["--no-color", "--help"]).assert().success();
 }
 
 #[test]
