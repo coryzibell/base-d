@@ -43,6 +43,11 @@ shellexpand = "3.1"
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
 
+[dev-dependencies.cargo-husky]
+version = "1"
+default-features = false
+features = ["prepush-hook", "run-cargo-fmt", "run-cargo-clippy"]
+
 [lib]
 name = "base_d"
 path = "src/lib.rs"
