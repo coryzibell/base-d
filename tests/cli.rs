@@ -5,8 +5,9 @@
 use assert_cmd::Command;
 use predicates::prelude::*;
 
+#[allow(deprecated)]
 fn base_d() -> Command {
-    Command::cargo_bin("base-d").unwrap()
+    Command::cargo_bin("base-d").expect("binary exists")
 }
 
 // ============================================================================
