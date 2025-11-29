@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use crossterm::event::{poll, read, Event, KeyCode, KeyEvent};
+use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 
 use super::config::{create_dictionary, get_compression_level, load_xxhash_config};
 
@@ -119,19 +120,17 @@ pub fn matrix_mode(
     switch_mode: SwitchMode,
     no_color: bool,
     quiet: bool,
+    superman: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use std::thread;
     use std::time::Instant;
 
-    // Get terminal width
-    let term_width = match terminal_size::terminal_size() {
-        Some((terminal_size::Width(w), _)) => w as usize,
-        None => 80,
-    };
+    // Enable raw mode for keyboard input
+    enable_raw_mode()?;
 
     if !no_color {
-        println!("\x1b[2J\x1b[H"); // Clear screen
-        println!("\x1b[32m"); // Green text
+        print!("\x1b[2J\x1b[H"); // Clear screen
+        print!("\x1b[32m"); // Green text
     }
 
     // Iconic Matrix messages
@@ -147,18 +146,17 @@ pub fn matrix_mode(
             print!("{}", ch);
             io::stdout().flush()?;
 
-            // Check for ESC to skip intro
+            // Check for ESC/Space/Enter to skip intro
             if poll(Duration::from_millis(100))? {
-                if let Event::Key(KeyEvent {
-                    code: KeyCode::Esc, ..
-                }) = read()?
-                {
-                    if !no_color {
-                        print!("\r\x1b[K");
-                    } else {
-                        print!("\r");
+                if let Event::Key(KeyEvent { code, .. }) = read()? {
+                    if matches!(code, KeyCode::Esc | KeyCode::Char(' ') | KeyCode::Enter) {
+                        if !no_color {
+                            print!("\r\x1b[K");
+                        } else {
+                            print!("\r");
+                        }
+                        break 'intro_loop;
                     }
-                    break 'intro_loop;
                 }
             } else {
                 thread::sleep(Duration::from_millis(100));
@@ -210,9 +208,9 @@ pub fn matrix_mode(
     // Display current dictionary name
     if !quiet {
         if !no_color {
-            eprintln!("\x1b[32mDictionary: {}\x1b[0m", current_dictionary_name);
+            eprint!("\x1b[32mDictionary: {}\x1b[0m\r\n", current_dictionary_name);
         } else {
-            eprintln!("Dictionary: {}", current_dictionary_name);
+            eprint!("Dictionary: {}\r\n", current_dictionary_name);
         }
     }
 
@@ -245,9 +243,9 @@ pub fn matrix_mode(
             }
             if !quiet {
                 if !no_color {
-                    eprintln!("\x1b[32mDictionary: {}\x1b[0m", current_dictionary_name);
+                    eprint!("\x1b[32mDictionary: {}\x1b[0m\r\n", current_dictionary_name);
                 } else {
-                    eprintln!("Dictionary: {}", current_dictionary_name);
+                    eprint!("Dictionary: {}\r\n", current_dictionary_name);
                 }
             }
             last_switch = Instant::now();
@@ -274,21 +272,28 @@ pub fn matrix_mode(
             }
             if !quiet {
                 if !no_color {
-                    eprintln!("\x1b[32mDictionary: {}\x1b[0m", current_dictionary_name);
+                    eprint!("\x1b[32mDictionary: {}\x1b[0m\r\n", current_dictionary_name);
                 } else {
-                    eprintln!("Dictionary: {}", current_dictionary_name);
+                    eprint!("Dictionary: {}\r\n", current_dictionary_name);
                 }
             }
             continue; // Reload for next line
         }
 
-        // Generate and encode one line
-        let bytes_per_line = if dictionary.base() == 256 {
-            term_width
-        } else {
-            term_width / 2
+        // Get current terminal width (re-check each line for resize detection)
+        let term_width = match terminal_size::terminal_size() {
+            Some((terminal_size::Width(w), _)) => w as usize,
+            None => 80,
         };
-        let mut random_bytes = vec![0u8; bytes_per_line];
+
+        // Generate and encode one line
+        // Calculate bytes needed to fill terminal width based on alphabet size
+        // Each byte = 8 bits, each output char = log2(base) bits
+        // bytes_needed = ceil(term_width * log2(base) / 8)
+        let base = dictionary.base();
+        let bits_per_char = (base as f64).log2();
+        let bytes_per_line = ((term_width as f64 * bits_per_char) / 8.0).ceil() as usize;
+        let mut random_bytes = vec![0u8; bytes_per_line.max(1)];
 
         use rand::RngCore;
         rng.fill_bytes(&mut random_bytes);
@@ -296,13 +301,33 @@ pub fn matrix_mode(
         let encoded = encode(&random_bytes, &dictionary);
         let display: String = encoded.chars().take(term_width).collect();
 
-        println!("{}", display);
+        print!("{}\r\n", display);
         io::stdout().flush()?;
 
-        // Handle keyboard input (static mode only)
-        if matches!(switch_mode, SwitchMode::Static) && poll(Duration::from_millis(0))? {
+        // Handle keyboard input (all modes)
+        if poll(Duration::from_millis(25))? {
             if let Event::Key(key_event) = read()? {
                 match key_event.code {
+                    KeyCode::Char('c')
+                        if key_event
+                            .modifiers
+                            .contains(crossterm::event::KeyModifiers::CONTROL) =>
+                    {
+                        // Ctrl+C to exit
+                        disable_raw_mode()?;
+                        if !no_color {
+                            print!("\x1b[0m"); // Reset color
+                        }
+                        std::process::exit(0);
+                    }
+                    KeyCode::Esc => {
+                        // ESC to exit
+                        disable_raw_mode()?;
+                        if !no_color {
+                            print!("\x1b[0m"); // Reset color
+                        }
+                        std::process::exit(0);
+                    }
                     KeyCode::Char(' ') => {
                         // Random switch
                         current_dictionary_name = select_random_dictionary(config, false)?;
@@ -312,9 +337,12 @@ pub fn matrix_mode(
                             .unwrap_or(0);
                         if !quiet {
                             if !no_color {
-                                eprintln!("\r\x1b[32m[Matrix: {}]\x1b[0m", current_dictionary_name);
+                                eprint!(
+                                    "\r\x1b[32m[Matrix: {}]\x1b[0m\r\n",
+                                    current_dictionary_name
+                                );
                             } else {
-                                eprintln!("\r[Matrix: {}]", current_dictionary_name);
+                                eprint!("\r[Matrix: {}]\r\n", current_dictionary_name);
                             }
                         }
                         continue; // Reload dictionary
@@ -329,9 +357,12 @@ pub fn matrix_mode(
                         current_dictionary_name = dict_names[current_index].clone();
                         if !quiet {
                             if !no_color {
-                                eprintln!("\r\x1b[32m[Matrix: {}]\x1b[0m", current_dictionary_name);
+                                eprint!(
+                                    "\r\x1b[32m[Matrix: {}]\x1b[0m\r\n",
+                                    current_dictionary_name
+                                );
                             } else {
-                                eprintln!("\r[Matrix: {}]", current_dictionary_name);
+                                eprint!("\r[Matrix: {}]\r\n", current_dictionary_name);
                             }
                         }
                         continue; // Reload dictionary
@@ -342,9 +373,12 @@ pub fn matrix_mode(
                         current_dictionary_name = dict_names[current_index].clone();
                         if !quiet {
                             if !no_color {
-                                eprintln!("\r\x1b[32m[Matrix: {}]\x1b[0m", current_dictionary_name);
+                                eprint!(
+                                    "\r\x1b[32m[Matrix: {}]\x1b[0m\r\n",
+                                    current_dictionary_name
+                                );
                             } else {
-                                eprintln!("\r[Matrix: {}]", current_dictionary_name);
+                                eprint!("\r[Matrix: {}]\r\n", current_dictionary_name);
                             }
                         }
                         continue; // Reload dictionary
@@ -354,7 +388,9 @@ pub fn matrix_mode(
             }
         }
 
-        thread::sleep(Duration::from_millis(500));
+        if !superman {
+            thread::sleep(Duration::from_millis(250));
+        }
     }
 }
 

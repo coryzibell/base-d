@@ -113,6 +113,10 @@ struct Cli {
     /// Suppress informational notices (random selection warnings, etc.)
     #[arg(short = 'q', long)]
     pub quiet: bool,
+
+    /// Remove speed limit in Matrix mode ("He's doing his Superman thing")
+    #[arg(long)]
+    pub superman: bool,
 }
 
 #[derive(Subcommand)]
@@ -229,6 +233,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             switch_mode,
             no_color,
             cli.quiet,
+            cli.superman,
         );
     }
 
