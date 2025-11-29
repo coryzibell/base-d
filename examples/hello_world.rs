@@ -12,7 +12,7 @@ fn main() {
         .and_then(|s| s.chars().next());
     let mut builder = Dictionary::builder()
         .chars(chars)
-        .mode(dictionary_config.mode.clone());
+        .mode(dictionary_config.effective_mode());
     if let Some(pad) = padding {
         builder = builder.padding(pad);
     }

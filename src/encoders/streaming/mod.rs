@@ -15,13 +15,14 @@ mod tests {
     fn get_dictionary(name: &str) -> Dictionary {
         let config = DictionaryRegistry::load_default().unwrap();
         let dictionary_config = config.get_dictionary(name).unwrap();
+        let effective_mode = dictionary_config.effective_mode();
 
-        match dictionary_config.mode {
+        match effective_mode {
             crate::core::config::EncodingMode::ByteRange => {
                 let start = dictionary_config.start_codepoint.unwrap();
                 Dictionary::new_with_mode_and_range(
                     Vec::new(),
-                    dictionary_config.mode.clone(),
+                    effective_mode,
                     None,
                     Some(start),
                 )
@@ -33,7 +34,7 @@ mod tests {
                     .padding
                     .as_ref()
                     .and_then(|s| s.chars().next());
-                Dictionary::new_with_mode(chars, dictionary_config.mode.clone(), padding).unwrap()
+                Dictionary::new_with_mode(chars, effective_mode, padding).unwrap()
             }
         }
     }

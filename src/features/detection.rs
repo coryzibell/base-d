@@ -25,13 +25,14 @@ impl DictionaryDetector {
         let mut dictionaries = Vec::new();
 
         for (name, dict_config) in &config.dictionaries {
-            let dictionary = match dict_config.mode {
+            let effective_mode = dict_config.effective_mode();
+            let dictionary = match effective_mode {
                 EncodingMode::ByteRange => {
                     let start = dict_config
                         .start_codepoint
                         .ok_or("ByteRange mode requires start_codepoint")?;
                     Dictionary::builder()
-                        .mode(dict_config.mode.clone())
+                        .mode(effective_mode)
                         .start_codepoint(start)
                         .build()?
                 }
@@ -40,7 +41,7 @@ impl DictionaryDetector {
                     let padding = dict_config.padding.as_ref().and_then(|s| s.chars().next());
                     let mut builder = Dictionary::builder()
                         .chars(chars)
-                        .mode(dict_config.mode.clone());
+                        .mode(effective_mode);
                     if let Some(p) = padding {
                         builder = builder.padding(p);
                     }
@@ -366,7 +367,7 @@ mod tests {
         let padding = dict_config.padding.as_ref().and_then(|s| s.chars().next());
         let mut builder = Dictionary::builder()
             .chars(chars)
-            .mode(dict_config.mode.clone());
+            .mode(dict_config.effective_mode());
         if let Some(p) = padding {
             builder = builder.padding(p);
         }

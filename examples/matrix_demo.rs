@@ -11,7 +11,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let chars: Vec<char> = matrix_config.chars.chars().collect();
     let dictionary = Dictionary::builder()
         .chars(chars)
-        .mode(matrix_config.mode.clone())
+        .mode(matrix_config.effective_mode())
         .build()?;
 
     println!("Dictionary: base256_matrix");
@@ -92,7 +92,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .and_then(|s| s.chars().next());
     let mut builder = Dictionary::builder()
         .chars(base64_chars)
-        .mode(base64_config.mode.clone());
+        .mode(base64_config.effective_mode());
     if let Some(pad) = base64_padding {
         builder = builder.padding(pad);
     }

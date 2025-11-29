@@ -29,9 +29,9 @@ pub struct DictionaryConfig {
     /// The characters comprising the dictionary
     #[serde(default)]
     pub chars: String,
-    /// The encoding mode to use
+    /// The encoding mode to use (auto-detected if not specified)
     #[serde(default)]
-    pub mode: EncodingMode,
+    pub mode: Option<EncodingMode>,
     /// Optional padding character (e.g., "=" for base64)
     #[serde(default)]
     pub padding: Option<String>,
@@ -42,6 +42,35 @@ pub struct DictionaryConfig {
     /// Dictionaries with common=false are excluded from random selection (--dejavu)
     #[serde(default = "default_true")]
     pub common: bool,
+}
+
+impl DictionaryConfig {
+    /// Returns the effective encoding mode, auto-detecting if not explicitly set.
+    ///
+    /// Auto-detection rules:
+    /// - ByteRange: Must be explicitly set (requires start_codepoint)
+    /// - Chunked: If alphabet length is a power of 2
+    /// - Radix: Otherwise (true base conversion)
+    pub fn effective_mode(&self) -> EncodingMode {
+        if let Some(mode) = &self.mode {
+            return mode.clone();
+        }
+
+        // Auto-detect based on alphabet length
+        let len = if self.start_codepoint.is_some() {
+            // ByteRange must be explicit, but if someone sets start_codepoint
+            // without mode, assume they want ByteRange
+            return EncodingMode::ByteRange;
+        } else {
+            self.chars.chars().count()
+        };
+
+        if len > 0 && len.is_power_of_two() {
+            EncodingMode::Chunked
+        } else {
+            EncodingMode::Radix
+        }
+    }
 }
 
 fn default_true() -> bool {
@@ -194,7 +223,7 @@ mod tests {
     fn test_base64_chunked_mode() {
         let config = DictionaryRegistry::load_default().unwrap();
         let base64 = config.get_dictionary("base64").unwrap();
-        assert_eq!(base64.mode, EncodingMode::Chunked);
+        assert_eq!(base64.effective_mode(), EncodingMode::Chunked);
         assert_eq!(base64.padding, Some("=".to_string()));
     }
 
@@ -202,7 +231,43 @@ mod tests {
     fn test_base64_radix_mode() {
         let config = DictionaryRegistry::load_default().unwrap();
         let base64_radix = config.get_dictionary("base64_radix").unwrap();
-        assert_eq!(base64_radix.mode, EncodingMode::Radix);
+        assert_eq!(base64_radix.effective_mode(), EncodingMode::Radix);
+    }
+
+    #[test]
+    fn test_auto_detection_power_of_two() {
+        // Power of 2 → Chunked
+        let config = DictionaryConfig {
+            chars: "ABCD".to_string(), // 4 = 2^2
+            mode: None,
+            padding: None,
+            start_codepoint: None,
+            common: true,
+        };
+        assert_eq!(config.effective_mode(), EncodingMode::Chunked);
+
+        // Not power of 2 → Radix
+        let config = DictionaryConfig {
+            chars: "ABC".to_string(), // 3 ≠ 2^n
+            mode: None,
+            padding: None,
+            start_codepoint: None,
+            common: true,
+        };
+        assert_eq!(config.effective_mode(), EncodingMode::Radix);
+    }
+
+    #[test]
+    fn test_explicit_mode_override() {
+        // Explicit mode overrides auto-detection
+        let config = DictionaryConfig {
+            chars: "ABCD".to_string(), // Would be Chunked
+            mode: Some(EncodingMode::Radix), // But explicitly set to Radix
+            padding: None,
+            start_codepoint: None,
+            common: true,
+        };
+        assert_eq!(config.effective_mode(), EncodingMode::Radix);
     }
 
     #[test]
@@ -216,7 +281,7 @@ mod tests {
             "test1".to_string(),
             DictionaryConfig {
                 chars: "ABC".to_string(),
-                mode: EncodingMode::Radix,
+                mode: Some(EncodingMode::Radix),
                 padding: None,
                 start_codepoint: None,
                 common: true,
@@ -232,7 +297,7 @@ mod tests {
             "test2".to_string(),
             DictionaryConfig {
                 chars: "XYZ".to_string(),
-                mode: EncodingMode::Radix,
+                mode: Some(EncodingMode::Radix),
                 padding: None,
                 start_codepoint: None,
                 common: true,
@@ -242,7 +307,7 @@ mod tests {
             "test1".to_string(),
             DictionaryConfig {
                 chars: "DEF".to_string(),
-                mode: EncodingMode::Radix,
+                mode: Some(EncodingMode::Radix),
                 padding: None,
                 start_codepoint: None,
                 common: true,

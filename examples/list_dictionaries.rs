@@ -6,7 +6,8 @@ fn main() {
     println!("Available dictionaries:\n");
 
     for (name, dictionary_config) in config.dictionaries.iter() {
-        let (char_count, preview) = match dictionary_config.mode {
+        let effective_mode = dictionary_config.effective_mode();
+        let (char_count, preview) = match effective_mode {
             base_d::EncodingMode::ByteRange => {
                 if let Some(start) = dictionary_config.start_codepoint {
                     let preview_chars: String = (0..10)
@@ -23,7 +24,7 @@ fn main() {
                 (count, preview)
             }
         };
-        let mode_str = match dictionary_config.mode {
+        let mode_str = match effective_mode {
             base_d::EncodingMode::Radix => "radix",
             base_d::EncodingMode::Chunked => "chunk",
             base_d::EncodingMode::ByteRange => "range",

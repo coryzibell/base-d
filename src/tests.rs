@@ -3,12 +3,13 @@ use crate::{Dictionary, DictionaryRegistry, EncodingMode, decode, encode};
 fn get_dictionary(name: &str) -> Dictionary {
     let config = DictionaryRegistry::load_default().unwrap();
     let dictionary_config = config.get_dictionary(name).unwrap();
+    let effective_mode = dictionary_config.effective_mode();
 
-    match dictionary_config.mode {
+    match effective_mode {
         EncodingMode::ByteRange => {
             let start = dictionary_config.start_codepoint.unwrap();
             Dictionary::builder()
-                .mode(dictionary_config.mode.clone())
+                .mode(effective_mode)
                 .start_codepoint(start)
                 .build()
                 .unwrap()
@@ -21,7 +22,7 @@ fn get_dictionary(name: &str) -> Dictionary {
                 .and_then(|s| s.chars().next());
             let mut builder = Dictionary::builder()
                 .chars(chars)
-                .mode(dictionary_config.mode.clone());
+                .mode(effective_mode);
             if let Some(p) = padding {
                 builder = builder.padding(p);
             }

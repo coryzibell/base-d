@@ -21,7 +21,7 @@
 //! let padding = base64_config.padding.as_ref().and_then(|s| s.chars().next());
 //! let mut builder = Dictionary::builder()
 //!     .chars(chars)
-//!     .mode(base64_config.mode.clone());
+//!     .mode(base64_config.effective_mode());
 //! if let Some(p) = padding {
 //!     builder = builder.padding(p);
 //! }
@@ -122,7 +122,7 @@
 //! // ... create dictionary from config
 //! # let chars: Vec<char> = dictionary_config.chars.chars().collect();
 //! # let padding = dictionary_config.padding.as_ref().and_then(|s| s.chars().next());
-//! # let mut builder = base_d::Dictionary::builder().chars(chars).mode(dictionary_config.mode.clone());
+//! # let mut builder = base_d::Dictionary::builder().chars(chars).mode(dictionary_config.effective_mode());
 //! # if let Some(p) = padding { builder = builder.padding(p); }
 //! # let dictionary = builder.build()?;
 //!

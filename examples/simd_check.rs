@@ -42,7 +42,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .and_then(|s| s.chars().next());
     let mut builder = Dictionary::builder()
         .chars(chars)
-        .mode(base64_config.mode.clone());
+        .mode(base64_config.effective_mode());
     if let Some(pad) = padding {
         builder = builder.padding(pad);
     }

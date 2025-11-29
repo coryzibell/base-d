@@ -39,14 +39,15 @@ pub fn create_dictionary(
         base_d::DictionaryNotFoundError::new(name, suggestion)
     })?;
 
-    let dictionary = match dictionary_config.mode {
+    let effective_mode = dictionary_config.effective_mode();
+    let dictionary = match effective_mode {
         base_d::EncodingMode::ByteRange => {
             let start = dictionary_config
                 .start_codepoint
                 .ok_or("ByteRange mode requires start_codepoint")?;
             Dictionary::builder()
                 .chars(Vec::new())
-                .mode(dictionary_config.mode.clone())
+                .mode(effective_mode)
                 .start_codepoint(start)
                 .build()
                 .map_err(|e| format!("Invalid dictionary: {}", e))?
@@ -59,7 +60,7 @@ pub fn create_dictionary(
                 .and_then(|s| s.chars().next());
             let mut builder = Dictionary::builder()
                 .chars(chars)
-                .mode(dictionary_config.mode.clone());
+                .mode(effective_mode);
             if let Some(pad) = padding {
                 builder = builder.padding(pad);
             }

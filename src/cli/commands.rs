@@ -223,7 +223,7 @@ pub fn matrix_mode(
         let chars: Vec<char> = dictionary_config.chars.chars().collect();
         let dictionary = Dictionary::builder()
             .chars(chars)
-            .mode(dictionary_config.mode.clone())
+            .mode(dictionary_config.effective_mode())
             .build()?;
 
         // Check if we need to switch (time-based)
