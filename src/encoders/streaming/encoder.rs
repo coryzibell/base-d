@@ -60,8 +60,8 @@ impl<'a, W: Write> StreamingEncoder<'a, W> {
 
     /// Encodes data from a reader in chunks.
     ///
-    /// Note: BaseConversion mode requires reading the entire input at once
-    /// due to the mathematical nature of the algorithm. For truly streaming
+    /// Note: Radix mode requires reading the entire input at once
+    /// due to the nature of true base conversion. For truly streaming
     /// behavior, use Chunked or ByteRange modes.
     ///
     /// Returns the computed hash if hash_algo was set, otherwise None.
@@ -75,8 +75,8 @@ impl<'a, W: Write> StreamingEncoder<'a, W> {
         let hash = match self.dictionary.mode() {
             crate::core::config::EncodingMode::Chunked => self.encode_chunked(reader)?,
             crate::core::config::EncodingMode::ByteRange => self.encode_byte_range(reader)?,
-            crate::core::config::EncodingMode::BaseConversion => {
-                // Mathematical mode requires entire input - read all and encode
+            crate::core::config::EncodingMode::Radix => {
+                // Radix mode requires entire input - read all and encode
                 let mut buffer = Vec::new();
                 reader.read_to_end(&mut buffer)?;
 
@@ -84,7 +84,7 @@ impl<'a, W: Write> StreamingEncoder<'a, W> {
                     .hash_algo
                     .map(|algo| crate::features::hashing::hash(&buffer, algo));
 
-                let encoded = crate::encoders::algorithms::math::encode(&buffer, self.dictionary);
+                let encoded = crate::encoders::algorithms::radix::encode(&buffer, self.dictionary);
                 self.writer.write_all(encoded.as_bytes())?;
                 hash
             }
@@ -114,9 +114,9 @@ impl<'a, W: Write> StreamingEncoder<'a, W> {
             crate::core::config::EncodingMode::ByteRange => {
                 self.encode_byte_range_no_hash(&mut cursor)?;
             }
-            crate::core::config::EncodingMode::BaseConversion => {
+            crate::core::config::EncodingMode::Radix => {
                 let buffer = cursor.into_inner();
-                let encoded = crate::encoders::algorithms::math::encode(&buffer, self.dictionary);
+                let encoded = crate::encoders::algorithms::radix::encode(&buffer, self.dictionary);
                 self.writer.write_all(encoded.as_bytes())?;
             }
         }

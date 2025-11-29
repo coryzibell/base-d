@@ -25,22 +25,21 @@ impl DictionaryDetector {
         let mut dictionaries = Vec::new();
 
         for (name, dict_config) in &config.dictionaries {
-            let dictionary = match dict_config.mode {
+            let effective_mode = dict_config.effective_mode();
+            let dictionary = match effective_mode {
                 EncodingMode::ByteRange => {
                     let start = dict_config
                         .start_codepoint
                         .ok_or("ByteRange mode requires start_codepoint")?;
                     Dictionary::builder()
-                        .mode(dict_config.mode.clone())
+                        .mode(effective_mode)
                         .start_codepoint(start)
                         .build()?
                 }
                 _ => {
-                    let chars: Vec<char> = dict_config.chars.chars().collect();
+                    let chars: Vec<char> = dict_config.effective_chars()?.chars().collect();
                     let padding = dict_config.padding.as_ref().and_then(|s| s.chars().next());
-                    let mut builder = Dictionary::builder()
-                        .chars(chars)
-                        .mode(dict_config.mode.clone());
+                    let mut builder = Dictionary::builder().chars(chars).mode(effective_mode);
                     if let Some(p) = padding {
                         builder = builder.padding(p);
                     }
@@ -281,8 +280,8 @@ impl DictionaryDetector {
                 // ByteRange is 1:1 mapping, any length is valid
                 1.0
             }
-            EncodingMode::BaseConversion => {
-                // Mathematical conversion can produce any length
+            EncodingMode::Radix => {
+                // Radix conversion can produce any length
                 if length > 0 { 1.0 } else { 0.0 }
             }
         }
@@ -351,8 +350,8 @@ mod tests {
 
         let matches = detector.detect("48656c6c6f");
         assert!(!matches.is_empty());
-        // hex or hex_math are both correct
-        assert!(matches[0].name == "hex" || matches[0].name == "hex_math");
+        // hex or hex_radix are both correct
+        assert!(matches[0].name == "hex" || matches[0].name == "hex_radix");
         assert!(matches[0].confidence > 0.8);
     }
 
@@ -362,11 +361,11 @@ mod tests {
 
         // Test with actual encoding
         let dict_config = config.get_dictionary("base64").unwrap();
-        let chars: Vec<char> = dict_config.chars.chars().collect();
+        let chars: Vec<char> = dict_config.effective_chars().unwrap().chars().collect();
         let padding = dict_config.padding.as_ref().and_then(|s| s.chars().next());
         let mut builder = Dictionary::builder()
             .chars(chars)
-            .mode(dict_config.mode.clone());
+            .mode(dict_config.effective_mode());
         if let Some(p) = padding {
             builder = builder.padding(p);
         }

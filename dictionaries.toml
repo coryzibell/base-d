@@ -123,16 +123,16 @@ chars = "ybndrfg8ejkmcpqxot1uwisza345h769"
 mode = "base_conversion"
 
 # ============================================================================
-# Mathematical variants (for comparison)
+# Radix variants (true base conversion, for comparison)
 # ============================================================================
 
-[dictionaries.base64_math]
+[dictionaries.base64_radix]
 chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-mode = "base_conversion"
+mode = "radix"
 
-[dictionaries.hex_math]
+[dictionaries.hex_radix]
 chars = "0123456789abcdef"
-mode = "base_conversion"
+mode = "radix"
 
 # ============================================================================
 # Esoteric # Esoteric & Fun Unicode Dictionarys Fun Unicode Dictionaries

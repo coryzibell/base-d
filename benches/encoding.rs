@@ -5,26 +5,29 @@ use std::hint::black_box;
 fn get_dictionary(name: &str) -> Dictionary {
     let config = DictionaryRegistry::load_default().unwrap();
     let dictionary_config = config.get_dictionary(name).unwrap();
+    let effective_mode = dictionary_config.effective_mode();
 
-    match dictionary_config.mode {
+    match effective_mode {
         EncodingMode::ByteRange => {
             let start = dictionary_config.start_codepoint.unwrap();
             Dictionary::builder()
                 .chars(Vec::new())
-                .mode(dictionary_config.mode.clone())
+                .mode(effective_mode)
                 .start_codepoint(start)
                 .build()
                 .unwrap()
         }
         _ => {
-            let chars: Vec<char> = dictionary_config.chars.chars().collect();
+            let chars: Vec<char> = dictionary_config
+                .effective_chars()
+                .unwrap()
+                .chars()
+                .collect();
             let padding = dictionary_config
                 .padding
                 .as_ref()
                 .and_then(|s| s.chars().next());
-            let mut builder = Dictionary::builder()
-                .chars(chars)
-                .mode(dictionary_config.mode.clone());
+            let mut builder = Dictionary::builder().chars(chars).mode(effective_mode);
             if let Some(pad) = padding {
                 builder = builder.padding(pad);
             }

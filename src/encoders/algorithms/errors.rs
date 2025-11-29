@@ -313,7 +313,7 @@ mod tests {
             Some("base64".to_string())
         );
         assert_eq!(
-            find_closest_dictionary("hex_math", &dicts),
+            find_closest_dictionary("hex_radix", &dicts),
             None // too different
         );
     }

@@ -3,25 +3,28 @@ use crate::{Dictionary, DictionaryRegistry, EncodingMode, decode, encode};
 fn get_dictionary(name: &str) -> Dictionary {
     let config = DictionaryRegistry::load_default().unwrap();
     let dictionary_config = config.get_dictionary(name).unwrap();
+    let effective_mode = dictionary_config.effective_mode();
 
-    match dictionary_config.mode {
+    match effective_mode {
         EncodingMode::ByteRange => {
             let start = dictionary_config.start_codepoint.unwrap();
             Dictionary::builder()
-                .mode(dictionary_config.mode.clone())
+                .mode(effective_mode)
                 .start_codepoint(start)
                 .build()
                 .unwrap()
         }
         _ => {
-            let chars: Vec<char> = dictionary_config.chars.chars().collect();
+            let chars: Vec<char> = dictionary_config
+                .effective_chars()
+                .unwrap()
+                .chars()
+                .collect();
             let padding = dictionary_config
                 .padding
                 .as_ref()
                 .and_then(|s| s.chars().next());
-            let mut builder = Dictionary::builder()
-                .chars(chars)
-                .mode(dictionary_config.mode.clone());
+            let mut builder = Dictionary::builder().chars(chars).mode(effective_mode);
             if let Some(p) = padding {
                 builder = builder.padding(p);
             }
@@ -118,14 +121,14 @@ fn test_base64_chunked_mode() {
 }
 
 #[test]
-fn test_base64_math_mode() {
-    let dictionary = get_dictionary("base64_math");
-    assert_eq!(dictionary.mode(), &EncodingMode::BaseConversion);
+fn test_base64_radix_mode() {
+    let dictionary = get_dictionary("base64_radix");
+    assert_eq!(dictionary.mode(), &EncodingMode::Radix);
 
-    // This should use mathematical base conversion
+    // This should use radix base conversion
     let data = b"Hello, World!";
     let encoded = encode(data, &dictionary);
-    println!("base64_math encoded: {}", encoded);
+    println!("base64_radix encoded: {}", encoded);
 
     // Should NOT match standard base64
     let standard_base64 = "SGVsbG8sIFdvcmxkIQ==";
@@ -275,13 +278,13 @@ fn test_base256_matrix_like_hex() {
     // Verify it's a 256-character dictionary
     assert_eq!(dictionary_chunked.base(), 256);
 
-    // Create mathematical mode version
+    // Create radix mode version
     let config = DictionaryRegistry::load_default().unwrap();
     let matrix_config = config.get_dictionary("base256_matrix").unwrap();
-    let chars: Vec<char> = matrix_config.chars.chars().collect();
-    let dictionary_math = Dictionary::builder()
+    let chars: Vec<char> = matrix_config.effective_chars().unwrap().chars().collect();
+    let dictionary_radix = Dictionary::builder()
         .chars(chars)
-        .mode(EncodingMode::BaseConversion)
+        .mode(EncodingMode::Radix)
         .build()
         .unwrap();
 
@@ -296,12 +299,12 @@ fn test_base256_matrix_like_hex() {
 
     for data in test_data {
         let chunked_encoded = encode(&data, &dictionary_chunked);
-        let math_encoded = encode(&data, &dictionary_math);
+        let radix_encoded = encode(&data, &dictionary_radix);
 
         // Both modes should produce IDENTICAL output (like hexadecimal)
         assert_eq!(
             chunked_encoded,
-            math_encoded,
+            radix_encoded,
             "Modes should produce identical output for {} bytes (like hex!)",
             data.len()
         );

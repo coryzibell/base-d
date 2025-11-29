@@ -167,7 +167,7 @@ mod tests {
     fn make_base256_dict() -> crate::core::dictionary::Dictionary {
         let config = DictionaryRegistry::load_default().unwrap();
         let dict_config = config.get_dictionary("base256_matrix").unwrap();
-        let chars: Vec<char> = dict_config.chars.chars().collect();
+        let chars: Vec<char> = dict_config.effective_chars().unwrap().chars().collect();
         crate::core::dictionary::Dictionary::new_with_mode(chars, EncodingMode::Chunked, None)
             .unwrap()
     }

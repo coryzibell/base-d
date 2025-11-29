@@ -7,7 +7,7 @@ fn main() {
     let chars: Vec<char> = dict_config.chars.chars().collect();
     let dict = Dictionary::builder()
         .chars(chars)
-        .mode(dict_config.mode.clone())
+        .mode(dict_config.effective_mode())
         .build()
         .unwrap();
 
