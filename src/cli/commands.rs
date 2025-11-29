@@ -56,8 +56,8 @@ pub fn select_random_dictionary(
     config: &DictionaryRegistry,
     print_message: bool,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    use rand::seq::SliceRandom;
-    let mut rng = rand::thread_rng();
+    use rand::prelude::IndexedRandom;
+    let mut rng = rand::rng();
 
     // Filter to only common dictionaries (those that render consistently across platforms)
     let dict_names: Vec<&String> = config
@@ -89,8 +89,8 @@ pub const COMPRESS_ALGORITHMS: &[&str] = &["gzip", "zstd", "brotli", "lz4"];
 
 /// Select a random hash algorithm
 pub fn select_random_hash(quiet: bool) -> &'static str {
-    use rand::seq::SliceRandom;
-    let selected = HASH_ALGORITHMS.choose(&mut rand::thread_rng()).unwrap();
+    use rand::prelude::IndexedRandom;
+    let selected = HASH_ALGORITHMS.choose(&mut rand::rng()).unwrap();
     if !quiet {
         eprintln!(
             "Note: Using randomly selected hash '{}' (use --hash={} to fix)",
@@ -102,8 +102,8 @@ pub fn select_random_hash(quiet: bool) -> &'static str {
 
 /// Select a random compression algorithm
 pub fn select_random_compress(quiet: bool) -> &'static str {
-    use rand::seq::SliceRandom;
-    let selected = COMPRESS_ALGORITHMS.choose(&mut rand::thread_rng()).unwrap();
+    use rand::prelude::IndexedRandom;
+    let selected = COMPRESS_ALGORITHMS.choose(&mut rand::rng()).unwrap();
     if !quiet {
         eprintln!(
             "Note: Using randomly selected compression '{}' (use --compress={} to fix)",
@@ -192,7 +192,7 @@ pub fn matrix_mode(
         .unwrap_or(0);
 
     let mut last_switch = Instant::now();
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     // Build sorted dictionary list for keyboard controls
     let dict_names: Vec<String> = {
