@@ -4,7 +4,7 @@ use crate::features::compression::CompressionAlgorithm;
 use crate::features::hashing::HashAlgorithm;
 use std::io::{Read, Write};
 
-use super::hasher::{create_hasher_writer, HasherWriter};
+use super::hasher::{HasherWriter, create_hasher_writer};
 
 const CHUNK_SIZE: usize = 4096; // 4KB chunks
 
@@ -151,8 +151,8 @@ impl<'a, W: Write> StreamingDecoder<'a, W> {
                 Self::copy_with_hash_to_writer(&mut decoder, &mut self.writer, &mut hasher)?;
             }
             CompressionAlgorithm::Zstd => {
-                let mut decoder = zstd::stream::read::Decoder::new(reader)
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+                let mut decoder =
+                    zstd::stream::read::Decoder::new(reader).map_err(std::io::Error::other)?;
                 Self::copy_with_hash_to_writer(&mut decoder, &mut self.writer, &mut hasher)?;
             }
             CompressionAlgorithm::Brotli => {
@@ -171,13 +171,13 @@ impl<'a, W: Write> StreamingDecoder<'a, W> {
                 let decompressed = match algo {
                     CompressionAlgorithm::Lz4 => {
                         lz4::block::decompress(&compressed, Some(100 * 1024 * 1024))
-                            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
+                            .map_err(std::io::Error::other)?
                     }
                     CompressionAlgorithm::Snappy => {
                         let mut decoder = snap::raw::Decoder::new();
                         decoder
                             .decompress_vec(&compressed)
-                            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
+                            .map_err(std::io::Error::other)?
                     }
                     _ => unreachable!(),
                 };
@@ -207,7 +207,7 @@ impl<'a, W: Write> StreamingDecoder<'a, W> {
             }
 
             let chunk = &buffer[..bytes_read];
-            if let Some(ref mut h) = hasher {
+            if let Some(h) = hasher {
                 h.update(chunk);
             }
             writer.write_all(chunk)?;

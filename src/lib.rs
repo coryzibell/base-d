@@ -1,22 +1,3 @@
-#![allow(dead_code)]
-#![allow(deprecated)]
-#![allow(clippy::should_implement_trait)]
-#![allow(clippy::derivable_impls)]
-#![allow(clippy::manual_div_ceil)]
-#![allow(clippy::io_other_error)]
-#![allow(clippy::unnecessary_cast)]
-#![allow(clippy::collapsible_if)]
-#![allow(clippy::manual_range_contains)]
-#![allow(clippy::iter_nth_zero)]
-#![allow(clippy::map_identity)]
-#![allow(clippy::large_enum_variant)]
-#![allow(clippy::redundant_locals)]
-#![allow(clippy::manual_is_multiple_of)]
-#![allow(clippy::doc_lazy_continuation)]
-#![allow(clippy::collapsible_else_if)]
-#![allow(clippy::explicit_iter_loop)]
-#![allow(clippy::needless_range_loop)]
-
 //! # base-d
 //!
 //! A universal, multi-dictionary encoding library for Rust.
@@ -38,11 +19,13 @@
 //! // Create dictionary
 //! let chars: Vec<char> = base64_config.chars.chars().collect();
 //! let padding = base64_config.padding.as_ref().and_then(|s| s.chars().next());
-//! let dictionary = Dictionary::new_with_mode(
-//!     chars,
-//!     base64_config.mode.clone(),
-//!     padding
-//! )?;
+//! let mut builder = Dictionary::builder()
+//!     .chars(chars)
+//!     .mode(base64_config.mode.clone());
+//! if let Some(p) = padding {
+//!     builder = builder.padding(p);
+//! }
+//! let dictionary = builder.build()?;
 //!
 //! // Encode and decode
 //! let data = b"Hello, World!";
@@ -72,11 +55,10 @@
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let chars: Vec<char> = "😀😁😂🤣😃😄😅😆".chars().collect();
-//! let dictionary = Dictionary::new_with_mode(
-//!     chars,
-//!     EncodingMode::BaseConversion,
-//!     None
-//! )?;
+//! let dictionary = Dictionary::builder()
+//!     .chars(chars)
+//!     .mode(EncodingMode::BaseConversion)
+//!     .build()?;
 //!
 //! let encoded = encode(b"Hi", &dictionary);
 //! # Ok(())
@@ -93,11 +75,11 @@
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let chars: Vec<char> = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 //!     .chars().collect();
-//! let dictionary = Dictionary::new_with_mode(
-//!     chars,
-//!     EncodingMode::Chunked,
-//!     Some('=')
-//! )?;
+//! let dictionary = Dictionary::builder()
+//!     .chars(chars)
+//!     .mode(EncodingMode::Chunked)
+//!     .padding('=')
+//!     .build()?;
 //!
 //! let encoded = encode(b"Hello", &dictionary);
 //! assert_eq!(encoded, "SGVsbG8=");
@@ -113,12 +95,10 @@
 //! use base_d::{Dictionary, EncodingMode, encode};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let dictionary = Dictionary::new_with_mode_and_range(
-//!     Vec::new(),
-//!     EncodingMode::ByteRange,
-//!     None,
-//!     Some(127991)  // U+1F3F7
-//! )?;
+//! let dictionary = Dictionary::builder()
+//!     .mode(EncodingMode::ByteRange)
+//!     .start_codepoint(127991)  // U+1F3F7
+//!     .build()?;
 //!
 //! let data = b"Hi";
 //! let encoded = encode(data, &dictionary);
@@ -142,7 +122,9 @@
 //! // ... create dictionary from config
 //! # let chars: Vec<char> = dictionary_config.chars.chars().collect();
 //! # let padding = dictionary_config.padding.as_ref().and_then(|s| s.chars().next());
-//! # let dictionary = base_d::Dictionary::new_with_mode(chars, dictionary_config.mode.clone(), padding)?;
+//! # let mut builder = base_d::Dictionary::builder().chars(chars).mode(dictionary_config.mode.clone());
+//! # if let Some(p) = padding { builder = builder.padding(p); }
+//! # let dictionary = builder.build()?;
 //!
 //! let mut input = File::open("large_file.bin")?;
 //! let output = File::create("encoded.txt")?;
@@ -163,11 +145,11 @@ pub use core::config::{
     CompressionConfig, DictionaryConfig, DictionaryRegistry, EncodingMode, Settings,
 };
 pub use core::dictionary::{Dictionary, DictionaryBuilder};
-pub use encoders::algorithms::{find_closest_dictionary, DecodeError, DictionaryNotFoundError};
+pub use encoders::algorithms::{DecodeError, DictionaryNotFoundError, find_closest_dictionary};
 pub use encoders::streaming::{StreamingDecoder, StreamingEncoder};
 pub use features::{
-    compress, decompress, detect_dictionary, hash, hash_with_config, CompressionAlgorithm,
-    DictionaryDetector, DictionaryMatch, HashAlgorithm, XxHashConfig,
+    CompressionAlgorithm, DictionaryDetector, DictionaryMatch, HashAlgorithm, XxHashConfig,
+    compress, decompress, detect_dictionary, hash, hash_with_config,
 };
 
 /// Encodes binary data using the specified dictionary.
@@ -191,7 +173,10 @@ pub use features::{
 ///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let chars: Vec<char> = "01".chars().collect();
-/// let dictionary = Dictionary::new_with_mode(chars, EncodingMode::BaseConversion, None)?;
+/// let dictionary = Dictionary::builder()
+///     .chars(chars)
+///     .mode(EncodingMode::BaseConversion)
+///     .build()?;
 /// let encoded = base_d::encode(b"Hi", &dictionary);
 /// # Ok(())
 /// # }
@@ -235,7 +220,10 @@ pub fn encode(data: &[u8], dictionary: &Dictionary) -> String {
 ///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let chars: Vec<char> = "01".chars().collect();
-/// let dictionary = Dictionary::new_with_mode(chars, EncodingMode::BaseConversion, None)?;
+/// let dictionary = Dictionary::builder()
+///     .chars(chars)
+///     .mode(EncodingMode::BaseConversion)
+///     .build()?;
 /// let data = b"Hi";
 /// let encoded = encode(data, &dictionary);
 /// let decoded = decode(&encoded, &dictionary)?;

@@ -76,13 +76,12 @@ pub fn encode_scalar_chunked(data: &[u8], dictionary: &Dictionary, result: &mut 
     // Add padding if specified (e.g., base64 '=')
     if let Some(pad_char) = dictionary.padding() {
         // Calculate expected output length
-        let bits_per_char = bits_per_char;
         let input_bits = data.len() * 8;
-        let output_chars = (input_bits + bits_per_char - 1) / bits_per_char;
+        let output_chars = input_bits.div_ceil(bits_per_char);
 
         // For base64, output should be multiple of 4
         if base == 64 {
-            while result.len() % 4 != 0 {
+            while !result.len().is_multiple_of(4) {
                 result.push(pad_char);
             }
         } else {

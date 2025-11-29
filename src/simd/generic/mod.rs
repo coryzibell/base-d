@@ -171,7 +171,7 @@ impl GenericSimdCodec {
         const BLOCK_SIZE: usize = 12;
 
         // Pre-allocate output
-        let output_len = ((data.len() + 2) / 3) * 4;
+        let output_len = data.len().div_ceil(3) * 4;
         let mut result = String::with_capacity(output_len);
 
         unsafe {
@@ -338,7 +338,7 @@ impl GenericSimdCodec {
         const BLOCK_SIZE: usize = 10; // 10 bytes -> 16 chars
 
         // Pre-allocate output
-        let output_len = ((data.len() + 4) / 5) * 8;
+        let output_len = data.len().div_ceil(5) * 8;
         let mut result = String::with_capacity(output_len);
 
         unsafe {
@@ -664,34 +664,36 @@ impl GenericSimdCodec {
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "ssse3")]
     unsafe fn unpack_5bit_simple(&self, input: __m128i) -> __m128i {
-        // Extract bytes 0-9 into a buffer for easier manipulation
-        let mut buf = [0u8; 16];
-        _mm_storeu_si128(buf.as_mut_ptr() as *mut __m128i, input);
+        unsafe {
+            // Extract bytes 0-9 into a buffer for easier manipulation
+            let mut buf = [0u8; 16];
+            _mm_storeu_si128(buf.as_mut_ptr() as *mut __m128i, input);
 
-        // Extract 5-bit indices manually (two 5-byte groups)
-        let mut indices = [0u8; 16];
+            // Extract 5-bit indices manually (two 5-byte groups)
+            let mut indices = [0u8; 16];
 
-        // First group: bytes 0-4 -> indices 0-7
-        indices[0] = buf[0] >> 3;
-        indices[1] = ((buf[0] & 0x07) << 2) | (buf[1] >> 6);
-        indices[2] = (buf[1] >> 1) & 0x1F;
-        indices[3] = ((buf[1] & 0x01) << 4) | (buf[2] >> 4);
-        indices[4] = ((buf[2] & 0x0F) << 1) | (buf[3] >> 7);
-        indices[5] = (buf[3] >> 2) & 0x1F;
-        indices[6] = ((buf[3] & 0x03) << 3) | (buf[4] >> 5);
-        indices[7] = buf[4] & 0x1F;
+            // First group: bytes 0-4 -> indices 0-7
+            indices[0] = buf[0] >> 3;
+            indices[1] = ((buf[0] & 0x07) << 2) | (buf[1] >> 6);
+            indices[2] = (buf[1] >> 1) & 0x1F;
+            indices[3] = ((buf[1] & 0x01) << 4) | (buf[2] >> 4);
+            indices[4] = ((buf[2] & 0x0F) << 1) | (buf[3] >> 7);
+            indices[5] = (buf[3] >> 2) & 0x1F;
+            indices[6] = ((buf[3] & 0x03) << 3) | (buf[4] >> 5);
+            indices[7] = buf[4] & 0x1F;
 
-        // Second group: bytes 5-9 -> indices 8-15
-        indices[8] = buf[5] >> 3;
-        indices[9] = ((buf[5] & 0x07) << 2) | (buf[6] >> 6);
-        indices[10] = (buf[6] >> 1) & 0x1F;
-        indices[11] = ((buf[6] & 0x01) << 4) | (buf[7] >> 4);
-        indices[12] = ((buf[7] & 0x0F) << 1) | (buf[8] >> 7);
-        indices[13] = (buf[8] >> 2) & 0x1F;
-        indices[14] = ((buf[8] & 0x03) << 3) | (buf[9] >> 5);
-        indices[15] = buf[9] & 0x1F;
+            // Second group: bytes 5-9 -> indices 8-15
+            indices[8] = buf[5] >> 3;
+            indices[9] = ((buf[5] & 0x07) << 2) | (buf[6] >> 6);
+            indices[10] = (buf[6] >> 1) & 0x1F;
+            indices[11] = ((buf[6] & 0x01) << 4) | (buf[7] >> 4);
+            indices[12] = ((buf[7] & 0x0F) << 1) | (buf[8] >> 7);
+            indices[13] = (buf[8] >> 2) & 0x1F;
+            indices[14] = ((buf[8] & 0x03) << 3) | (buf[9] >> 5);
+            indices[15] = buf[9] & 0x1F;
 
-        _mm_loadu_si128(indices.as_ptr() as *const __m128i)
+            _mm_loadu_si128(indices.as_ptr() as *const __m128i)
+        }
     }
 
     /// Pack 16 bytes of 5-bit indices into 10 bytes
@@ -797,42 +799,44 @@ impl GenericSimdCodec {
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "avx2")]
     unsafe fn encode_8bit_avx2_impl(&self, data: &[u8], _dict: &Dictionary) -> Option<String> {
-        const BLOCK_SIZE: usize = 32; // Process 32 bytes at a time with AVX2
+        unsafe {
+            const BLOCK_SIZE: usize = 32; // Process 32 bytes at a time with AVX2
 
-        let mut result = String::with_capacity(data.len());
+            let mut result = String::with_capacity(data.len());
 
-        if data.len() < BLOCK_SIZE {
-            return None;
-        }
-
-        let num_blocks = data.len() / BLOCK_SIZE;
-        let simd_bytes = num_blocks * BLOCK_SIZE;
-
-        let mut offset = 0;
-        for _ in 0..num_blocks {
-            // Load 32 bytes
-            let input_vec = _mm256_loadu_si256(data.as_ptr().add(offset) as *const __m256i);
-
-            // Translate using pluggable translator (processes as two 128-bit lanes)
-            let encoded = self.translator.translate_encode_256(input_vec);
-
-            // Store 32 output characters
-            let mut output_buf = [0u8; 32];
-            _mm256_storeu_si256(output_buf.as_mut_ptr() as *mut __m256i, encoded);
-
-            for &byte in &output_buf {
-                result.push(byte as char);
+            if data.len() < BLOCK_SIZE {
+                return None;
             }
 
-            offset += BLOCK_SIZE;
-        }
+            let num_blocks = data.len() / BLOCK_SIZE;
+            let simd_bytes = num_blocks * BLOCK_SIZE;
 
-        // TODO: Handle remainder with scalar code
-        if simd_bytes < data.len() {
-            // For now, we don't handle remainder
-        }
+            let mut offset = 0;
+            for _ in 0..num_blocks {
+                // Load 32 bytes
+                let input_vec = _mm256_loadu_si256(data.as_ptr().add(offset) as *const __m256i);
 
-        Some(result)
+                // Translate using pluggable translator (processes as two 128-bit lanes)
+                let encoded = self.translator.translate_encode_256(input_vec);
+
+                // Store 32 output characters
+                let mut output_buf = [0u8; 32];
+                _mm256_storeu_si256(output_buf.as_mut_ptr() as *mut __m256i, encoded);
+
+                for &byte in &output_buf {
+                    result.push(byte as char);
+                }
+
+                offset += BLOCK_SIZE;
+            }
+
+            // TODO: Handle remainder with scalar code
+            if simd_bytes < data.len() {
+                // For now, we don't handle remainder
+            }
+
+            Some(result)
+        }
     }
 
     #[cfg(target_arch = "x86_64")]
@@ -844,59 +848,61 @@ impl GenericSimdCodec {
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "avx2")]
     unsafe fn encode_4bit_avx2_impl(&self, data: &[u8], _dict: &Dictionary) -> Option<String> {
-        const BLOCK_SIZE: usize = 32;
+        unsafe {
+            const BLOCK_SIZE: usize = 32;
 
-        if data.len() < BLOCK_SIZE {
-            return None;
-        }
-
-        let output_len = data.len() * 2;
-        let mut result = String::with_capacity(output_len);
-
-        let num_blocks = data.len() / BLOCK_SIZE;
-        let simd_bytes = num_blocks * BLOCK_SIZE;
-
-        let mask_0f = _mm256_set1_epi8(0x0F);
-
-        let mut offset = 0;
-        for _ in 0..num_blocks {
-            // Load 32 bytes
-            let input_vec = _mm256_loadu_si256(data.as_ptr().add(offset) as *const __m256i);
-
-            // Extract nibbles (per-lane operation)
-            let hi_nibbles = _mm256_and_si256(_mm256_srli_epi32(input_vec, 4), mask_0f);
-            let lo_nibbles = _mm256_and_si256(input_vec, mask_0f);
-
-            // Translate using pluggable translator (per-lane)
-            let hi_ascii = self.translator.translate_encode_256(hi_nibbles);
-            let lo_ascii = self.translator.translate_encode_256(lo_nibbles);
-
-            // Interleave (per-lane, then cross-lane permute)
-            let lane0_lo = _mm256_unpacklo_epi8(hi_ascii, lo_ascii);
-            let lane0_hi = _mm256_unpackhi_epi8(hi_ascii, lo_ascii);
-
-            // Cross-lane permute to fix ordering
-            let result_lo = _mm256_permute2x128_si256(lane0_lo, lane0_hi, 0x20);
-            let result_hi = _mm256_permute2x128_si256(lane0_lo, lane0_hi, 0x31);
-
-            // Store 64 output characters
-            let mut output_buf = [0u8; 64];
-            _mm256_storeu_si256(output_buf.as_mut_ptr() as *mut __m256i, result_lo);
-            _mm256_storeu_si256(output_buf.as_mut_ptr().add(32) as *mut __m256i, result_hi);
-
-            for &byte in &output_buf {
-                result.push(byte as char);
+            if data.len() < BLOCK_SIZE {
+                return None;
             }
 
-            offset += BLOCK_SIZE;
-        }
+            let output_len = data.len() * 2;
+            let mut result = String::with_capacity(output_len);
 
-        // TODO: Handle remainder
-        if simd_bytes < data.len() {
-            // For now, we don't handle remainder
-        }
+            let num_blocks = data.len() / BLOCK_SIZE;
+            let simd_bytes = num_blocks * BLOCK_SIZE;
 
-        Some(result)
+            let mask_0f = _mm256_set1_epi8(0x0F);
+
+            let mut offset = 0;
+            for _ in 0..num_blocks {
+                // Load 32 bytes
+                let input_vec = _mm256_loadu_si256(data.as_ptr().add(offset) as *const __m256i);
+
+                // Extract nibbles (per-lane operation)
+                let hi_nibbles = _mm256_and_si256(_mm256_srli_epi32(input_vec, 4), mask_0f);
+                let lo_nibbles = _mm256_and_si256(input_vec, mask_0f);
+
+                // Translate using pluggable translator (per-lane)
+                let hi_ascii = self.translator.translate_encode_256(hi_nibbles);
+                let lo_ascii = self.translator.translate_encode_256(lo_nibbles);
+
+                // Interleave (per-lane, then cross-lane permute)
+                let lane0_lo = _mm256_unpacklo_epi8(hi_ascii, lo_ascii);
+                let lane0_hi = _mm256_unpackhi_epi8(hi_ascii, lo_ascii);
+
+                // Cross-lane permute to fix ordering
+                let result_lo = _mm256_permute2x128_si256(lane0_lo, lane0_hi, 0x20);
+                let result_hi = _mm256_permute2x128_si256(lane0_lo, lane0_hi, 0x31);
+
+                // Store 64 output characters
+                let mut output_buf = [0u8; 64];
+                _mm256_storeu_si256(output_buf.as_mut_ptr() as *mut __m256i, result_lo);
+                _mm256_storeu_si256(output_buf.as_mut_ptr().add(32) as *mut __m256i, result_hi);
+
+                for &byte in &output_buf {
+                    result.push(byte as char);
+                }
+
+                offset += BLOCK_SIZE;
+            }
+
+            // TODO: Handle remainder
+            if simd_bytes < data.len() {
+                // For now, we don't handle remainder
+            }
+
+            Some(result)
+        }
     }
 
     #[cfg(target_arch = "x86_64")]
@@ -908,52 +914,54 @@ impl GenericSimdCodec {
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "avx2")]
     unsafe fn encode_5bit_avx2_impl(&self, data: &[u8], _dict: &Dictionary) -> Option<String> {
-        use crate::simd::x86_64::common;
+        unsafe {
+            use crate::simd::x86_64::common;
 
-        const BLOCK_SIZE: usize = 20; // 20 bytes -> 32 chars
+            const BLOCK_SIZE: usize = 20; // 20 bytes -> 32 chars
 
-        let output_len = ((data.len() + 4) / 5) * 8;
-        let mut result = String::with_capacity(output_len);
+            let output_len = data.len().div_ceil(5) * 8;
+            let mut result = String::with_capacity(output_len);
 
-        if data.len() < 32 {
-            return None;
-        }
-
-        let safe_len = if data.len() >= 12 { data.len() - 12 } else { 0 };
-        let (num_rounds, simd_bytes) = common::calculate_blocks(safe_len, BLOCK_SIZE);
-
-        let mut offset = 0;
-        for _ in 0..num_rounds {
-            // Load 20 bytes as two 128-bit chunks (bytes 0-9 and 10-19)
-            let input_lo = _mm_loadu_si128(data.as_ptr().add(offset) as *const __m128i);
-            let input_hi = _mm_loadu_si128(data.as_ptr().add(offset + 10) as *const __m128i);
-
-            // Combine into 256-bit register
-            let input_256 = _mm256_set_m128i(input_hi, input_lo);
-
-            // Extract 5-bit indices from both lanes
-            let indices = self.extract_5bit_indices_avx2(input_256);
-
-            // Translate 5-bit indices to ASCII using pluggable translator
-            let encoded = self.translator.translate_encode_256(indices);
-
-            // Store 32 output characters
-            let mut output_buf = [0u8; 32];
-            _mm256_storeu_si256(output_buf.as_mut_ptr() as *mut __m256i, encoded);
-
-            for &byte in &output_buf {
-                result.push(byte as char);
+            if data.len() < 32 {
+                return None;
             }
 
-            offset += BLOCK_SIZE;
-        }
+            let safe_len = if data.len() >= 12 { data.len() - 12 } else { 0 };
+            let (num_rounds, simd_bytes) = common::calculate_blocks(safe_len, BLOCK_SIZE);
 
-        // TODO: Handle remainder
-        if simd_bytes < data.len() {
-            // For now, we don't handle remainder
-        }
+            let mut offset = 0;
+            for _ in 0..num_rounds {
+                // Load 20 bytes as two 128-bit chunks (bytes 0-9 and 10-19)
+                let input_lo = _mm_loadu_si128(data.as_ptr().add(offset) as *const __m128i);
+                let input_hi = _mm_loadu_si128(data.as_ptr().add(offset + 10) as *const __m128i);
 
-        Some(result)
+                // Combine into 256-bit register
+                let input_256 = _mm256_set_m128i(input_hi, input_lo);
+
+                // Extract 5-bit indices from both lanes
+                let indices = self.extract_5bit_indices_avx2(input_256);
+
+                // Translate 5-bit indices to ASCII using pluggable translator
+                let encoded = self.translator.translate_encode_256(indices);
+
+                // Store 32 output characters
+                let mut output_buf = [0u8; 32];
+                _mm256_storeu_si256(output_buf.as_mut_ptr() as *mut __m256i, encoded);
+
+                for &byte in &output_buf {
+                    result.push(byte as char);
+                }
+
+                offset += BLOCK_SIZE;
+            }
+
+            // TODO: Handle remainder
+            if simd_bytes < data.len() {
+                // For now, we don't handle remainder
+            }
+
+            Some(result)
+        }
     }
 
     #[cfg(target_arch = "x86_64")]
@@ -965,48 +973,50 @@ impl GenericSimdCodec {
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "avx2")]
     unsafe fn encode_6bit_avx2_impl(&self, data: &[u8], _dict: &Dictionary) -> Option<String> {
-        use crate::simd::x86_64::common;
+        unsafe {
+            use crate::simd::x86_64::common;
 
-        const BLOCK_SIZE: usize = 24; // 24 bytes input -> 32 chars output
+            const BLOCK_SIZE: usize = 24; // 24 bytes input -> 32 chars output
 
-        let output_len = ((data.len() + 2) / 3) * 4;
-        let mut result = String::with_capacity(output_len);
+            let output_len = data.len().div_ceil(3) * 4;
+            let mut result = String::with_capacity(output_len);
 
-        if data.len() < 32 {
-            return None;
-        }
-
-        let safe_len = if data.len() >= 8 { data.len() - 8 } else { 0 };
-        let (num_rounds, simd_bytes) = common::calculate_blocks(safe_len, BLOCK_SIZE);
-
-        let mut offset = 0;
-        for _ in 0..num_rounds {
-            // Load 32 bytes (we only use the first 24)
-            let input_vec = _mm256_loadu_si256(data.as_ptr().add(offset) as *const __m256i);
-
-            // Reshuffle bytes to extract 6-bit groups
-            let reshuffled = self.reshuffle_6bit_avx2(input_vec);
-
-            // Translate 6-bit indices to ASCII using pluggable translator
-            let encoded = self.translator.translate_encode_256(reshuffled);
-
-            // Store 32 output characters
-            let mut output_buf = [0u8; 32];
-            _mm256_storeu_si256(output_buf.as_mut_ptr() as *mut __m256i, encoded);
-
-            for &byte in &output_buf {
-                result.push(byte as char);
+            if data.len() < 32 {
+                return None;
             }
 
-            offset += BLOCK_SIZE;
-        }
+            let safe_len = if data.len() >= 8 { data.len() - 8 } else { 0 };
+            let (num_rounds, simd_bytes) = common::calculate_blocks(safe_len, BLOCK_SIZE);
 
-        // TODO: Handle remainder
-        if simd_bytes < data.len() {
-            // For now, we don't handle remainder
-        }
+            let mut offset = 0;
+            for _ in 0..num_rounds {
+                // Load 32 bytes (we only use the first 24)
+                let input_vec = _mm256_loadu_si256(data.as_ptr().add(offset) as *const __m256i);
 
-        Some(result)
+                // Reshuffle bytes to extract 6-bit groups
+                let reshuffled = self.reshuffle_6bit_avx2(input_vec);
+
+                // Translate 6-bit indices to ASCII using pluggable translator
+                let encoded = self.translator.translate_encode_256(reshuffled);
+
+                // Store 32 output characters
+                let mut output_buf = [0u8; 32];
+                _mm256_storeu_si256(output_buf.as_mut_ptr() as *mut __m256i, encoded);
+
+                for &byte in &output_buf {
+                    result.push(byte as char);
+                }
+
+                offset += BLOCK_SIZE;
+            }
+
+            // TODO: Handle remainder
+            if simd_bytes < data.len() {
+                // For now, we don't handle remainder
+            }
+
+            Some(result)
+        }
     }
 
     #[cfg(target_arch = "x86_64")]
@@ -1054,40 +1064,43 @@ impl GenericSimdCodec {
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "avx2")]
     unsafe fn decode_8bit_avx2_impl(&self, encoded: &str, _dict: &Dictionary) -> Option<Vec<u8>> {
-        const BLOCK_SIZE: usize = 32;
+        unsafe {
+            const BLOCK_SIZE: usize = 32;
 
-        let encoded_bytes = encoded.as_bytes();
-        let mut result = Vec::with_capacity(encoded_bytes.len());
+            let encoded_bytes = encoded.as_bytes();
+            let mut result = Vec::with_capacity(encoded_bytes.len());
 
-        if encoded_bytes.len() < BLOCK_SIZE {
-            return None;
+            if encoded_bytes.len() < BLOCK_SIZE {
+                return None;
+            }
+
+            let num_blocks = encoded_bytes.len() / BLOCK_SIZE;
+            let simd_bytes = num_blocks * BLOCK_SIZE;
+
+            let mut offset = 0;
+            for _ in 0..num_blocks {
+                // Load 32 ASCII chars
+                let chars =
+                    _mm256_loadu_si256(encoded_bytes.as_ptr().add(offset) as *const __m256i);
+
+                // Translate to bytes (validation included)
+                let bytes = self.translator.translate_decode_256(chars)?;
+
+                // Store 32 output bytes
+                let mut output_buf = [0u8; 32];
+                _mm256_storeu_si256(output_buf.as_mut_ptr() as *mut __m256i, bytes);
+                result.extend_from_slice(&output_buf);
+
+                offset += BLOCK_SIZE;
+            }
+
+            // TODO: Handle remainder
+            if simd_bytes < encoded_bytes.len() {
+                // For now, we don't handle remainder
+            }
+
+            Some(result)
         }
-
-        let num_blocks = encoded_bytes.len() / BLOCK_SIZE;
-        let simd_bytes = num_blocks * BLOCK_SIZE;
-
-        let mut offset = 0;
-        for _ in 0..num_blocks {
-            // Load 32 ASCII chars
-            let chars = _mm256_loadu_si256(encoded_bytes.as_ptr().add(offset) as *const __m256i);
-
-            // Translate to bytes (validation included)
-            let bytes = self.translator.translate_decode_256(chars)?;
-
-            // Store 32 output bytes
-            let mut output_buf = [0u8; 32];
-            _mm256_storeu_si256(output_buf.as_mut_ptr() as *mut __m256i, bytes);
-            result.extend_from_slice(&output_buf);
-
-            offset += BLOCK_SIZE;
-        }
-
-        // TODO: Handle remainder
-        if simd_bytes < encoded_bytes.len() {
-            // For now, we don't handle remainder
-        }
-
-        Some(result)
     }
 
     #[cfg(target_arch = "x86_64")]
@@ -1099,62 +1112,65 @@ impl GenericSimdCodec {
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "avx2")]
     unsafe fn decode_4bit_avx2_impl(&self, encoded: &str, _dict: &Dictionary) -> Option<Vec<u8>> {
-        const BLOCK_SIZE: usize = 64; // 64 chars -> 32 bytes
+        unsafe {
+            const BLOCK_SIZE: usize = 64; // 64 chars -> 32 bytes
 
-        let encoded_bytes = encoded.as_bytes();
-        let mut result = Vec::with_capacity(encoded_bytes.len() / 2);
+            let encoded_bytes = encoded.as_bytes();
+            let mut result = Vec::with_capacity(encoded_bytes.len() / 2);
 
-        if encoded_bytes.len() < BLOCK_SIZE {
-            return None;
+            if encoded_bytes.len() < BLOCK_SIZE {
+                return None;
+            }
+
+            let num_blocks = encoded_bytes.len() / BLOCK_SIZE;
+            let simd_bytes = num_blocks * BLOCK_SIZE;
+
+            for i in 0..num_blocks {
+                let offset = i * BLOCK_SIZE * 2;
+
+                // Load 64 ASCII characters
+                let input_lo =
+                    _mm256_loadu_si256(encoded_bytes.as_ptr().add(offset) as *const __m256i);
+                let input_hi =
+                    _mm256_loadu_si256(encoded_bytes.as_ptr().add(offset + 32) as *const __m256i);
+
+                // Deinterleave using mask and shift
+                let mask_even = _mm256_set1_epi16(0x00FF_u16 as i16);
+
+                // Extract even bytes (high nibbles) and odd bytes (low nibbles)
+                let hi_chars_lane0 = _mm256_and_si256(input_lo, mask_even);
+                let lo_chars_lane0 = _mm256_srli_epi16(input_lo, 8);
+                let hi_chars_lane1 = _mm256_and_si256(input_hi, mask_even);
+                let lo_chars_lane1 = _mm256_srli_epi16(input_hi, 8);
+
+                // Pack bytes
+                let hi_chars = _mm256_packus_epi16(hi_chars_lane0, hi_chars_lane1);
+                let lo_chars = _mm256_packus_epi16(lo_chars_lane0, lo_chars_lane1);
+
+                // Fix lane crossing from packus
+                let hi_chars = _mm256_permute4x64_epi64(hi_chars, 0xD8);
+                let lo_chars = _mm256_permute4x64_epi64(lo_chars, 0xD8);
+
+                // Translate chars to nibble values
+                let hi_vals = self.translator.translate_decode_256(hi_chars)?;
+                let lo_vals = self.translator.translate_decode_256(lo_chars)?;
+
+                // Pack nibbles into bytes: (high << 4) | low
+                let bytes = _mm256_or_si256(_mm256_slli_epi32(hi_vals, 4), lo_vals);
+
+                // Store 32 output bytes
+                let mut output_buf = [0u8; 32];
+                _mm256_storeu_si256(output_buf.as_mut_ptr() as *mut __m256i, bytes);
+                result.extend_from_slice(&output_buf);
+            }
+
+            // TODO: Handle remainder
+            if simd_bytes < encoded_bytes.len() {
+                // For now, we don't handle remainder
+            }
+
+            Some(result)
         }
-
-        let num_blocks = encoded_bytes.len() / BLOCK_SIZE;
-        let simd_bytes = num_blocks * BLOCK_SIZE;
-
-        for i in 0..num_blocks {
-            let offset = i * BLOCK_SIZE * 2;
-
-            // Load 64 ASCII characters
-            let input_lo = _mm256_loadu_si256(encoded_bytes.as_ptr().add(offset) as *const __m256i);
-            let input_hi =
-                _mm256_loadu_si256(encoded_bytes.as_ptr().add(offset + 32) as *const __m256i);
-
-            // Deinterleave using mask and shift
-            let mask_even = _mm256_set1_epi16(0x00FF_u16 as i16);
-
-            // Extract even bytes (high nibbles) and odd bytes (low nibbles)
-            let hi_chars_lane0 = _mm256_and_si256(input_lo, mask_even);
-            let lo_chars_lane0 = _mm256_srli_epi16(input_lo, 8);
-            let hi_chars_lane1 = _mm256_and_si256(input_hi, mask_even);
-            let lo_chars_lane1 = _mm256_srli_epi16(input_hi, 8);
-
-            // Pack bytes
-            let hi_chars = _mm256_packus_epi16(hi_chars_lane0, hi_chars_lane1);
-            let lo_chars = _mm256_packus_epi16(lo_chars_lane0, lo_chars_lane1);
-
-            // Fix lane crossing from packus
-            let hi_chars = _mm256_permute4x64_epi64(hi_chars, 0xD8);
-            let lo_chars = _mm256_permute4x64_epi64(lo_chars, 0xD8);
-
-            // Translate chars to nibble values
-            let hi_vals = self.translator.translate_decode_256(hi_chars)?;
-            let lo_vals = self.translator.translate_decode_256(lo_chars)?;
-
-            // Pack nibbles into bytes: (high << 4) | low
-            let bytes = _mm256_or_si256(_mm256_slli_epi32(hi_vals, 4), lo_vals);
-
-            // Store 32 output bytes
-            let mut output_buf = [0u8; 32];
-            _mm256_storeu_si256(output_buf.as_mut_ptr() as *mut __m256i, bytes);
-            result.extend_from_slice(&output_buf);
-        }
-
-        // TODO: Handle remainder
-        if simd_bytes < encoded_bytes.len() {
-            // For now, we don't handle remainder
-        }
-
-        Some(result)
     }
 
     #[cfg(target_arch = "x86_64")]
@@ -1166,49 +1182,52 @@ impl GenericSimdCodec {
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "avx2")]
     unsafe fn decode_5bit_avx2_impl(&self, encoded: &str, _dict: &Dictionary) -> Option<Vec<u8>> {
-        const BLOCK_SIZE: usize = 32; // 32 chars -> 20 bytes
+        unsafe {
+            const BLOCK_SIZE: usize = 32; // 32 chars -> 20 bytes
 
-        let encoded_bytes = encoded.as_bytes();
-        let mut result = Vec::with_capacity(encoded_bytes.len() * 5 / 8);
+            let encoded_bytes = encoded.as_bytes();
+            let mut result = Vec::with_capacity(encoded_bytes.len() * 5 / 8);
 
-        if encoded_bytes.len() < BLOCK_SIZE {
-            return None;
+            if encoded_bytes.len() < BLOCK_SIZE {
+                return None;
+            }
+
+            let num_blocks = encoded_bytes.len() / BLOCK_SIZE;
+            let simd_bytes = num_blocks * BLOCK_SIZE;
+
+            for round in 0..num_blocks {
+                let offset = round * BLOCK_SIZE;
+
+                // Load 32 ASCII chars
+                let chars =
+                    _mm256_loadu_si256(encoded_bytes.as_ptr().add(offset) as *const __m256i);
+
+                // Translate to 5-bit indices (validation included)
+                let indices = self.translator.translate_decode_256(chars)?;
+
+                // Pack 5-bit values into bytes (32 chars -> 20 bytes)
+                let decoded = self.pack_5bit_to_8bit_avx2(indices);
+
+                // Extract 10 bytes from each 128-bit lane (20 total)
+                let lane0 = _mm256_castsi256_si128(decoded);
+                let lane1 = _mm256_extracti128_si256(decoded, 1);
+
+                let mut buf0 = [0u8; 16];
+                let mut buf1 = [0u8; 16];
+                _mm_storeu_si128(buf0.as_mut_ptr() as *mut __m128i, lane0);
+                _mm_storeu_si128(buf1.as_mut_ptr() as *mut __m128i, lane1);
+
+                result.extend_from_slice(&buf0[0..10]);
+                result.extend_from_slice(&buf1[0..10]);
+            }
+
+            // TODO: Handle remainder
+            if simd_bytes < encoded_bytes.len() {
+                // For now, we don't handle remainder
+            }
+
+            Some(result)
         }
-
-        let num_blocks = encoded_bytes.len() / BLOCK_SIZE;
-        let simd_bytes = num_blocks * BLOCK_SIZE;
-
-        for round in 0..num_blocks {
-            let offset = round * BLOCK_SIZE;
-
-            // Load 32 ASCII chars
-            let chars = _mm256_loadu_si256(encoded_bytes.as_ptr().add(offset) as *const __m256i);
-
-            // Translate to 5-bit indices (validation included)
-            let indices = self.translator.translate_decode_256(chars)?;
-
-            // Pack 5-bit values into bytes (32 chars -> 20 bytes)
-            let decoded = self.pack_5bit_to_8bit_avx2(indices);
-
-            // Extract 10 bytes from each 128-bit lane (20 total)
-            let lane0 = _mm256_castsi256_si128(decoded);
-            let lane1 = _mm256_extracti128_si256(decoded, 1);
-
-            let mut buf0 = [0u8; 16];
-            let mut buf1 = [0u8; 16];
-            _mm_storeu_si128(buf0.as_mut_ptr() as *mut __m128i, lane0);
-            _mm_storeu_si128(buf1.as_mut_ptr() as *mut __m128i, lane1);
-
-            result.extend_from_slice(&buf0[0..10]);
-            result.extend_from_slice(&buf1[0..10]);
-        }
-
-        // TODO: Handle remainder
-        if simd_bytes < encoded_bytes.len() {
-            // For now, we don't handle remainder
-        }
-
-        Some(result)
     }
 
     #[cfg(target_arch = "x86_64")]
@@ -1220,42 +1239,45 @@ impl GenericSimdCodec {
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "avx2")]
     unsafe fn decode_6bit_avx2_impl(&self, encoded: &str, _dict: &Dictionary) -> Option<Vec<u8>> {
-        const BLOCK_SIZE: usize = 32; // 32 chars -> 24 bytes
+        unsafe {
+            const BLOCK_SIZE: usize = 32; // 32 chars -> 24 bytes
 
-        let encoded_bytes = encoded.as_bytes();
-        let mut result = Vec::with_capacity(encoded_bytes.len() * 3 / 4);
+            let encoded_bytes = encoded.as_bytes();
+            let mut result = Vec::with_capacity(encoded_bytes.len() * 3 / 4);
 
-        if encoded_bytes.len() < BLOCK_SIZE {
-            return None;
+            if encoded_bytes.len() < BLOCK_SIZE {
+                return None;
+            }
+
+            let num_blocks = encoded_bytes.len() / BLOCK_SIZE;
+            let simd_bytes = num_blocks * BLOCK_SIZE;
+
+            for round in 0..num_blocks {
+                let offset = round * BLOCK_SIZE;
+
+                // Load 32 ASCII chars
+                let chars =
+                    _mm256_loadu_si256(encoded_bytes.as_ptr().add(offset) as *const __m256i);
+
+                // Translate to 6-bit indices (validation included)
+                let indices = self.translator.translate_decode_256(chars)?;
+
+                // Unpack 6-bit indices back to bytes
+                let bytes = self.unshuffle_6bit_avx2(indices);
+
+                // Store 24 output bytes (from 32-byte buffer)
+                let mut output_buf = [0u8; 32];
+                _mm256_storeu_si256(output_buf.as_mut_ptr() as *mut __m256i, bytes);
+                result.extend_from_slice(&output_buf[..24]);
+            }
+
+            // TODO: Handle remainder
+            if simd_bytes < encoded_bytes.len() {
+                // For now, we don't handle remainder
+            }
+
+            Some(result)
         }
-
-        let num_blocks = encoded_bytes.len() / BLOCK_SIZE;
-        let simd_bytes = num_blocks * BLOCK_SIZE;
-
-        for round in 0..num_blocks {
-            let offset = round * BLOCK_SIZE;
-
-            // Load 32 ASCII chars
-            let chars = _mm256_loadu_si256(encoded_bytes.as_ptr().add(offset) as *const __m256i);
-
-            // Translate to 6-bit indices (validation included)
-            let indices = self.translator.translate_decode_256(chars)?;
-
-            // Unpack 6-bit indices back to bytes
-            let bytes = self.unshuffle_6bit_avx2(indices);
-
-            // Store 24 output bytes (from 32-byte buffer)
-            let mut output_buf = [0u8; 32];
-            _mm256_storeu_si256(output_buf.as_mut_ptr() as *mut __m256i, bytes);
-            result.extend_from_slice(&output_buf[..24]);
-        }
-
-        // TODO: Handle remainder
-        if simd_bytes < encoded_bytes.len() {
-            // For now, we don't handle remainder
-        }
-
-        Some(result)
     }
 
     #[cfg(target_arch = "x86_64")]
@@ -1303,16 +1325,18 @@ impl GenericSimdCodec {
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "avx2")]
     unsafe fn extract_5bit_indices_avx2(&self, input: __m256i) -> __m256i {
-        // Extract both 128-bit lanes and process separately
-        let lane_lo = _mm256_castsi256_si128(input);
-        let lane_hi = _mm256_extracti128_si256(input, 1);
+        unsafe {
+            // Extract both 128-bit lanes and process separately
+            let lane_lo = _mm256_castsi256_si128(input);
+            let lane_hi = _mm256_extracti128_si256(input, 1);
 
-        // Apply SSSE3 unpacking to each lane
-        let indices_lo = self.unpack_5bit_simple(lane_lo);
-        let indices_hi = self.unpack_5bit_simple(lane_hi);
+            // Apply SSSE3 unpacking to each lane
+            let indices_lo = self.unpack_5bit_simple(lane_lo);
+            let indices_hi = self.unpack_5bit_simple(lane_hi);
 
-        // Recombine into 256-bit register
-        _mm256_set_m128i(indices_hi, indices_lo)
+            // Recombine into 256-bit register
+            _mm256_set_m128i(indices_hi, indices_lo)
+        }
     }
 
     /// Pack 32 bytes of 5-bit indices into 20 bytes (AVX2)
@@ -1321,20 +1345,23 @@ impl GenericSimdCodec {
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "avx2")]
     unsafe fn pack_5bit_to_8bit_avx2(&self, indices: __m256i) -> __m256i {
-        // Extract both 128-bit lanes and process separately
-        let lane_lo = _mm256_castsi256_si128(indices);
-        let lane_hi = _mm256_extracti128_si256(indices, 1);
+        unsafe {
+            // Extract both 128-bit lanes and process separately
+            let lane_lo = _mm256_castsi256_si128(indices);
+            let lane_hi = _mm256_extracti128_si256(indices, 1);
 
-        // Apply SSSE3 packing to each lane
-        let packed_lo = self.pack_5bit_to_8bit(lane_lo);
-        let packed_hi = self.pack_5bit_to_8bit(lane_hi);
+            // Apply SSSE3 packing to each lane
+            let packed_lo = self.pack_5bit_to_8bit(lane_lo);
+            let packed_hi = self.pack_5bit_to_8bit(lane_hi);
 
-        // Recombine into 256-bit register
-        _mm256_set_m128i(packed_hi, packed_lo)
+            // Recombine into 256-bit register
+            _mm256_set_m128i(packed_hi, packed_lo)
+        }
     }
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
     use crate::core::config::EncodingMode;
@@ -1556,7 +1583,7 @@ mod tests {
         for c in encoded.chars() {
             let codepoint = c as u32;
             assert!(
-                codepoint >= 0x21 && codepoint < 0x31,
+                (0x21..0x31).contains(&codepoint),
                 "Output char U+{:04X} '{}' should be in custom dictionary range U+0021..U+0031",
                 codepoint,
                 c
@@ -1565,7 +1592,7 @@ mod tests {
 
         // Verify first few nibbles are correctly encoded
         // 0x01 -> nibbles 0x0, 0x1 -> chars 0x21 (0 + 0x21), 0x22 (1 + 0x21)
-        assert_eq!(encoded.chars().nth(0).unwrap(), '\x21'); // 0 + 0x21 = '!'
+        assert_eq!(encoded.chars().next().unwrap(), '\x21'); // 0 + 0x21 = '!'
         assert_eq!(encoded.chars().nth(1).unwrap(), '\x22'); // 1 + 0x21 = '"'
     }
 

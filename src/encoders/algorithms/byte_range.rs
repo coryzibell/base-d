@@ -92,6 +92,7 @@ pub fn decode_byte_range(encoded: &str, dictionary: &Dictionary) -> Result<Vec<u
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
     use crate::core::config::EncodingMode;

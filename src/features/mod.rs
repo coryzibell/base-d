@@ -9,6 +9,6 @@ pub mod detection;
 pub mod hashing;
 
 // Re-export main types and functions for convenience
-pub use compression::{compress, decompress, CompressionAlgorithm};
-pub use detection::{detect_dictionary, DictionaryDetector, DictionaryMatch};
-pub use hashing::{hash, hash_with_config, HashAlgorithm, XxHashConfig};
+pub use compression::{CompressionAlgorithm, compress, decompress};
+pub use detection::{DictionaryDetector, DictionaryMatch, detect_dictionary};
+pub use hashing::{HashAlgorithm, XxHashConfig, hash, hash_with_config};

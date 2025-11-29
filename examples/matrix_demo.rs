@@ -1,4 +1,4 @@
-use base_d::{decode, encode, Dictionary, DictionaryRegistry};
+use base_d::{Dictionary, DictionaryRegistry, decode, encode};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("WELCOME TO THE MATRIX");

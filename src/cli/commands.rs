@@ -1,10 +1,10 @@
-use base_d::{decode, encode, Dictionary, DictionaryRegistry};
+use base_d::{Dictionary, DictionaryRegistry, decode, encode};
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
 use std::time::Duration;
 
-use crossterm::event::{poll, read, Event, KeyCode, KeyEvent};
+use crossterm::event::{Event, KeyCode, KeyEvent, poll, read};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 
 use super::config::{create_dictionary, get_compression_level, load_xxhash_config};
@@ -56,8 +56,8 @@ pub fn select_random_dictionary(
     config: &DictionaryRegistry,
     print_message: bool,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    use rand::seq::SliceRandom;
-    let mut rng = rand::thread_rng();
+    use rand::prelude::IndexedRandom;
+    let mut rng = rand::rng();
 
     // Filter to only common dictionaries (those that render consistently across platforms)
     let dict_names: Vec<&String> = config
@@ -89,8 +89,8 @@ pub const COMPRESS_ALGORITHMS: &[&str] = &["gzip", "zstd", "brotli", "lz4"];
 
 /// Select a random hash algorithm
 pub fn select_random_hash(quiet: bool) -> &'static str {
-    use rand::seq::SliceRandom;
-    let selected = HASH_ALGORITHMS.choose(&mut rand::thread_rng()).unwrap();
+    use rand::prelude::IndexedRandom;
+    let selected = HASH_ALGORITHMS.choose(&mut rand::rng()).unwrap();
     if !quiet {
         eprintln!(
             "Note: Using randomly selected hash '{}' (use --hash={} to fix)",
@@ -102,8 +102,8 @@ pub fn select_random_hash(quiet: bool) -> &'static str {
 
 /// Select a random compression algorithm
 pub fn select_random_compress(quiet: bool) -> &'static str {
-    use rand::seq::SliceRandom;
-    let selected = COMPRESS_ALGORITHMS.choose(&mut rand::thread_rng()).unwrap();
+    use rand::prelude::IndexedRandom;
+    let selected = COMPRESS_ALGORITHMS.choose(&mut rand::rng()).unwrap();
     if !quiet {
         eprintln!(
             "Note: Using randomly selected compression '{}' (use --compress={} to fix)",
@@ -148,15 +148,15 @@ pub fn matrix_mode(
 
             // Check for ESC/Space/Enter to skip intro
             if poll(Duration::from_millis(100))? {
-                if let Event::Key(KeyEvent { code, .. }) = read()? {
-                    if matches!(code, KeyCode::Esc | KeyCode::Char(' ') | KeyCode::Enter) {
-                        if !no_color {
-                            print!("\r\x1b[K");
-                        } else {
-                            print!("\r");
-                        }
-                        break 'intro_loop;
+                if let Event::Key(KeyEvent { code, .. }) = read()?
+                    && matches!(code, KeyCode::Esc | KeyCode::Char(' ') | KeyCode::Enter)
+                {
+                    if !no_color {
+                        print!("\r\x1b[K");
+                    } else {
+                        print!("\r");
                     }
+                    break 'intro_loop;
                 }
             } else {
                 thread::sleep(Duration::from_millis(100));
@@ -192,7 +192,7 @@ pub fn matrix_mode(
         .unwrap_or(0);
 
     let mut last_switch = Instant::now();
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     // Build sorted dictionary list for keyboard controls
     let dict_names: Vec<String> = {
@@ -308,86 +308,77 @@ pub fn matrix_mode(
         io::stdout().flush()?;
 
         // Handle keyboard input (all modes)
-        if poll(Duration::from_millis(25))? {
-            if let Event::Key(key_event) = read()? {
-                match key_event.code {
-                    KeyCode::Char('c')
-                        if key_event
-                            .modifiers
-                            .contains(crossterm::event::KeyModifiers::CONTROL) =>
-                    {
-                        // Ctrl+C to exit
-                        disable_raw_mode()?;
-                        if !no_color {
-                            print!("\x1b[0m"); // Reset color
-                        }
-                        std::process::exit(0);
+        if poll(Duration::from_millis(25))?
+            && let Event::Key(key_event) = read()?
+        {
+            match key_event.code {
+                KeyCode::Char('c')
+                    if key_event
+                        .modifiers
+                        .contains(crossterm::event::KeyModifiers::CONTROL) =>
+                {
+                    // Ctrl+C to exit
+                    disable_raw_mode()?;
+                    if !no_color {
+                        print!("\x1b[0m"); // Reset color
                     }
-                    KeyCode::Esc => {
-                        // ESC to exit
-                        disable_raw_mode()?;
-                        if !no_color {
-                            print!("\x1b[0m"); // Reset color
-                        }
-                        std::process::exit(0);
-                    }
-                    KeyCode::Char(' ') => {
-                        // Random switch
-                        current_dictionary_name = select_random_dictionary(config, false)?;
-                        current_index = dict_names
-                            .iter()
-                            .position(|n| n == &current_dictionary_name)
-                            .unwrap_or(0);
-                        if !quiet {
-                            if !no_color {
-                                eprint!(
-                                    "\r\x1b[32m[Matrix: {}]\x1b[0m\r\n",
-                                    current_dictionary_name
-                                );
-                            } else {
-                                eprint!("\r[Matrix: {}]\r\n", current_dictionary_name);
-                            }
-                        }
-                        continue; // Reload dictionary
-                    }
-                    KeyCode::Left => {
-                        // Previous dictionary
-                        current_index = if current_index == 0 {
-                            dict_names.len() - 1
-                        } else {
-                            current_index - 1
-                        };
-                        current_dictionary_name = dict_names[current_index].clone();
-                        if !quiet {
-                            if !no_color {
-                                eprint!(
-                                    "\r\x1b[32m[Matrix: {}]\x1b[0m\r\n",
-                                    current_dictionary_name
-                                );
-                            } else {
-                                eprint!("\r[Matrix: {}]\r\n", current_dictionary_name);
-                            }
-                        }
-                        continue; // Reload dictionary
-                    }
-                    KeyCode::Right => {
-                        // Next dictionary
-                        current_index = (current_index + 1) % dict_names.len();
-                        current_dictionary_name = dict_names[current_index].clone();
-                        if !quiet {
-                            if !no_color {
-                                eprint!(
-                                    "\r\x1b[32m[Matrix: {}]\x1b[0m\r\n",
-                                    current_dictionary_name
-                                );
-                            } else {
-                                eprint!("\r[Matrix: {}]\r\n", current_dictionary_name);
-                            }
-                        }
-                        continue; // Reload dictionary
-                    }
-                    _ => {}
+                    std::process::exit(0);
                 }
+                KeyCode::Esc => {
+                    // ESC to exit
+                    disable_raw_mode()?;
+                    if !no_color {
+                        print!("\x1b[0m"); // Reset color
+                    }
+                    std::process::exit(0);
+                }
+                KeyCode::Char(' ') => {
+                    // Random switch
+                    current_dictionary_name = select_random_dictionary(config, false)?;
+                    current_index = dict_names
+                        .iter()
+                        .position(|n| n == &current_dictionary_name)
+                        .unwrap_or(0);
+                    if !quiet {
+                        if !no_color {
+                            eprint!("\r\x1b[32m[Matrix: {}]\x1b[0m\r\n", current_dictionary_name);
+                        } else {
+                            eprint!("\r[Matrix: {}]\r\n", current_dictionary_name);
+                        }
+                    }
+                    continue; // Reload dictionary
+                }
+                KeyCode::Left => {
+                    // Previous dictionary
+                    current_index = if current_index == 0 {
+                        dict_names.len() - 1
+                    } else {
+                        current_index - 1
+                    };
+                    current_dictionary_name = dict_names[current_index].clone();
+                    if !quiet {
+                        if !no_color {
+                            eprint!("\r\x1b[32m[Matrix: {}]\x1b[0m\r\n", current_dictionary_name);
+                        } else {
+                            eprint!("\r[Matrix: {}]\r\n", current_dictionary_name);
+                        }
+                    }
+                    continue; // Reload dictionary
+                }
+                KeyCode::Right => {
+                    // Next dictionary
+                    current_index = (current_index + 1) % dict_names.len();
+                    current_dictionary_name = dict_names[current_index].clone();
+                    if !quiet {
+                        if !no_color {
+                            eprint!("\r\x1b[32m[Matrix: {}]\x1b[0m\r\n", current_dictionary_name);
+                        } else {
+                            eprint!("\r[Matrix: {}]\r\n", current_dictionary_name);
+                        }
+                    }
+                    continue; // Reload dictionary
+                }
+                _ => {}
             }
         }
 

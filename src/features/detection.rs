@@ -30,17 +30,21 @@ impl DictionaryDetector {
                     let start = dict_config
                         .start_codepoint
                         .ok_or("ByteRange mode requires start_codepoint")?;
-                    Dictionary::new_with_mode_and_range(
-                        Vec::new(),
-                        dict_config.mode.clone(),
-                        None,
-                        Some(start),
-                    )?
+                    Dictionary::builder()
+                        .mode(dict_config.mode.clone())
+                        .start_codepoint(start)
+                        .build()?
                 }
                 _ => {
                     let chars: Vec<char> = dict_config.chars.chars().collect();
                     let padding = dict_config.padding.as_ref().and_then(|s| s.chars().next());
-                    Dictionary::new_with_mode(chars, dict_config.mode.clone(), padding)?
+                    let mut builder = Dictionary::builder()
+                        .chars(chars)
+                        .mode(dict_config.mode.clone());
+                    if let Some(p) = padding {
+                        builder = builder.padding(p);
+                    }
+                    builder.build()?
                 }
             };
             dictionaries.push((name.clone(), dictionary));
@@ -279,11 +283,7 @@ impl DictionaryDetector {
             }
             EncodingMode::BaseConversion => {
                 // Mathematical conversion can produce any length
-                if length > 0 {
-                    1.0
-                } else {
-                    0.0
-                }
+                if length > 0 { 1.0 } else { 0.0 }
             }
         }
     }
@@ -364,7 +364,13 @@ mod tests {
         let dict_config = config.get_dictionary("base64").unwrap();
         let chars: Vec<char> = dict_config.chars.chars().collect();
         let padding = dict_config.padding.as_ref().and_then(|s| s.chars().next());
-        let dict = Dictionary::new_with_mode(chars, dict_config.mode.clone(), padding).unwrap();
+        let mut builder = Dictionary::builder()
+            .chars(chars)
+            .mode(dict_config.mode.clone());
+        if let Some(p) = padding {
+            builder = builder.padding(p);
+        }
+        let dict = builder.build().unwrap();
 
         let data = b"Hello, World!";
         let encoded = encode(data, &dict);

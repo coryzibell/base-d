@@ -28,9 +28,9 @@ fn encode_chunked_scalar(data: &[u8], dictionary: &Dictionary) -> String {
 
     // Pre-calculate output size for better memory allocation
     let output_bits = data.len() * 8;
-    let output_chars = (output_bits + bits_per_char - 1) / bits_per_char;
+    let output_chars = output_bits.div_ceil(bits_per_char);
     let capacity = if dictionary.padding().is_some() {
-        ((output_chars + 3) / 4) * 4
+        output_chars.div_ceil(4) * 4
     } else {
         output_chars
     };
@@ -80,8 +80,8 @@ fn encode_chunked_scalar(data: &[u8], dictionary: &Dictionary) -> String {
     // Add padding if specified
     if let Some(pad_char) = dictionary.padding() {
         let input_bits = data.len() * 8;
-        let output_chars = (input_bits + bits_per_char - 1) / bits_per_char;
-        let padded_chars = ((output_chars + 3) / 4) * 4;
+        let output_chars = input_bits.div_ceil(bits_per_char);
+        let padded_chars = output_chars.div_ceil(4) * 4;
 
         while result.len() < padded_chars {
             result.push(pad_char);

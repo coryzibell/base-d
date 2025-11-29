@@ -62,10 +62,11 @@ fn main() -> std::io::Result<()> {
             if chars.len() >= 256 {
                 break;
             }
-            if let Some(c) = char::from_u32(i) {
-                if !c.is_control() && !c.is_whitespace() {
-                    chars.push(c);
-                }
+            if let Some(c) = char::from_u32(i)
+                && !c.is_control()
+                && !c.is_whitespace()
+            {
+                chars.push(c);
             }
         }
     }

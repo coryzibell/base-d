@@ -70,8 +70,8 @@ pub fn decompress(
 }
 
 fn compress_gzip(data: &[u8], level: u32) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    use flate2::write::GzEncoder;
     use flate2::Compression;
+    use flate2::write::GzEncoder;
 
     let mut encoder = GzEncoder::new(Vec::new(), Compression::new(level));
     encoder.write_all(data)?;

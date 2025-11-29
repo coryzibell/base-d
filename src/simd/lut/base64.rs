@@ -14,7 +14,10 @@
 use crate::core::dictionary::Dictionary;
 use crate::simd::variants::{DictionaryMetadata, LutStrategy, TranslationStrategy};
 
-use super::common::{CharRange, RangeInfo, RangeStrategy};
+use super::common::{CharRange, RangeStrategy};
+
+#[cfg(target_arch = "x86_64")]
+use super::common::RangeInfo;
 
 /// SIMD codec for base64-scale arbitrary dictionaries (17-64 characters)
 ///
@@ -97,7 +100,7 @@ impl Base64LutCodec {
 
         // Build encoding LUT (index → char)
         let mut encode_lut = [0u8; 64];
-        for i in 0..metadata.base {
+        for (i, lut_entry) in encode_lut.iter_mut().enumerate().take(metadata.base) {
             let ch = dict.encode_digit(i)?;
 
             // Validation: char must be ASCII (single-byte)
@@ -105,7 +108,7 @@ impl Base64LutCodec {
                 return None; // Multi-byte UTF-8 not supported
             }
 
-            encode_lut[i] = ch as u8;
+            *lut_entry = ch as u8;
         }
 
         // Build decoding LUT (char → index, 256-entry sparse table)
@@ -147,8 +150,8 @@ impl Base64LutCodec {
 
         // Calculate output length based on base
         let output_len = match self.metadata.base {
-            32 => (data.len() * 8 + 4) / 5, // 5 bits per char
-            64 => (data.len() * 8 + 5) / 6, // 6 bits per char
+            32 => (data.len() * 8).div_ceil(5), // 5 bits per char
+            64 => (data.len() * 8).div_ceil(6), // 6 bits per char
             _ => return None,
         };
 
@@ -189,58 +192,60 @@ impl Base64LutCodec {
     #[cfg(target_arch = "aarch64")]
     #[target_feature(enable = "neon")]
     unsafe fn encode_neon_base64(&self, data: &[u8], result: &mut String) {
-        use std::arch::aarch64::*;
+        unsafe {
+            use std::arch::aarch64::*;
 
-        const BLOCK_SIZE: usize = 12; // 12 bytes -> 16 chars
-        const SIMD_READ: usize = 16; // Actually reads 16 bytes for reshuffle
+            const BLOCK_SIZE: usize = 12; // 12 bytes -> 16 chars
+            const SIMD_READ: usize = 16; // Actually reads 16 bytes for reshuffle
 
-        if data.len() < SIMD_READ {
-            self.encode_scalar_base64(data, result);
-            return;
-        }
-
-        let safe_len = if data.len() >= 4 { data.len() - 4 } else { 0 };
-        let num_blocks = safe_len / BLOCK_SIZE;
-        let simd_bytes = num_blocks * BLOCK_SIZE;
-
-        // Load 64-byte LUT into four 16-byte tables
-        let lut_tables = uint8x16x4_t(
-            vld1q_u8(self.encode_lut.as_ptr()),
-            vld1q_u8(self.encode_lut.as_ptr().add(16)),
-            vld1q_u8(self.encode_lut.as_ptr().add(32)),
-            vld1q_u8(self.encode_lut.as_ptr().add(48)),
-        );
-
-        let mut offset = 0;
-        for _ in 0..num_blocks {
-            // SAFETY: offset + SIMD_READ <= data.len() guaranteed by safe_len calculation
-            // (safe_len ensures data.len() - 4, num_blocks uses BLOCK_SIZE=12, leaving 4-byte buffer)
-            debug_assert!(offset + SIMD_READ <= data.len());
-
-            // Load 16 bytes (will use first 12)
-            let input_vec = vld1q_u8(data.as_ptr().add(offset));
-
-            // Reshuffle to extract 6-bit indices (same as specialized base64)
-            let reshuffled = self.reshuffle_neon_base64(input_vec);
-
-            // Translate using vqtbl4q_u8 (64-byte lookup)
-            let chars = vqtbl4q_u8(lut_tables, reshuffled);
-
-            // Store 16 output characters
-            let mut output_buf = [0u8; 16];
-            vst1q_u8(output_buf.as_mut_ptr(), chars);
-
-            // Append to result
-            for &byte in &output_buf {
-                result.push(byte as char);
+            if data.len() < SIMD_READ {
+                self.encode_scalar_base64(data, result);
+                return;
             }
 
-            offset += BLOCK_SIZE;
-        }
+            let safe_len = if data.len() >= 4 { data.len() - 4 } else { 0 };
+            let num_blocks = safe_len / BLOCK_SIZE;
+            let simd_bytes = num_blocks * BLOCK_SIZE;
 
-        // Handle remainder with scalar
-        if simd_bytes < data.len() {
-            self.encode_scalar_base64(&data[simd_bytes..], result);
+            // Load 64-byte LUT into four 16-byte tables
+            let lut_tables = uint8x16x4_t(
+                vld1q_u8(self.encode_lut.as_ptr()),
+                vld1q_u8(self.encode_lut.as_ptr().add(16)),
+                vld1q_u8(self.encode_lut.as_ptr().add(32)),
+                vld1q_u8(self.encode_lut.as_ptr().add(48)),
+            );
+
+            let mut offset = 0;
+            for _ in 0..num_blocks {
+                // SAFETY: offset + SIMD_READ <= data.len() guaranteed by safe_len calculation
+                // (safe_len ensures data.len() - 4, num_blocks uses BLOCK_SIZE=12, leaving 4-byte buffer)
+                debug_assert!(offset + SIMD_READ <= data.len());
+
+                // Load 16 bytes (will use first 12)
+                let input_vec = vld1q_u8(data.as_ptr().add(offset));
+
+                // Reshuffle to extract 6-bit indices (same as specialized base64)
+                let reshuffled = self.reshuffle_neon_base64(input_vec);
+
+                // Translate using vqtbl4q_u8 (64-byte lookup)
+                let chars = vqtbl4q_u8(lut_tables, reshuffled);
+
+                // Store 16 output characters
+                let mut output_buf = [0u8; 16];
+                vst1q_u8(output_buf.as_mut_ptr(), chars);
+
+                // Append to result
+                for &byte in &output_buf {
+                    result.push(byte as char);
+                }
+
+                offset += BLOCK_SIZE;
+            }
+
+            // Handle remainder with scalar
+            if simd_bytes < data.len() {
+                self.encode_scalar_base64(&data[simd_bytes..], result);
+            }
         }
     }
 
@@ -252,60 +257,62 @@ impl Base64LutCodec {
         &self,
         input: std::arch::aarch64::uint8x16_t,
     ) -> std::arch::aarch64::uint8x16_t {
-        use std::arch::aarch64::*;
+        unsafe {
+            use std::arch::aarch64::*;
 
-        // Shuffle mask: Reshuffle bytes to prepare for 6-bit extraction
-        // For each group of 3 input bytes ABC (24 bits) -> 4 output indices (4 x 6 bits)
-        // Matches x86_64 base64.rs pattern: [1,0,2,1, 4,3,5,4, 7,6,8,7, 10,9,11,10]
-        let shuffle_indices = vld1q_u8(
-            [
-                1, 0, 2, 1, // bytes 0-2 -> positions 0-3
-                4, 3, 5, 4, // bytes 3-5 -> positions 4-7
-                7, 6, 8, 7, // bytes 6-8 -> positions 8-11
-                10, 9, 11, 10, // bytes 9-11 -> positions 12-15
-            ]
-            .as_ptr(),
-        );
+            // Shuffle mask: Reshuffle bytes to prepare for 6-bit extraction
+            // For each group of 3 input bytes ABC (24 bits) -> 4 output indices (4 x 6 bits)
+            // Matches x86_64 base64.rs pattern: [1,0,2,1, 4,3,5,4, 7,6,8,7, 10,9,11,10]
+            let shuffle_indices = vld1q_u8(
+                [
+                    1, 0, 2, 1, // bytes 0-2 -> positions 0-3
+                    4, 3, 5, 4, // bytes 3-5 -> positions 4-7
+                    7, 6, 8, 7, // bytes 6-8 -> positions 8-11
+                    10, 9, 11, 10, // bytes 9-11 -> positions 12-15
+                ]
+                .as_ptr(),
+            );
 
-        let shuffled = vqtbl1q_u8(input, shuffle_indices);
-        let shuffled_u32 = vreinterpretq_u32_u8(shuffled);
+            let shuffled = vqtbl1q_u8(input, shuffle_indices);
+            let shuffled_u32 = vreinterpretq_u32_u8(shuffled);
 
-        // Extract 6-bit groups using shifts and masks
-        // This matches the x86_64 algorithm which uses mulhi_epu16 and mullo_epi16.
-        // NEON doesn't have a direct mulhi equivalent, so we use vmull/vshrn pattern.
+            // Extract 6-bit groups using shifts and masks
+            // This matches the x86_64 algorithm which uses mulhi_epu16 and mullo_epi16.
+            // NEON doesn't have a direct mulhi equivalent, so we use vmull/vshrn pattern.
 
-        // First extraction: get bits for positions 0 and 2 in each group of 4
-        // x86: mulhi_epu16(and(shuffled, 0x0FC0FC00), 0x04000040)
-        let t0 = vandq_u32(shuffled_u32, vdupq_n_u32(0x0FC0FC00));
-        let t1 = {
-            let t0_u16 = vreinterpretq_u16_u32(t0);
-            // Implement mulhi_epu16 using vmull + vshrn
-            // 0x04000040 as 16-bit lanes: [0x0040, 0x0400, 0x0040, 0x0400, ...]
-            let mult_pattern = vreinterpretq_u16_u32(vdupq_n_u32(0x04000040));
-            let lo = vget_low_u16(t0_u16);
-            let hi = vget_high_u16(t0_u16);
-            let mult_lo = vget_low_u16(mult_pattern);
-            let mult_hi = vget_high_u16(mult_pattern);
-            let lo_32 = vmull_u16(lo, mult_lo);
-            let hi_32 = vmull_u16(hi, mult_hi);
-            let lo_result = vshrn_n_u32(lo_32, 16);
-            let hi_result = vshrn_n_u32(hi_32, 16);
-            vreinterpretq_u32_u16(vcombine_u16(lo_result, hi_result))
-        };
+            // First extraction: get bits for positions 0 and 2 in each group of 4
+            // x86: mulhi_epu16(and(shuffled, 0x0FC0FC00), 0x04000040)
+            let t0 = vandq_u32(shuffled_u32, vdupq_n_u32(0x0FC0FC00));
+            let t1 = {
+                let t0_u16 = vreinterpretq_u16_u32(t0);
+                // Implement mulhi_epu16 using vmull + vshrn
+                // 0x04000040 as 16-bit lanes: [0x0040, 0x0400, 0x0040, 0x0400, ...]
+                let mult_pattern = vreinterpretq_u16_u32(vdupq_n_u32(0x04000040));
+                let lo = vget_low_u16(t0_u16);
+                let hi = vget_high_u16(t0_u16);
+                let mult_lo = vget_low_u16(mult_pattern);
+                let mult_hi = vget_high_u16(mult_pattern);
+                let lo_32 = vmull_u16(lo, mult_lo);
+                let hi_32 = vmull_u16(hi, mult_hi);
+                let lo_result = vshrn_n_u32(lo_32, 16);
+                let hi_result = vshrn_n_u32(hi_32, 16);
+                vreinterpretq_u32_u16(vcombine_u16(lo_result, hi_result))
+            };
 
-        // Second extraction: get bits for positions 1 and 3 in each group of 4
-        // x86: mullo_epi16(and(shuffled, 0x003F03F0), 0x01000010)
-        let t2 = vandq_u32(shuffled_u32, vdupq_n_u32(0x003F03F0));
-        let t3 = {
-            let t2_u16 = vreinterpretq_u16_u32(t2);
-            // mullo is just regular multiply (keep low 16 bits)
-            // 0x01000010 as 16-bit lanes: [0x0010, 0x0100, 0x0010, 0x0100, ...]
-            let mult_pattern = vreinterpretq_u16_u32(vdupq_n_u32(0x01000010));
-            vreinterpretq_u32_u16(vmulq_u16(t2_u16, mult_pattern))
-        };
+            // Second extraction: get bits for positions 1 and 3 in each group of 4
+            // x86: mullo_epi16(and(shuffled, 0x003F03F0), 0x01000010)
+            let t2 = vandq_u32(shuffled_u32, vdupq_n_u32(0x003F03F0));
+            let t3 = {
+                let t2_u16 = vreinterpretq_u16_u32(t2);
+                // mullo is just regular multiply (keep low 16 bits)
+                // 0x01000010 as 16-bit lanes: [0x0010, 0x0100, 0x0010, 0x0100, ...]
+                let mult_pattern = vreinterpretq_u16_u32(vdupq_n_u32(0x01000010));
+                vreinterpretq_u32_u16(vmulq_u16(t2_u16, mult_pattern))
+            };
 
-        // Combine the two results
-        vreinterpretq_u8_u32(vorrq_u32(t1, t3))
+            // Combine the two results
+            vreinterpretq_u8_u32(vorrq_u32(t1, t3))
+        }
     }
 
     /// Scalar fallback for base64 encoding
@@ -337,30 +344,32 @@ impl Base64LutCodec {
     /// x86_64 encode implementation with runtime dispatch
     #[cfg(target_arch = "x86_64")]
     unsafe fn encode_x86_impl(&self, data: &[u8], result: &mut String) {
-        // Try AVX-512 VBMI first (best performance)
-        #[cfg(target_feature = "avx512vbmi")]
-        {
-            if is_x86_feature_detected!("avx512vbmi") {
-                if self.metadata.base == 32 {
-                    self.encode_avx512_vbmi_base32(data, result);
-                } else if self.metadata.base == 64 {
-                    self.encode_avx512_vbmi_base64(data, result);
+        unsafe {
+            // Try AVX-512 VBMI first (best performance)
+            #[cfg(target_feature = "avx512vbmi")]
+            {
+                if is_x86_feature_detected!("avx512vbmi") {
+                    if self.metadata.base == 32 {
+                        self.encode_avx512_vbmi_base32(data, result);
+                    } else if self.metadata.base == 64 {
+                        self.encode_avx512_vbmi_base64(data, result);
+                    }
+                    return;
                 }
+            }
+
+            // Try SSE range-reduction if supported
+            if is_x86_feature_detected!("ssse3") && self.range_info.is_some() {
+                self.encode_ssse3_range_reduction(data, result);
                 return;
             }
-        }
 
-        // Try SSE range-reduction if supported
-        if is_x86_feature_detected!("ssse3") && self.range_info.is_some() {
-            self.encode_ssse3_range_reduction(data, result);
-            return;
-        }
-
-        // Fallback to scalar
-        if self.metadata.base == 32 {
-            self.encode_scalar_base32_x86(data, result);
-        } else if self.metadata.base == 64 {
-            self.encode_scalar_base64_x86(data, result);
+            // Fallback to scalar
+            if self.metadata.base == 32 {
+                self.encode_scalar_base32_x86(data, result);
+            } else if self.metadata.base == 64 {
+                self.encode_scalar_base64_x86(data, result);
+            }
         }
     }
 
@@ -368,11 +377,13 @@ impl Base64LutCodec {
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "ssse3")]
     unsafe fn encode_ssse3_range_reduction(&self, data: &[u8], result: &mut String) {
-        // Dispatch based on bit-width
-        match self.metadata.base {
-            32 => self.encode_ssse3_range_reduction_5bit(data, result),
-            64 => self.encode_ssse3_range_reduction_6bit(data, result),
-            _ => unreachable!("Only base32/64 supported for range-reduction"),
+        unsafe {
+            // Dispatch based on bit-width
+            match self.metadata.base {
+                32 => self.encode_ssse3_range_reduction_5bit(data, result),
+                64 => self.encode_ssse3_range_reduction_6bit(data, result),
+                _ => unreachable!("Only base32/64 supported for range-reduction"),
+            }
         }
     }
 
@@ -384,121 +395,125 @@ impl Base64LutCodec {
         idx_vec: std::arch::x86_64::__m128i,
         range_info: &RangeInfo,
     ) -> std::arch::x86_64::__m128i {
-        use std::arch::x86_64::*;
+        unsafe {
+            use std::arch::x86_64::*;
 
-        // Apply each threshold in sequence using binary tree traversal
-        let mut compressed = idx_vec;
+            // Apply each threshold in sequence using binary tree traversal
+            let mut compressed = idx_vec;
 
-        for (i, &threshold) in range_info.thresholds.iter().enumerate() {
-            let thresh_vec = _mm_set1_epi8(threshold as i8);
-            let cmp_vec = _mm_set1_epi8(range_info.cmp_values[i] as i8);
+            for (i, &threshold) in range_info.thresholds.iter().enumerate() {
+                let thresh_vec = _mm_set1_epi8(threshold as i8);
+                let cmp_vec = _mm_set1_epi8(range_info.cmp_values[i] as i8);
 
-            // Saturating subtraction to separate ranges
-            let reduced = _mm_subs_epu8(compressed, thresh_vec);
+                // Saturating subtraction to separate ranges
+                let reduced = _mm_subs_epu8(compressed, thresh_vec);
 
-            // Comparison to determine which side of threshold
-            let is_below = _mm_cmplt_epi8(compressed, cmp_vec);
+                // Comparison to determine which side of threshold
+                let is_below = _mm_cmplt_epi8(compressed, cmp_vec);
 
-            // Blend based on comparison
-            compressed = _mm_blendv_epi8(reduced, compressed, is_below);
+                // Blend based on comparison
+                compressed = _mm_blendv_epi8(reduced, compressed, is_below);
+            }
+
+            compressed
         }
-
-        compressed
     }
 
     /// SSE range-reduction base64 encode (6-bit indices)
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "ssse3")]
     unsafe fn encode_ssse3_range_reduction_6bit(&self, data: &[u8], result: &mut String) {
-        use std::arch::x86_64::*;
+        unsafe {
+            use std::arch::x86_64::*;
 
-        const BLOCK_SIZE: usize = 12; // 12 bytes → 16 chars
-        const SIMD_READ: usize = 16; // Actually reads 16 bytes for reshuffle
+            const BLOCK_SIZE: usize = 12; // 12 bytes → 16 chars
+            const SIMD_READ: usize = 16; // Actually reads 16 bytes for reshuffle
 
-        if data.len() < SIMD_READ {
-            self.encode_scalar_base64_x86(data, result);
-            return;
-        }
-
-        let range_info = self.range_info.as_ref().unwrap();
-        let safe_len = if data.len() >= 4 { data.len() - 4 } else { 0 };
-        let num_blocks = safe_len / BLOCK_SIZE;
-        let simd_bytes = num_blocks * BLOCK_SIZE;
-
-        // Load constants once
-        let offset_lut = _mm_loadu_si128(range_info.offset_lut.as_ptr() as *const __m128i);
-        let subs_threshold = _mm_set1_epi8(range_info.subs_threshold as i8);
-
-        let mut offset = 0;
-        for _ in 0..num_blocks {
-            // SAFETY: offset + SIMD_READ <= data.len() guaranteed by safe_len calculation
-            // (safe_len ensures data.len() - 4, num_blocks uses BLOCK_SIZE=12, leaving 4-byte buffer)
-            debug_assert!(offset + SIMD_READ <= data.len());
-
-            // Load 16 bytes and extract 6-bit indices (reuse existing reshuffle logic)
-            let input_vec = _mm_loadu_si128(data.as_ptr().add(offset) as *const __m128i);
-            let idx_vec = self.reshuffle_x86_base64(input_vec);
-
-            // === RANGE REDUCTION ===
-
-            // Dispatch based on strategy
-            let compressed = match range_info.strategy {
-                RangeStrategy::Simple => {
-                    // Single range - no reduction needed
-                    idx_vec
-                }
-                RangeStrategy::Small => {
-                    // Two ranges - single saturating subtraction
-                    _mm_subs_epu8(idx_vec, subs_threshold)
-                }
-                RangeStrategy::SmallMulti => {
-                    // 3-5 ranges - subs + cmp + blend
-                    let reduced = _mm_subs_epu8(idx_vec, subs_threshold);
-                    if let (Some(cmp), Some(override_val)) =
-                        (range_info.cmp_value, range_info.override_val)
-                    {
-                        let cmp_vec = _mm_set1_epi8(cmp as i8);
-                        let override_vec = _mm_set1_epi8(override_val as i8);
-                        let is_below = _mm_cmplt_epi8(idx_vec, cmp_vec);
-                        _mm_blendv_epi8(reduced, override_vec, is_below)
-                    } else {
-                        reduced
-                    }
-                }
-                RangeStrategy::Medium => {
-                    // 6-8 ranges - multi-threshold
-                    self.encode_multi_threshold_6bit(idx_vec, range_info)
-                }
-                RangeStrategy::Large => {
-                    // 9-12 ranges - multi-threshold
-                    self.encode_multi_threshold_6bit(idx_vec, range_info)
-                }
-                RangeStrategy::VeryLarge => {
-                    // 13-16 ranges - multi-threshold
-                    self.encode_multi_threshold_6bit(idx_vec, range_info)
-                }
-            };
-
-            // Step 3: Lookup offset
-            let offset_vec = _mm_shuffle_epi8(offset_lut, compressed);
-
-            // Step 4: Add offset to compressed index (NOT original index!)
-            let chars = _mm_add_epi8(compressed, offset_vec);
-
-            // Store results
-            let mut output_buf = [0u8; 16];
-            _mm_storeu_si128(output_buf.as_mut_ptr() as *mut __m128i, chars);
-
-            for &byte in &output_buf {
-                result.push(byte as char);
+            if data.len() < SIMD_READ {
+                self.encode_scalar_base64_x86(data, result);
+                return;
             }
 
-            offset += BLOCK_SIZE;
-        }
+            let range_info = self.range_info.as_ref().unwrap();
+            let safe_len = if data.len() >= 4 { data.len() - 4 } else { 0 };
+            let num_blocks = safe_len / BLOCK_SIZE;
+            let simd_bytes = num_blocks * BLOCK_SIZE;
 
-        // Scalar remainder
-        if simd_bytes < data.len() {
-            self.encode_scalar_base64_x86(&data[simd_bytes..], result);
+            // Load constants once
+            let offset_lut = _mm_loadu_si128(range_info.offset_lut.as_ptr() as *const __m128i);
+            let subs_threshold = _mm_set1_epi8(range_info.subs_threshold as i8);
+
+            let mut offset = 0;
+            for _ in 0..num_blocks {
+                // SAFETY: offset + SIMD_READ <= data.len() guaranteed by safe_len calculation
+                // (safe_len ensures data.len() - 4, num_blocks uses BLOCK_SIZE=12, leaving 4-byte buffer)
+                debug_assert!(offset + SIMD_READ <= data.len());
+
+                // Load 16 bytes and extract 6-bit indices (reuse existing reshuffle logic)
+                let input_vec = _mm_loadu_si128(data.as_ptr().add(offset) as *const __m128i);
+                let idx_vec = self.reshuffle_x86_base64(input_vec);
+
+                // === RANGE REDUCTION ===
+
+                // Dispatch based on strategy
+                let compressed = match range_info.strategy {
+                    RangeStrategy::Simple => {
+                        // Single range - no reduction needed
+                        idx_vec
+                    }
+                    RangeStrategy::Small => {
+                        // Two ranges - single saturating subtraction
+                        _mm_subs_epu8(idx_vec, subs_threshold)
+                    }
+                    RangeStrategy::SmallMulti => {
+                        // 3-5 ranges - subs + cmp + blend
+                        let reduced = _mm_subs_epu8(idx_vec, subs_threshold);
+                        if let (Some(cmp), Some(override_val)) =
+                            (range_info.cmp_value, range_info.override_val)
+                        {
+                            let cmp_vec = _mm_set1_epi8(cmp as i8);
+                            let override_vec = _mm_set1_epi8(override_val as i8);
+                            let is_below = _mm_cmplt_epi8(idx_vec, cmp_vec);
+                            _mm_blendv_epi8(reduced, override_vec, is_below)
+                        } else {
+                            reduced
+                        }
+                    }
+                    RangeStrategy::Medium => {
+                        // 6-8 ranges - multi-threshold
+                        self.encode_multi_threshold_6bit(idx_vec, range_info)
+                    }
+                    RangeStrategy::Large => {
+                        // 9-12 ranges - multi-threshold
+                        self.encode_multi_threshold_6bit(idx_vec, range_info)
+                    }
+                    RangeStrategy::VeryLarge => {
+                        // 13-16 ranges - multi-threshold
+                        self.encode_multi_threshold_6bit(idx_vec, range_info)
+                    }
+                };
+
+                // Step 3: Lookup offset
+                let offset_vec = _mm_shuffle_epi8(offset_lut, compressed);
+
+                // Step 4: Add offset to compressed index (NOT original index!)
+                let chars = _mm_add_epi8(compressed, offset_vec);
+
+                // Store results
+                let mut output_buf = [0u8; 16];
+                _mm_storeu_si128(output_buf.as_mut_ptr() as *mut __m128i, chars);
+
+                for &byte in &output_buf {
+                    result.push(byte as char);
+                }
+
+                offset += BLOCK_SIZE;
+            }
+
+            // Scalar remainder
+            if simd_bytes < data.len() {
+                self.encode_scalar_base64_x86(&data[simd_bytes..], result);
+            }
         }
     }
 
@@ -691,21 +706,23 @@ impl Base64LutCodec {
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "ssse3")]
     unsafe fn decode_ssse3_impl(&self, encoded: &[u8], result: &mut Vec<u8>) -> bool {
-        if self.is_rfc4648_base32() {
-            self.decode_ssse3_base32_rfc4648(encoded, result)
-        } else if self.is_standard_base64() {
-            self.decode_ssse3_base64_standard(encoded, result)
-        } else if let Some(ref range_info) = self.range_info {
-            // Try SIMD multi-range decode for 6-16 ranges
-            if range_info.ranges.len() >= 6 {
-                self.decode_ssse3_multi_range(encoded, result)
+        unsafe {
+            if self.is_rfc4648_base32() {
+                self.decode_ssse3_base32_rfc4648(encoded, result)
+            } else if self.is_standard_base64() {
+                self.decode_ssse3_base64_standard(encoded, result)
+            } else if let Some(ref range_info) = self.range_info {
+                // Try SIMD multi-range decode for 6-16 ranges
+                if range_info.ranges.len() >= 6 {
+                    self.decode_ssse3_multi_range(encoded, result)
+                } else {
+                    // Fall back to scalar for 1-5 ranges (not optimized yet)
+                    self.decode_scalar(encoded, result)
+                }
             } else {
-                // Fall back to scalar for 1-5 ranges (not optimized yet)
+                // No range info - use scalar LUT
                 self.decode_scalar(encoded, result)
             }
-        } else {
-            // No range info - use scalar LUT
-            self.decode_scalar(encoded, result)
         }
     }
 
@@ -727,10 +744,12 @@ impl Base64LutCodec {
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "ssse3")]
     unsafe fn decode_ssse3_multi_range(&self, encoded: &[u8], result: &mut Vec<u8>) -> bool {
-        match self.metadata.base {
-            32 => self.decode_ssse3_multi_range_5bit(encoded, result),
-            64 => self.decode_ssse3_multi_range_6bit(encoded, result),
-            _ => self.decode_scalar(encoded, result),
+        unsafe {
+            match self.metadata.base {
+                32 => self.decode_ssse3_multi_range_5bit(encoded, result),
+                64 => self.decode_ssse3_multi_range_6bit(encoded, result),
+                _ => self.decode_scalar(encoded, result),
+            }
         }
     }
 
@@ -738,53 +757,56 @@ impl Base64LutCodec {
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "ssse3")]
     unsafe fn decode_ssse3_multi_range_6bit(&self, encoded: &[u8], result: &mut Vec<u8>) -> bool {
-        use std::arch::x86_64::*;
+        unsafe {
+            use std::arch::x86_64::*;
 
-        const BLOCK_SIZE: usize = 16; // 16 chars → 12 bytes
+            const BLOCK_SIZE: usize = 16; // 16 chars → 12 bytes
 
-        // Strip padding
-        let input_no_padding = if let Some(last_non_pad) = encoded.iter().rposition(|&b| b != b'=')
-        {
-            &encoded[..=last_non_pad]
-        } else {
-            encoded
-        };
+            // Strip padding
+            let input_no_padding =
+                if let Some(last_non_pad) = encoded.iter().rposition(|&b| b != b'=') {
+                    &encoded[..=last_non_pad]
+                } else {
+                    encoded
+                };
 
-        let range_info = self.range_info.as_ref().unwrap();
-        let num_blocks = input_no_padding.len() / BLOCK_SIZE;
-        let simd_bytes = num_blocks * BLOCK_SIZE;
+            let range_info = self.range_info.as_ref().unwrap();
+            let num_blocks = input_no_padding.len() / BLOCK_SIZE;
+            let simd_bytes = num_blocks * BLOCK_SIZE;
 
-        for i in 0..num_blocks {
-            let offset = i * BLOCK_SIZE;
+            for i in 0..num_blocks {
+                let offset = i * BLOCK_SIZE;
 
-            // SAFETY: offset + BLOCK_SIZE <= simd_bytes <= input_no_padding.len() by construction
-            // (num_blocks = input_no_padding.len() / BLOCK_SIZE, offset = i * BLOCK_SIZE where i < num_blocks)
-            debug_assert!(offset + BLOCK_SIZE <= input_no_padding.len());
+                // SAFETY: offset + BLOCK_SIZE <= simd_bytes <= input_no_padding.len() by construction
+                // (num_blocks = input_no_padding.len() / BLOCK_SIZE, offset = i * BLOCK_SIZE where i < num_blocks)
+                debug_assert!(offset + BLOCK_SIZE <= input_no_padding.len());
 
-            let chars = _mm_loadu_si128(input_no_padding.as_ptr().add(offset) as *const __m128i);
+                let chars =
+                    _mm_loadu_si128(input_no_padding.as_ptr().add(offset) as *const __m128i);
 
-            // === VALIDATION + TRANSLATION ===
-            let indices = match self.validate_and_translate_multi_range(chars, range_info) {
-                Some(idx) => idx,
-                None => return false,
-            };
+                // === VALIDATION + TRANSLATION ===
+                let indices = match self.validate_and_translate_multi_range(chars, range_info) {
+                    Some(idx) => idx,
+                    None => return false,
+                };
 
-            // === UNPACKING (reuse existing reshuffle_decode_ssse3) ===
-            let decoded = self.reshuffle_decode_ssse3(indices);
+                // === UNPACKING (reuse existing reshuffle_decode_ssse3) ===
+                let decoded = self.reshuffle_decode_ssse3(indices);
 
-            let mut output_buf = [0u8; 16];
-            _mm_storeu_si128(output_buf.as_mut_ptr() as *mut __m128i, decoded);
-            result.extend_from_slice(&output_buf[0..12]);
-        }
+                let mut output_buf = [0u8; 16];
+                _mm_storeu_si128(output_buf.as_mut_ptr() as *mut __m128i, decoded);
+                result.extend_from_slice(&output_buf[0..12]);
+            }
 
-        // Scalar remainder
-        if simd_bytes < input_no_padding.len() {
-            if !self.decode_scalar(&input_no_padding[simd_bytes..], result) {
+            // Scalar remainder
+            if simd_bytes < input_no_padding.len()
+                && !self.decode_scalar(&input_no_padding[simd_bytes..], result)
+            {
                 return false;
             }
-        }
 
-        true
+            true
+        }
     }
 
     /// Validate and translate chars to indices for multi-range dictionaries
@@ -795,103 +817,172 @@ impl Base64LutCodec {
         chars: std::arch::x86_64::__m128i,
         range_info: &RangeInfo,
     ) -> Option<std::arch::x86_64::__m128i> {
-        use std::arch::x86_64::*;
+        unsafe {
+            use std::arch::x86_64::*;
 
-        let mut valid_mask = _mm_setzero_si128();
-        let mut indices = _mm_setzero_si128();
+            let mut valid_mask = _mm_setzero_si128();
+            let mut indices = _mm_setzero_si128();
 
-        for range in &range_info.ranges {
-            // Range checks: char >= start_char && char <= end_char
-            let start_vec = _mm_set1_epi8(range.start_char as i8);
-            let end_vec =
-                _mm_set1_epi8((range.start_char + (range.end_idx - range.start_idx)) as i8);
+            for range in &range_info.ranges {
+                // Range checks: char >= start_char && char <= end_char
+                let start_vec = _mm_set1_epi8(range.start_char as i8);
+                let end_vec =
+                    _mm_set1_epi8((range.start_char + (range.end_idx - range.start_idx)) as i8);
 
-            let ge_start = _mm_cmpgt_epi8(chars, _mm_sub_epi8(start_vec, _mm_set1_epi8(1)));
-            let le_end = _mm_cmplt_epi8(chars, _mm_add_epi8(end_vec, _mm_set1_epi8(1)));
-            let in_range = _mm_and_si128(ge_start, le_end);
+                let ge_start = _mm_cmpgt_epi8(chars, _mm_sub_epi8(start_vec, _mm_set1_epi8(1)));
+                let le_end = _mm_cmplt_epi8(chars, _mm_add_epi8(end_vec, _mm_set1_epi8(1)));
+                let in_range = _mm_and_si128(ge_start, le_end);
 
-            valid_mask = _mm_or_si128(valid_mask, in_range);
+                valid_mask = _mm_or_si128(valid_mask, in_range);
 
-            // Translation: index = char - start_char + start_idx
-            let offset = _mm_set1_epi8(range.start_idx as i8 - range.start_char as i8);
-            let range_indices = _mm_add_epi8(chars, offset);
+                // Translation: index = char - start_char + start_idx
+                let offset = _mm_set1_epi8(range.start_idx as i8 - range.start_char as i8);
+                let range_indices = _mm_add_epi8(chars, offset);
 
-            // Blend into result
-            indices = _mm_blendv_epi8(indices, range_indices, in_range);
+                // Blend into result
+                indices = _mm_blendv_epi8(indices, range_indices, in_range);
+            }
+
+            // Check if all chars valid
+            if _mm_movemask_epi8(valid_mask) != 0xFFFF {
+                return None;
+            }
+
+            Some(indices)
         }
-
-        // Check if all chars valid
-        if _mm_movemask_epi8(valid_mask) != 0xFFFF {
-            return None;
-        }
-
-        Some(indices)
     }
 
     /// SSSE3 base64 standard decode (reuse specialized reshuffle)
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "ssse3")]
     unsafe fn decode_ssse3_base64_standard(&self, encoded: &[u8], result: &mut Vec<u8>) -> bool {
-        use std::arch::x86_64::*;
+        unsafe {
+            use std::arch::x86_64::*;
 
-        const BLOCK_SIZE: usize = 16; // 16 chars → 12 bytes
+            const BLOCK_SIZE: usize = 16; // 16 chars → 12 bytes
 
-        // Strip padding
-        let input_no_padding = if let Some(last_non_pad) = encoded.iter().rposition(|&b| b != b'=')
-        {
-            &encoded[..=last_non_pad]
-        } else {
-            encoded
-        };
+            // Strip padding
+            let input_no_padding =
+                if let Some(last_non_pad) = encoded.iter().rposition(|&b| b != b'=') {
+                    &encoded[..=last_non_pad]
+                } else {
+                    encoded
+                };
 
-        let num_blocks = input_no_padding.len() / BLOCK_SIZE;
-        let simd_bytes = num_blocks * BLOCK_SIZE;
+            let num_blocks = input_no_padding.len() / BLOCK_SIZE;
+            let simd_bytes = num_blocks * BLOCK_SIZE;
 
-        for i in 0..num_blocks {
-            let offset = i * BLOCK_SIZE;
+            for i in 0..num_blocks {
+                let offset = i * BLOCK_SIZE;
 
-            // SAFETY: offset + BLOCK_SIZE <= simd_bytes <= input_no_padding.len() by construction
-            // (num_blocks = input_no_padding.len() / BLOCK_SIZE, offset = i * BLOCK_SIZE where i < num_blocks)
-            debug_assert!(offset + BLOCK_SIZE <= input_no_padding.len());
+                // SAFETY: offset + BLOCK_SIZE <= simd_bytes <= input_no_padding.len() by construction
+                // (num_blocks = input_no_padding.len() / BLOCK_SIZE, offset = i * BLOCK_SIZE where i < num_blocks)
+                debug_assert!(offset + BLOCK_SIZE <= input_no_padding.len());
 
-            let input_vec =
-                _mm_loadu_si128(input_no_padding.as_ptr().add(offset) as *const __m128i);
+                let input_vec =
+                    _mm_loadu_si128(input_no_padding.as_ptr().add(offset) as *const __m128i);
 
-            // === VALIDATION & TRANSLATION (char → 6-bit index) ===
-            let mut char_buf = [0u8; 16];
-            _mm_storeu_si128(char_buf.as_mut_ptr() as *mut __m128i, input_vec);
+                // === VALIDATION & TRANSLATION (char → 6-bit index) ===
+                let mut char_buf = [0u8; 16];
+                _mm_storeu_si128(char_buf.as_mut_ptr() as *mut __m128i, input_vec);
 
-            let mut indices_buf = [0u8; 16];
+                let mut indices_buf = [0u8; 16];
 
-            // For range-reduced dictionaries, reverse the transformation
-            if let Some(range_info) = &self.range_info {
-                for j in 0..16 {
-                    let ch = char_buf[j];
-                    // Find which range this character belongs to
-                    let mut found = false;
-                    for range in &range_info.ranges {
-                        let range_start_char = range.start_char;
-                        let range_end_char = (range.start_char as i16
-                            + (range.end_idx - range.start_idx) as i16)
-                            as u8;
+                // For range-reduced dictionaries, reverse the transformation
+                if let Some(range_info) = &self.range_info {
+                    for j in 0..16 {
+                        let ch = char_buf[j];
+                        // Find which range this character belongs to
+                        let mut found = false;
+                        for range in &range_info.ranges {
+                            let range_start_char = range.start_char;
+                            let range_end_char = (range.start_char as i16
+                                + (range.end_idx - range.start_idx) as i16)
+                                as u8;
 
-                        if ch >= range_start_char && ch <= range_end_char {
-                            // Decode: compressed_idx = char - range.start_char
-                            //         original_idx = range.start_idx + compressed_idx
-                            let compressed_idx = ch - range_start_char;
-                            let original_idx = range.start_idx + compressed_idx;
-                            indices_buf[j] = original_idx;
-                            found = true;
-                            break;
+                            if ch >= range_start_char && ch <= range_end_char {
+                                // Decode: compressed_idx = char - range.start_char
+                                //         original_idx = range.start_idx + compressed_idx
+                                let compressed_idx = ch - range_start_char;
+                                let original_idx = range.start_idx + compressed_idx;
+                                indices_buf[j] = original_idx;
+                                found = true;
+                                break;
+                            }
+                        }
+
+                        if !found {
+                            return false; // Invalid character
                         }
                     }
-
-                    if !found {
-                        return false; // Invalid character
+                } else {
+                    // No range-reduction, use direct decode_lut
+                    for j in 0..16 {
+                        let idx = self.decode_lut[char_buf[j] as usize];
+                        if idx == 0xFF {
+                            return false;
+                        }
+                        indices_buf[j] = idx;
                     }
                 }
-            } else {
-                // No range-reduction, use direct decode_lut
+
+                let indices = _mm_loadu_si128(indices_buf.as_ptr() as *const __m128i);
+
+                // === UNPACKING (reuse specialized base64 reshuffle) ===
+                let decoded = self.reshuffle_decode_ssse3(indices);
+
+                let mut output_buf = [0u8; 16];
+                _mm_storeu_si128(output_buf.as_mut_ptr() as *mut __m128i, decoded);
+                result.extend_from_slice(&output_buf[0..12]);
+            }
+
+            // Scalar remainder
+            if simd_bytes < input_no_padding.len()
+                && !self.decode_scalar(&input_no_padding[simd_bytes..], result)
+            {
+                return false;
+            }
+
+            true
+        }
+    }
+
+    /// NEON base64 standard decode
+    #[cfg(target_arch = "aarch64")]
+    #[target_feature(enable = "neon")]
+    unsafe fn decode_neon_base64_standard(&self, encoded: &[u8], result: &mut Vec<u8>) -> bool {
+        unsafe {
+            use std::arch::aarch64::*;
+
+            const BLOCK_SIZE: usize = 16;
+
+            let input_no_padding =
+                if let Some(last_non_pad) = encoded.iter().rposition(|&b| b != b'=') {
+                    &encoded[..=last_non_pad]
+                } else {
+                    encoded
+                };
+
+            let num_blocks = input_no_padding.len() / BLOCK_SIZE;
+            let simd_bytes = num_blocks * BLOCK_SIZE;
+
+            for i in 0..num_blocks {
+                let offset = i * BLOCK_SIZE;
+
+                // SAFETY: offset + BLOCK_SIZE <= simd_bytes <= input_no_padding.len() by construction
+                // (num_blocks = input_no_padding.len() / BLOCK_SIZE, offset = i * BLOCK_SIZE where i < num_blocks)
+                debug_assert!(offset + BLOCK_SIZE <= input_no_padding.len());
+
+                let input_vec = vld1q_u8(input_no_padding.as_ptr().add(offset));
+
+                // === VALIDATION & TRANSLATION ===
+                let mut char_buf = [0u8; 16];
+                vst1q_u8(char_buf.as_mut_ptr(), input_vec);
+
+                let mut indices_buf = [0u8; 16];
+
+                // For range-reduced dictionaries, reverse the transformation
+                // Note: aarch64 doesn't have range_info, so always use decode_lut
                 for j in 0..16 {
                     let idx = self.decode_lut[char_buf[j] as usize];
                     if idx == 0xFF {
@@ -899,89 +990,26 @@ impl Base64LutCodec {
                     }
                     indices_buf[j] = idx;
                 }
+
+                let indices = vld1q_u8(indices_buf.as_ptr());
+
+                // === UNPACKING ===
+                let decoded = self.reshuffle_decode_neon(indices);
+
+                let mut output_buf = [0u8; 16];
+                vst1q_u8(output_buf.as_mut_ptr(), decoded);
+                result.extend_from_slice(&output_buf[0..12]);
             }
 
-            let indices = _mm_loadu_si128(indices_buf.as_ptr() as *const __m128i);
-
-            // === UNPACKING (reuse specialized base64 reshuffle) ===
-            let decoded = self.reshuffle_decode_ssse3(indices);
-
-            let mut output_buf = [0u8; 16];
-            _mm_storeu_si128(output_buf.as_mut_ptr() as *mut __m128i, decoded);
-            result.extend_from_slice(&output_buf[0..12]);
-        }
-
-        // Scalar remainder
-        if simd_bytes < input_no_padding.len() {
-            if !self.decode_scalar(&input_no_padding[simd_bytes..], result) {
-                return false;
-            }
-        }
-
-        true
-    }
-
-    /// NEON base64 standard decode
-    #[cfg(target_arch = "aarch64")]
-    #[target_feature(enable = "neon")]
-    unsafe fn decode_neon_base64_standard(&self, encoded: &[u8], result: &mut Vec<u8>) -> bool {
-        use std::arch::aarch64::*;
-
-        const BLOCK_SIZE: usize = 16;
-
-        let input_no_padding = if let Some(last_non_pad) = encoded.iter().rposition(|&b| b != b'=')
-        {
-            &encoded[..=last_non_pad]
-        } else {
-            encoded
-        };
-
-        let num_blocks = input_no_padding.len() / BLOCK_SIZE;
-        let simd_bytes = num_blocks * BLOCK_SIZE;
-
-        for i in 0..num_blocks {
-            let offset = i * BLOCK_SIZE;
-
-            // SAFETY: offset + BLOCK_SIZE <= simd_bytes <= input_no_padding.len() by construction
-            // (num_blocks = input_no_padding.len() / BLOCK_SIZE, offset = i * BLOCK_SIZE where i < num_blocks)
-            debug_assert!(offset + BLOCK_SIZE <= input_no_padding.len());
-
-            let input_vec = vld1q_u8(input_no_padding.as_ptr().add(offset));
-
-            // === VALIDATION & TRANSLATION ===
-            let mut char_buf = [0u8; 16];
-            vst1q_u8(char_buf.as_mut_ptr(), input_vec);
-
-            let mut indices_buf = [0u8; 16];
-
-            // For range-reduced dictionaries, reverse the transformation
-            // Note: aarch64 doesn't have range_info, so always use decode_lut
-            for j in 0..16 {
-                let idx = self.decode_lut[char_buf[j] as usize];
-                if idx == 0xFF {
+            // Scalar remainder
+            if simd_bytes < input_no_padding.len() {
+                if !self.decode_scalar(&input_no_padding[simd_bytes..], result) {
                     return false;
                 }
-                indices_buf[j] = idx;
             }
 
-            let indices = vld1q_u8(indices_buf.as_ptr());
-
-            // === UNPACKING ===
-            let decoded = self.reshuffle_decode_neon(indices);
-
-            let mut output_buf = [0u8; 16];
-            vst1q_u8(output_buf.as_mut_ptr(), decoded);
-            result.extend_from_slice(&output_buf[0..12]);
+            true
         }
-
-        // Scalar remainder
-        if simd_bytes < input_no_padding.len() {
-            if !self.decode_scalar(&input_no_padding[simd_bytes..], result) {
-                return false;
-            }
-        }
-
-        true
     }
 
     /// Reshuffle 6-bit indices to packed 8-bit bytes (x86 SSSE3)
@@ -1020,50 +1048,52 @@ impl Base64LutCodec {
         &self,
         indices: std::arch::aarch64::uint8x16_t,
     ) -> std::arch::aarch64::uint8x16_t {
-        use std::arch::aarch64::*;
+        unsafe {
+            use std::arch::aarch64::*;
 
-        // Simulate _mm_maddubs_epi16: multiply adjacent u8 pairs and add
-        // Input: [a0 b0 a1 b1 a2 b2 ...] u8x16
-        // Multiply pattern: [0x01 0x40 0x01 0x40 ...]
-        // Result: [a0*1 + b0*64, a1*1 + b1*64, ...] as i16x8
+            // Simulate _mm_maddubs_epi16: multiply adjacent u8 pairs and add
+            // Input: [a0 b0 a1 b1 a2 b2 ...] u8x16
+            // Multiply pattern: [0x01 0x40 0x01 0x40 ...]
+            // Result: [a0*1 + b0*64, a1*1 + b1*64, ...] as i16x8
 
-        let pairs = vreinterpretq_u16_u8(indices);
+            let pairs = vreinterpretq_u16_u8(indices);
 
-        // Extract even bytes (a0, a1, a2, ...) and odd bytes (b0, b1, b2, ...)
-        let even = vandq_u16(pairs, vdupq_n_u16(0xFF)); // Low byte of each pair
-        let odd = vshrq_n_u16(pairs, 8); // High byte of each pair
+            // Extract even bytes (a0, a1, a2, ...) and odd bytes (b0, b1, b2, ...)
+            let even = vandq_u16(pairs, vdupq_n_u16(0xFF)); // Low byte of each pair
+            let odd = vshrq_n_u16(pairs, 8); // High byte of each pair
 
-        // Stage 1: Emulate maddubs: even * 64 + odd * 1
-        let merge_result = vmlaq_n_u16(odd, even, 64);
+            // Stage 1: Emulate maddubs: even * 64 + odd * 1
+            let merge_result = vmlaq_n_u16(odd, even, 64);
 
-        // Stage 2: Combine 16-bit pairs using multiply-add
-        // _mm_madd_epi16: multiply adjacent i16 and add horizontally
-        // Pattern: [0x1000 0x0001 0x1000 0x0001 ...]
-        // Result: [p0*0x1000 + p1*0x0001, ...] as i32x4
+            // Stage 2: Combine 16-bit pairs using multiply-add
+            // _mm_madd_epi16: multiply adjacent i16 and add horizontally
+            // Pattern: [0x1000 0x0001 0x1000 0x0001 ...]
+            // Result: [p0*0x1000 + p1*0x0001, ...] as i32x4
 
-        let merge_u32 = vreinterpretq_u32_u16(merge_result);
+            let merge_u32 = vreinterpretq_u32_u16(merge_result);
 
-        // Extract low and high 16-bit values from each 32-bit pair
-        let lo = vandq_u32(merge_u32, vdupq_n_u32(0xFFFF));
-        let hi = vshrq_n_u32(merge_u32, 16);
+            // Extract low and high 16-bit values from each 32-bit pair
+            let lo = vandq_u32(merge_u32, vdupq_n_u32(0xFFFF));
+            let hi = vshrq_n_u32(merge_u32, 16);
 
-        // Combine: lo << 12 | hi
-        let final_32bit = vorrq_u32(vshlq_n_u32(lo, 12), hi);
+            // Combine: lo << 12 | hi
+            let final_32bit = vorrq_u32(vshlq_n_u32(lo, 12), hi);
 
-        // Stage 3: Extract valid bytes (3 bytes per 32-bit group)
-        let shuffle_mask = vld1q_u8(
-            [
-                2, 1, 0, // first group (reversed byte order)
-                6, 5, 4, // second group
-                10, 9, 8, // third group
-                14, 13, 12, // fourth group
-                255, 255, 255, 255,
-            ]
-            .as_ptr(),
-        );
+            // Stage 3: Extract valid bytes (3 bytes per 32-bit group)
+            let shuffle_mask = vld1q_u8(
+                [
+                    2, 1, 0, // first group (reversed byte order)
+                    6, 5, 4, // second group
+                    10, 9, 8, // third group
+                    14, 13, 12, // fourth group
+                    255, 255, 255, 255,
+                ]
+                .as_ptr(),
+            );
 
-        let result_bytes = vreinterpretq_u8_u32(final_32bit);
-        vqtbl1q_u8(result_bytes, shuffle_mask)
+            let result_bytes = vreinterpretq_u8_u32(final_32bit);
+            vqtbl1q_u8(result_bytes, shuffle_mask)
+        }
     }
 
     /// Scalar fallback for decoding
@@ -1130,6 +1160,7 @@ impl Base64LutCodec {
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
 

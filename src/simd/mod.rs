@@ -25,15 +25,15 @@ mod aarch64;
 
 #[cfg(target_arch = "x86_64")]
 pub use x86_64::{
-    decode_base16_simd, decode_base256_simd, decode_base32_simd, decode_base64_simd,
-    encode_base16_simd, encode_base256_simd, encode_base32_simd, encode_base64_simd,
+    decode_base16_simd, decode_base32_simd, decode_base64_simd, decode_base256_simd,
+    encode_base16_simd, encode_base32_simd, encode_base64_simd, encode_base256_simd,
 };
 
 #[cfg(target_arch = "aarch64")]
 pub use aarch64::{
-    decode_base16_simd, decode_base256_simd, decode_base32_simd, decode_base64_simd,
-    encode_base16_simd, encode_base256_simd, encode_base32_simd, encode_base64_simd,
-    GenericSimdCodec,
+    GenericSimdCodec, decode_base16_simd, decode_base32_simd, decode_base64_simd,
+    decode_base256_simd, encode_base16_simd, encode_base32_simd, encode_base64_simd,
+    encode_base256_simd,
 };
 
 #[cfg(target_arch = "x86_64")]
@@ -112,18 +112,18 @@ pub fn encode_with_simd(data: &[u8], dict: &Dictionary) -> Option<String> {
     let base = dict.base();
 
     // 1. Try specialized base64 for known variants
-    if base == 64 {
-        if let Some(_variant) = variants::identify_base64_variant(dict) {
-            // Use existing specialized base64 implementation
-            return encode_base64_simd(data, dict);
-        }
+    if base == 64
+        && let Some(_variant) = variants::identify_base64_variant(dict)
+    {
+        // Use existing specialized base64 implementation
+        return encode_base64_simd(data, dict);
     }
 
     // 2. Try specialized base32 for known variants
-    if base == 32 {
-        if let Some(_variant) = variants::identify_base32_variant(dict) {
-            return encode_base32_simd(data, dict);
-        }
+    if base == 32
+        && let Some(_variant) = variants::identify_base32_variant(dict)
+    {
+        return encode_base32_simd(data, dict);
     }
 
     // 3. Try specialized base16 for known hex variants
@@ -145,17 +145,19 @@ pub fn encode_with_simd(data: &[u8], dict: &Dictionary) -> Option<String> {
     }
 
     // 6. Try SmallLutCodec for small arbitrary dictionaries (≤16 chars)
-    if base <= 16 && base.is_power_of_two() {
-        if let Some(codec) = SmallLutCodec::from_dictionary(dict) {
-            return codec.encode(data, dict);
-        }
+    if base <= 16
+        && base.is_power_of_two()
+        && let Some(codec) = SmallLutCodec::from_dictionary(dict)
+    {
+        return codec.encode(data, dict);
     }
 
     // 7. Try Base64LutCodec for large arbitrary dictionaries (17-64 chars)
-    if (17..=64).contains(&base) && base.is_power_of_two() {
-        if let Some(codec) = Base64LutCodec::from_dictionary(dict) {
-            return codec.encode(data, dict);
-        }
+    if (17..=64).contains(&base)
+        && base.is_power_of_two()
+        && let Some(codec) = Base64LutCodec::from_dictionary(dict)
+    {
+        return codec.encode(data, dict);
     }
 
     // 8. No SIMD optimization available
@@ -248,18 +250,14 @@ pub fn decode_with_simd(encoded: &str, dict: &Dictionary) -> Option<Vec<u8>> {
     let base = dict.base();
 
     // 1. Try specialized base64 for known variants
-    if base == 64 {
-        if variants::identify_base64_variant(dict).is_some() {
-            // Use existing specialized base64 implementation
-            return decode_base64_simd(encoded, dict);
-        }
+    if base == 64 && variants::identify_base64_variant(dict).is_some() {
+        // Use existing specialized base64 implementation
+        return decode_base64_simd(encoded, dict);
     }
 
     // 2. Try specialized base32 for known variants
-    if base == 32 {
-        if variants::identify_base32_variant(dict).is_some() {
-            return decode_base32_simd(encoded, dict);
-        }
+    if base == 32 && variants::identify_base32_variant(dict).is_some() {
+        return decode_base32_simd(encoded, dict);
     }
 
     // 3. Try specialized base16 for known hex variants
@@ -281,17 +279,19 @@ pub fn decode_with_simd(encoded: &str, dict: &Dictionary) -> Option<Vec<u8>> {
     }
 
     // 6. Try SmallLutCodec for small arbitrary dictionaries (≤16 chars)
-    if base <= 16 && base.is_power_of_two() {
-        if let Some(codec) = SmallLutCodec::from_dictionary(dict) {
-            return codec.decode(encoded, dict);
-        }
+    if base <= 16
+        && base.is_power_of_two()
+        && let Some(codec) = SmallLutCodec::from_dictionary(dict)
+    {
+        return codec.decode(encoded, dict);
     }
 
     // 7. Try Base64LutCodec for large arbitrary dictionaries (17-64 chars)
-    if (17..=64).contains(&base) && base.is_power_of_two() {
-        if let Some(codec) = Base64LutCodec::from_dictionary(dict) {
-            return codec.decode(encoded, dict);
-        }
+    if (17..=64).contains(&base)
+        && base.is_power_of_two()
+        && let Some(codec) = Base64LutCodec::from_dictionary(dict)
+    {
+        return codec.decode(encoded, dict);
     }
 
     // 8. No SIMD optimization available
@@ -399,7 +399,7 @@ fn is_standard_hex(dict: &Dictionary) -> bool {
 #[cfg(test)]
 mod tests {
     #[cfg(target_arch = "x86_64")]
-    use super::{decode_with_simd, encode_with_simd, has_ssse3, Dictionary};
+    use super::{Dictionary, decode_with_simd, encode_with_simd, has_ssse3};
     #[cfg(target_arch = "x86_64")]
     use crate::core::config::EncodingMode;
 
@@ -414,7 +414,7 @@ mod tests {
         // Create custom base16 dictionary starting at ASCII '!' (0x21)
         // This should automatically use GenericSimdCodec
         let chars: Vec<char> = (0x21..0x31).map(|cp| char::from_u32(cp).unwrap()).collect();
-        let dict = Dictionary::new(chars).unwrap();
+        let dict = Dictionary::builder().chars(chars).build().unwrap();
 
         // Test data: 32 bytes (enough for two SIMD rounds)
         let data = b"\x01\x23\x45\x67\x89\xAB\xCD\xEF\xFE\xDC\xBA\x98\x76\x54\x32\x10\
@@ -436,7 +436,7 @@ mod tests {
         for c in encoded.chars() {
             let codepoint = c as u32;
             assert!(
-                codepoint >= 0x21 && codepoint < 0x31,
+                (0x21..0x31).contains(&codepoint),
                 "Output char U+{:04X} '{}' should be in custom dictionary range U+0021..U+0031",
                 codepoint,
                 c
@@ -445,7 +445,7 @@ mod tests {
 
         // Verify first few nibbles are correctly encoded
         // 0x01 -> nibbles 0x0, 0x1 -> chars 0x21 (0 + 0x21), 0x22 (1 + 0x21)
-        assert_eq!(encoded.chars().nth(0).unwrap(), '\x21'); // 0 + 0x21 = '!'
+        assert_eq!(encoded.chars().next().unwrap(), '\x21'); // 0 + 0x21 = '!'
         assert_eq!(encoded.chars().nth(1).unwrap(), '\x22'); // 1 + 0x21 = '"'
     }
 
@@ -461,7 +461,12 @@ mod tests {
         let chars: Vec<char> = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
             .chars()
             .collect();
-        let dict = Dictionary::new_with_mode(chars, EncodingMode::Chunked, Some('=')).unwrap();
+        let dict = Dictionary::builder()
+            .chars(chars)
+            .mode(EncodingMode::Chunked)
+            .padding('=')
+            .build()
+            .unwrap();
 
         let data = b"Hello, World!";
         let result = encode_with_simd(data, &dict);
@@ -482,7 +487,7 @@ mod tests {
 
         // Standard hex dictionary should use specialized implementation
         let chars: Vec<char> = "0123456789abcdef".chars().collect();
-        let dict = Dictionary::new(chars).unwrap();
+        let dict = Dictionary::builder().chars(chars).build().unwrap();
 
         let data = b"\x01\x23\x45\x67\x89\xAB\xCD\xEF\xFE\xDC\xBA\x98\x76\x54\x32\x10";
         let result = encode_with_simd(data, &dict);
@@ -505,7 +510,11 @@ mod tests {
         let chars: Vec<char> = "ZYXWVUTSRQPONMLKJIHGFEDCBAzyxwvutsrqponmlkjihgfedcba9876543210+/"
             .chars()
             .collect();
-        let dict = Dictionary::new_with_mode(chars, EncodingMode::Chunked, None).unwrap();
+        let dict = Dictionary::builder()
+            .chars(chars)
+            .mode(EncodingMode::Chunked)
+            .build()
+            .unwrap();
 
         let data = b"Hello, World!";
         let result = encode_with_simd(data, &dict);
@@ -528,7 +537,11 @@ mod tests {
         let chars: Vec<char> = (0x100..0x140)
             .map(|cp| char::from_u32(cp).unwrap())
             .collect();
-        let dict = Dictionary::new_with_mode(chars, EncodingMode::Chunked, None).unwrap();
+        let dict = Dictionary::builder()
+            .chars(chars)
+            .mode(EncodingMode::Chunked)
+            .build()
+            .unwrap();
 
         let data = b"Hello, World!!!!\x00";
         let result = encode_with_simd(data, &dict);
@@ -551,7 +564,12 @@ mod tests {
         let chars: Vec<char> = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
             .chars()
             .collect();
-        let dict = Dictionary::new_with_mode(chars, EncodingMode::Chunked, Some('=')).unwrap();
+        let dict = Dictionary::builder()
+            .chars(chars)
+            .mode(EncodingMode::Chunked)
+            .padding('=')
+            .build()
+            .unwrap();
 
         let data = b"The quick brown fox jumps over the lazy dog";
 
@@ -583,7 +601,11 @@ mod tests {
 
         // Standard hex dictionary
         let chars: Vec<char> = "0123456789ABCDEF".chars().collect();
-        let dict = Dictionary::new_with_mode(chars, EncodingMode::Chunked, None).unwrap();
+        let dict = Dictionary::builder()
+            .chars(chars)
+            .mode(EncodingMode::Chunked)
+            .build()
+            .unwrap();
 
         let data: Vec<u8> = (0..32).map(|i| (i * 7) as u8).collect();
 
@@ -611,7 +633,7 @@ mod tests {
 
         // Custom base16 dictionary starting at ASCII '!' (0x21)
         let chars: Vec<char> = (0x21..0x31).map(|cp| char::from_u32(cp).unwrap()).collect();
-        let dict = Dictionary::new(chars).unwrap();
+        let dict = Dictionary::builder().chars(chars).build().unwrap();
 
         let data = b"\x01\x23\x45\x67\x89\xAB\xCD\xEF\xFE\xDC\xBA\x98\x76\x54\x32\x10\
                      \x00\x11\x22\x33\x44\x55\x66\x77\x88\x99\xAA\xBB\xCC\xDD\xEE\xFF";

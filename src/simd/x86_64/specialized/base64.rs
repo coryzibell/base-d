@@ -14,10 +14,10 @@ use crate::simd::variants::DictionaryVariant;
 /// Automatically selects the best available SIMD implementation:
 /// - AVX2 (256-bit): Processes 24 bytes -> 32 chars per iteration
 /// - SSSE3 (128-bit): Processes 12 bytes -> 16 chars per iteration
-/// Falls back to scalar for remainder.
+///   Falls back to scalar for remainder.
 pub fn encode(data: &[u8], dictionary: &Dictionary, variant: DictionaryVariant) -> Option<String> {
     // Pre-allocate output
-    let output_len = ((data.len() + 2) / 3) * 4;
+    let output_len = data.len().div_ceil(3) * 4;
     let mut result = String::with_capacity(output_len);
 
     // SAFETY: Runtime detection verifies CPU feature support
@@ -43,7 +43,7 @@ pub fn encode(data: &[u8], dictionary: &Dictionary, variant: DictionaryVariant) 
 /// Automatically selects the best available SIMD implementation:
 /// - AVX2 (256-bit): Processes 32 chars -> 24 bytes per iteration
 /// - SSSE3 (128-bit): Processes 16 chars -> 12 bytes per iteration
-/// Falls back to scalar for remainder.
+///   Falls back to scalar for remainder.
 pub fn decode(encoded: &str, variant: DictionaryVariant) -> Option<Vec<u8>> {
     let encoded_bytes = encoded.as_bytes();
 
@@ -66,10 +66,8 @@ pub fn decode(encoded: &str, variant: DictionaryVariant) -> Option<Vec<u8>> {
             if !decode_avx2_impl(encoded_bytes, variant, &mut result) {
                 return None;
             }
-        } else {
-            if !decode_ssse3_impl(encoded_bytes, variant, &mut result) {
-                return None;
-            }
+        } else if !decode_ssse3_impl(encoded_bytes, variant, &mut result) {
+            return None;
         }
     }
 
@@ -98,52 +96,54 @@ unsafe fn encode_avx2_impl(
     variant: DictionaryVariant,
     result: &mut String,
 ) {
-    use std::arch::x86_64::*;
+    unsafe {
+        use std::arch::x86_64::*;
 
-    const BLOCK_SIZE: usize = 24; // 24 bytes -> 32 chars
+        const BLOCK_SIZE: usize = 24; // 24 bytes -> 32 chars
 
-    // Need at least 28 bytes to safely load two 128-bit blocks (12+4 for each)
-    if data.len() < 28 {
-        // Fall back to SSSE3 for small inputs
-        encode_ssse3_impl(data, dictionary, variant, result);
-        return;
-    }
-
-    // Process blocks of 24 bytes
-    let safe_len = if data.len() >= 8 { data.len() - 8 } else { 0 };
-    let (num_rounds, simd_bytes) = common::calculate_blocks(safe_len, BLOCK_SIZE);
-
-    let mut offset = 0;
-    for _ in 0..num_rounds {
-        // Load 24 bytes as two 128-bit chunks (bytes 0-11 and 12-23)
-        // We load 16 bytes but only use 12 from each
-        let input_lo = _mm_loadu_si128(data.as_ptr().add(offset) as *const __m128i);
-        let input_hi = _mm_loadu_si128(data.as_ptr().add(offset + 12) as *const __m128i);
-
-        // Combine into 256-bit register
-        let input_256 = _mm256_set_m128i(input_hi, input_lo);
-
-        // Reshuffle both lanes (same algorithm as SSSE3, per-lane)
-        let reshuffled = reshuffle_avx2(input_256);
-
-        // Translate 6-bit indices to ASCII (per-lane)
-        let encoded = translate_avx2(reshuffled, variant);
-
-        // Store 32 output characters
-        let mut output_buf = [0u8; 32];
-        _mm256_storeu_si256(output_buf.as_mut_ptr() as *mut __m256i, encoded);
-
-        // Append to result (safe because base64 is ASCII)
-        for &byte in &output_buf {
-            result.push(byte as char);
+        // Need at least 28 bytes to safely load two 128-bit blocks (12+4 for each)
+        if data.len() < 28 {
+            // Fall back to SSSE3 for small inputs
+            encode_ssse3_impl(data, dictionary, variant, result);
+            return;
         }
 
-        offset += BLOCK_SIZE;
-    }
+        // Process blocks of 24 bytes
+        let safe_len = if data.len() >= 8 { data.len() - 8 } else { 0 };
+        let (num_rounds, simd_bytes) = common::calculate_blocks(safe_len, BLOCK_SIZE);
 
-    // Handle remainder with SSSE3
-    if simd_bytes < data.len() {
-        encode_ssse3_impl(&data[simd_bytes..], dictionary, variant, result);
+        let mut offset = 0;
+        for _ in 0..num_rounds {
+            // Load 24 bytes as two 128-bit chunks (bytes 0-11 and 12-23)
+            // We load 16 bytes but only use 12 from each
+            let input_lo = _mm_loadu_si128(data.as_ptr().add(offset) as *const __m128i);
+            let input_hi = _mm_loadu_si128(data.as_ptr().add(offset + 12) as *const __m128i);
+
+            // Combine into 256-bit register
+            let input_256 = _mm256_set_m128i(input_hi, input_lo);
+
+            // Reshuffle both lanes (same algorithm as SSSE3, per-lane)
+            let reshuffled = reshuffle_avx2(input_256);
+
+            // Translate 6-bit indices to ASCII (per-lane)
+            let encoded = translate_avx2(reshuffled, variant);
+
+            // Store 32 output characters
+            let mut output_buf = [0u8; 32];
+            _mm256_storeu_si256(output_buf.as_mut_ptr() as *mut __m256i, encoded);
+
+            // Append to result (safe because base64 is ASCII)
+            for &byte in &output_buf {
+                result.push(byte as char);
+            }
+
+            offset += BLOCK_SIZE;
+        }
+
+        // Handle remainder with SSSE3
+        if simd_bytes < data.len() {
+            encode_ssse3_impl(&data[simd_bytes..], dictionary, variant, result);
+        }
     }
 }
 
@@ -223,77 +223,81 @@ unsafe fn decode_avx2_impl(
     variant: DictionaryVariant,
     result: &mut Vec<u8>,
 ) -> bool {
-    use std::arch::x86_64::*;
+    unsafe {
+        use std::arch::x86_64::*;
 
-    const INPUT_BLOCK_SIZE: usize = 32;
+        const INPUT_BLOCK_SIZE: usize = 32;
 
-    // Strip padding
-    let input_no_padding = if let Some(last_non_pad) = encoded.iter().rposition(|&b| b != b'=') {
-        &encoded[..=last_non_pad]
-    } else {
-        encoded
-    };
+        // Strip padding
+        let input_no_padding = if let Some(last_non_pad) = encoded.iter().rposition(|&b| b != b'=')
+        {
+            &encoded[..=last_non_pad]
+        } else {
+            encoded
+        };
 
-    // Need at least 32 bytes to use AVX2
-    if input_no_padding.len() < 32 {
-        // Fall back to SSSE3 for small inputs
-        return decode_ssse3_impl(input_no_padding, variant, result);
-    }
-
-    // Get decode LUTs for this variant (128-bit versions)
-    let (lut_lo_128, lut_hi_128, lut_roll_128) = get_decode_luts(variant);
-
-    // Broadcast to 256-bit (duplicate in both lanes)
-    let lut_lo = _mm256_broadcastsi128_si256(lut_lo_128);
-    let lut_hi = _mm256_broadcastsi128_si256(lut_hi_128);
-    let lut_roll = _mm256_broadcastsi128_si256(lut_roll_128);
-
-    // Calculate number of full 32-byte blocks
-    let (num_rounds, simd_bytes) =
-        common::calculate_blocks(input_no_padding.len(), INPUT_BLOCK_SIZE);
-
-    // Process full blocks
-    for round in 0..num_rounds {
-        let offset = round * INPUT_BLOCK_SIZE;
-
-        // Load 32 bytes (16 chars per lane)
-        let input_vec = _mm256_loadu_si256(input_no_padding.as_ptr().add(offset) as *const __m256i);
-
-        // Validate
-        if !validate_avx2(input_vec, lut_lo, lut_hi) {
-            return false; // Invalid characters
+        // Need at least 32 bytes to use AVX2
+        if input_no_padding.len() < 32 {
+            // Fall back to SSSE3 for small inputs
+            return decode_ssse3_impl(input_no_padding, variant, result);
         }
 
-        // Translate ASCII to 6-bit indices
-        let indices = translate_decode_avx2(input_vec, lut_hi, lut_roll);
+        // Get decode LUTs for this variant (128-bit versions)
+        let (lut_lo_128, lut_hi_128, lut_roll_128) = get_decode_luts(variant);
 
-        // Reshuffle 6-bit to 8-bit (per-lane)
-        let decoded = reshuffle_decode_avx2(indices);
+        // Broadcast to 256-bit (duplicate in both lanes)
+        let lut_lo = _mm256_broadcastsi128_si256(lut_lo_128);
+        let lut_hi = _mm256_broadcastsi128_si256(lut_hi_128);
+        let lut_roll = _mm256_broadcastsi128_si256(lut_roll_128);
 
-        // Extract 12 bytes from each 128-bit lane (24 total)
-        // Lane 0 (low): bytes 0-11
-        // Lane 1 (high): bytes 16-27 (after extracting high 128 bits)
-        let lane0 = _mm256_castsi256_si128(decoded);
-        let lane1 = _mm256_extracti128_si256(decoded, 1);
+        // Calculate number of full 32-byte blocks
+        let (num_rounds, simd_bytes) =
+            common::calculate_blocks(input_no_padding.len(), INPUT_BLOCK_SIZE);
 
-        let mut buf0 = [0u8; 16];
-        let mut buf1 = [0u8; 16];
-        _mm_storeu_si128(buf0.as_mut_ptr() as *mut __m128i, lane0);
-        _mm_storeu_si128(buf1.as_mut_ptr() as *mut __m128i, lane1);
+        // Process full blocks
+        for round in 0..num_rounds {
+            let offset = round * INPUT_BLOCK_SIZE;
 
-        result.extend_from_slice(&buf0[0..12]);
-        result.extend_from_slice(&buf1[0..12]);
-    }
+            // Load 32 bytes (16 chars per lane)
+            let input_vec =
+                _mm256_loadu_si256(input_no_padding.as_ptr().add(offset) as *const __m256i);
 
-    // Handle remainder with SSSE3 fallback
-    if simd_bytes < input_no_padding.len() {
-        let remainder = &input_no_padding[simd_bytes..];
-        if !decode_ssse3_impl(remainder, variant, result) {
-            return false;
+            // Validate
+            if !validate_avx2(input_vec, lut_lo, lut_hi) {
+                return false; // Invalid characters
+            }
+
+            // Translate ASCII to 6-bit indices
+            let indices = translate_decode_avx2(input_vec, lut_hi, lut_roll);
+
+            // Reshuffle 6-bit to 8-bit (per-lane)
+            let decoded = reshuffle_decode_avx2(indices);
+
+            // Extract 12 bytes from each 128-bit lane (24 total)
+            // Lane 0 (low): bytes 0-11
+            // Lane 1 (high): bytes 16-27 (after extracting high 128 bits)
+            let lane0 = _mm256_castsi256_si128(decoded);
+            let lane1 = _mm256_extracti128_si256(decoded, 1);
+
+            let mut buf0 = [0u8; 16];
+            let mut buf1 = [0u8; 16];
+            _mm_storeu_si128(buf0.as_mut_ptr() as *mut __m128i, lane0);
+            _mm_storeu_si128(buf1.as_mut_ptr() as *mut __m128i, lane1);
+
+            result.extend_from_slice(&buf0[0..12]);
+            result.extend_from_slice(&buf1[0..12]);
         }
-    }
 
-    true
+        // Handle remainder with SSSE3 fallback
+        if simd_bytes < input_no_padding.len() {
+            let remainder = &input_no_padding[simd_bytes..];
+            if !decode_ssse3_impl(remainder, variant, result) {
+                return false;
+            }
+        }
+
+        true
+    }
 }
 
 /// Validate that all input bytes are valid base64 characters (AVX2)
@@ -396,48 +400,50 @@ unsafe fn encode_ssse3_impl(
     variant: DictionaryVariant,
     result: &mut String,
 ) {
-    use std::arch::x86_64::*;
+    unsafe {
+        use std::arch::x86_64::*;
 
-    const BLOCK_SIZE: usize = 12;
+        const BLOCK_SIZE: usize = 12;
 
-    // Need at least 16 bytes in buffer to safely load 128 bits
-    if data.len() < 16 {
-        // Fall back to scalar for small inputs
-        encode_scalar_remainder(data, dictionary, result);
-        return;
-    }
-
-    // Process blocks of 12 bytes. We load 16 bytes but only use 12.
-    // Ensure we don't read past the buffer: need 4 extra bytes after last block
-    let safe_len = if data.len() >= 4 { data.len() - 4 } else { 0 };
-    let (num_rounds, simd_bytes) = common::calculate_blocks(safe_len, BLOCK_SIZE);
-
-    let mut offset = 0;
-    for _ in 0..num_rounds {
-        // Load 16 bytes (we only use the first 12)
-        let input_vec = _mm_loadu_si128(data.as_ptr().add(offset) as *const __m128i);
-
-        // Reshuffle bytes to extract 6-bit groups
-        let reshuffled = reshuffle(input_vec);
-
-        // Translate 6-bit indices to ASCII
-        let encoded = translate(reshuffled, variant);
-
-        // Store 16 output characters
-        let mut output_buf = [0u8; 16];
-        _mm_storeu_si128(output_buf.as_mut_ptr() as *mut __m128i, encoded);
-
-        // Append to result (safe because base64 is ASCII)
-        for &byte in &output_buf {
-            result.push(byte as char);
+        // Need at least 16 bytes in buffer to safely load 128 bits
+        if data.len() < 16 {
+            // Fall back to scalar for small inputs
+            encode_scalar_remainder(data, dictionary, result);
+            return;
         }
 
-        offset += BLOCK_SIZE;
-    }
+        // Process blocks of 12 bytes. We load 16 bytes but only use 12.
+        // Ensure we don't read past the buffer: need 4 extra bytes after last block
+        let safe_len = if data.len() >= 4 { data.len() - 4 } else { 0 };
+        let (num_rounds, simd_bytes) = common::calculate_blocks(safe_len, BLOCK_SIZE);
 
-    // Handle remainder with scalar code
-    if simd_bytes < data.len() {
-        encode_scalar_remainder(&data[simd_bytes..], dictionary, result);
+        let mut offset = 0;
+        for _ in 0..num_rounds {
+            // Load 16 bytes (we only use the first 12)
+            let input_vec = _mm_loadu_si128(data.as_ptr().add(offset) as *const __m128i);
+
+            // Reshuffle bytes to extract 6-bit groups
+            let reshuffled = reshuffle(input_vec);
+
+            // Translate 6-bit indices to ASCII
+            let encoded = translate(reshuffled, variant);
+
+            // Store 16 output characters
+            let mut output_buf = [0u8; 16];
+            _mm_storeu_si128(output_buf.as_mut_ptr() as *mut __m128i, encoded);
+
+            // Append to result (safe because base64 is ASCII)
+            for &byte in &output_buf {
+                result.push(byte as char);
+            }
+
+            offset += BLOCK_SIZE;
+        }
+
+        // Handle remainder with scalar code
+        if simd_bytes < data.len() {
+            encode_scalar_remainder(&data[simd_bytes..], dictionary, result);
+        }
     }
 }
 
@@ -561,71 +567,75 @@ unsafe fn decode_ssse3_impl(
     variant: DictionaryVariant,
     result: &mut Vec<u8>,
 ) -> bool {
-    use std::arch::x86_64::*;
+    unsafe {
+        use std::arch::x86_64::*;
 
-    const INPUT_BLOCK_SIZE: usize = 16;
-    const OUTPUT_BLOCK_SIZE: usize = 12;
+        const INPUT_BLOCK_SIZE: usize = 16;
+        const OUTPUT_BLOCK_SIZE: usize = 12;
 
-    // Strip padding
-    let input_no_padding = if let Some(last_non_pad) = encoded.iter().rposition(|&b| b != b'=') {
-        &encoded[..=last_non_pad]
-    } else {
-        encoded
-    };
+        // Strip padding
+        let input_no_padding = if let Some(last_non_pad) = encoded.iter().rposition(|&b| b != b'=')
+        {
+            &encoded[..=last_non_pad]
+        } else {
+            encoded
+        };
 
-    // Get decode LUTs for this variant
-    let (lut_lo, lut_hi, lut_roll) = get_decode_luts(variant);
+        // Get decode LUTs for this variant
+        let (lut_lo, lut_hi, lut_roll) = get_decode_luts(variant);
 
-    // Calculate number of full 16-byte blocks
-    let (num_rounds, simd_bytes) =
-        common::calculate_blocks(input_no_padding.len(), INPUT_BLOCK_SIZE);
+        // Calculate number of full 16-byte blocks
+        let (num_rounds, simd_bytes) =
+            common::calculate_blocks(input_no_padding.len(), INPUT_BLOCK_SIZE);
 
-    // Process full blocks
-    for round in 0..num_rounds {
-        let offset = round * INPUT_BLOCK_SIZE;
+        // Process full blocks
+        for round in 0..num_rounds {
+            let offset = round * INPUT_BLOCK_SIZE;
 
-        // Load 16 bytes
-        let input_vec = _mm_loadu_si128(input_no_padding.as_ptr().add(offset) as *const __m128i);
+            // Load 16 bytes
+            let input_vec =
+                _mm_loadu_si128(input_no_padding.as_ptr().add(offset) as *const __m128i);
 
-        // Validate
-        if !validate(input_vec, lut_lo, lut_hi) {
-            return false; // Invalid characters
+            // Validate
+            if !validate(input_vec, lut_lo, lut_hi) {
+                return false; // Invalid characters
+            }
+
+            // Translate ASCII to 6-bit indices
+            let indices = translate_decode(input_vec, lut_hi, lut_roll);
+
+            // Reshuffle 6-bit to 8-bit
+            let decoded = reshuffle_decode(indices);
+
+            // Store 12 bytes
+            let mut output_buf = [0u8; 16];
+            _mm_storeu_si128(output_buf.as_mut_ptr() as *mut __m128i, decoded);
+            result.extend_from_slice(&output_buf[0..OUTPUT_BLOCK_SIZE]);
         }
 
-        // Translate ASCII to 6-bit indices
-        let indices = translate_decode(input_vec, lut_hi, lut_roll);
-
-        // Reshuffle 6-bit to 8-bit
-        let decoded = reshuffle_decode(indices);
-
-        // Store 12 bytes
-        let mut output_buf = [0u8; 16];
-        _mm_storeu_si128(output_buf.as_mut_ptr() as *mut __m128i, decoded);
-        result.extend_from_slice(&output_buf[0..OUTPUT_BLOCK_SIZE]);
-    }
-
-    // Handle remainder with scalar fallback
-    if simd_bytes < input_no_padding.len() {
-        let remainder = &input_no_padding[simd_bytes..];
-        if !decode_scalar_remainder(
-            remainder,
-            &mut |c| match c {
-                b'A'..=b'Z' => Some((c - b'A') as u8),
-                b'a'..=b'z' => Some((c - b'a' + 26) as u8),
-                b'0'..=b'9' => Some((c - b'0' + 52) as u8),
-                b'+' if matches!(variant, DictionaryVariant::Base64Standard) => Some(62),
-                b'/' if matches!(variant, DictionaryVariant::Base64Standard) => Some(63),
-                b'-' if matches!(variant, DictionaryVariant::Base64Url) => Some(62),
-                b'_' if matches!(variant, DictionaryVariant::Base64Url) => Some(63),
-                _ => None,
-            },
-            result,
-        ) {
-            return false;
+        // Handle remainder with scalar fallback
+        if simd_bytes < input_no_padding.len() {
+            let remainder = &input_no_padding[simd_bytes..];
+            if !decode_scalar_remainder(
+                remainder,
+                &mut |c| match c {
+                    b'A'..=b'Z' => Some(c - b'A'),
+                    b'a'..=b'z' => Some(c - b'a' + 26),
+                    b'0'..=b'9' => Some(c - b'0' + 52),
+                    b'+' if matches!(variant, DictionaryVariant::Base64Standard) => Some(62),
+                    b'/' if matches!(variant, DictionaryVariant::Base64Standard) => Some(63),
+                    b'-' if matches!(variant, DictionaryVariant::Base64Url) => Some(62),
+                    b'_' if matches!(variant, DictionaryVariant::Base64Url) => Some(63),
+                    _ => None,
+                },
+                result,
+            ) {
+                return false;
+            }
         }
-    }
 
-    true
+        true
+    }
 }
 
 /// Get decode lookup tables for the specified variant
@@ -756,6 +766,7 @@ fn decode_scalar_remainder(
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
     use crate::core::config::EncodingMode;
@@ -816,10 +827,9 @@ mod tests {
             let original: Vec<u8> = (0..len).map(|i| (i * 7) as u8).collect();
 
             if let Some(encoded) = encode(&original, &dictionary, DictionaryVariant::Base64Standard)
+                && let Some(decoded) = decode(&encoded, DictionaryVariant::Base64Standard)
             {
-                if let Some(decoded) = decode(&encoded, DictionaryVariant::Base64Standard) {
-                    assert_eq!(decoded, original, "Round-trip failed at length {}", len);
-                }
+                assert_eq!(decoded, original, "Round-trip failed at length {}", len);
             }
         }
     }
@@ -830,7 +840,7 @@ mod tests {
 
         // Test with input large enough to trigger AVX2 path (>28 bytes)
         // 48 bytes = 2 AVX2 blocks (24 bytes each)
-        let test_data: Vec<u8> = (0..48).map(|i| i).collect();
+        let test_data: Vec<u8> = (0..48).collect();
 
         if let Some(simd_result) =
             encode(&test_data, &dictionary, DictionaryVariant::Base64Standard)

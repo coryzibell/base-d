@@ -1,4 +1,4 @@
-use crate::{decode, encode, Dictionary, DictionaryRegistry, EncodingMode};
+use crate::{Dictionary, DictionaryRegistry, EncodingMode, decode, encode};
 
 fn get_dictionary(name: &str) -> Dictionary {
     let config = DictionaryRegistry::load_default().unwrap();
@@ -7,13 +7,11 @@ fn get_dictionary(name: &str) -> Dictionary {
     match dictionary_config.mode {
         EncodingMode::ByteRange => {
             let start = dictionary_config.start_codepoint.unwrap();
-            Dictionary::new_with_mode_and_range(
-                Vec::new(),
-                dictionary_config.mode.clone(),
-                None,
-                Some(start),
-            )
-            .unwrap()
+            Dictionary::builder()
+                .mode(dictionary_config.mode.clone())
+                .start_codepoint(start)
+                .build()
+                .unwrap()
         }
         _ => {
             let chars: Vec<char> = dictionary_config.chars.chars().collect();
@@ -21,7 +19,13 @@ fn get_dictionary(name: &str) -> Dictionary {
                 .padding
                 .as_ref()
                 .and_then(|s| s.chars().next());
-            Dictionary::new_with_mode(chars, dictionary_config.mode.clone(), padding).unwrap()
+            let mut builder = Dictionary::builder()
+                .chars(chars)
+                .mode(dictionary_config.mode.clone());
+            if let Some(p) = padding {
+                builder = builder.padding(p);
+            }
+            builder.build().unwrap()
         }
     }
 }
@@ -219,7 +223,7 @@ fn test_base1024_large_dictionary() {
         // For mathematical mode, larger base = more compact representation
         // Each 1024-base digit represents ~10 bits (log2(1024) = 10)
         let bits_in = data.len() * 8;
-        let max_chars = (bits_in + 9) / 10; // ceiling division
+        let max_chars = bits_in.div_ceil(10); // ceiling division
         assert!(
             encoded.chars().count() <= max_chars + 1,
             "Encoding too long: {} chars for {} bytes (expected <= {})",
@@ -275,8 +279,11 @@ fn test_base256_matrix_like_hex() {
     let config = DictionaryRegistry::load_default().unwrap();
     let matrix_config = config.get_dictionary("base256_matrix").unwrap();
     let chars: Vec<char> = matrix_config.chars.chars().collect();
-    let dictionary_math =
-        Dictionary::new_with_mode(chars, EncodingMode::BaseConversion, None).unwrap();
+    let dictionary_math = Dictionary::builder()
+        .chars(chars)
+        .mode(EncodingMode::BaseConversion)
+        .build()
+        .unwrap();
 
     // Test various data sizes
     let test_data = vec![

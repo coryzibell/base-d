@@ -1,5 +1,6 @@
-use base_d::{decode, encode, Dictionary, DictionaryRegistry, EncodingMode};
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use base_d::{Dictionary, DictionaryRegistry, EncodingMode, decode, encode};
+use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
+use std::hint::black_box;
 
 fn get_dictionary(name: &str) -> Dictionary {
     let config = DictionaryRegistry::load_default().unwrap();

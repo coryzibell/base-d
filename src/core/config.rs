@@ -7,9 +7,11 @@ use std::collections::HashMap;
 /// and features.
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum EncodingMode {
     /// Mathematical base conversion treating data as a large number.
     /// Works with any dictionary size. Output length varies with input.
+    #[default]
     BaseConversion,
     /// Fixed-size bit chunking per RFC 4648.
     /// Requires power-of-two dictionary size. Supports padding.
@@ -17,12 +19,6 @@ pub enum EncodingMode {
     /// Direct 1:1 byte-to-character mapping using Unicode codepoint ranges.
     /// Zero encoding overhead. Always 256 characters.
     ByteRange,
-}
-
-impl Default for EncodingMode {
-    fn default() -> Self {
-        EncodingMode::BaseConversion
-    }
 }
 
 /// Configuration for a single dictionary loaded from TOML.

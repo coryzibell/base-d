@@ -3,7 +3,7 @@
 //! This example shows how the library automatically uses SIMD acceleration
 //! for compatible dictionaries without requiring manual configuration.
 
-use base_d::{encode, Dictionary};
+use base_d::{Dictionary, encode};
 
 fn main() {
     let data = b"Hello, World! This is a test of automatic SIMD selection.";

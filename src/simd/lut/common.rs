@@ -69,9 +69,7 @@ impl RangeInfo {
 
         // Single contiguous range: just use offset directly
         let mut offset_lut = [0i8; 16];
-        for i in 0..16 {
-            offset_lut[i] = range.offset;
-        }
+        offset_lut.iter_mut().for_each(|val| *val = range.offset);
 
         Some(RangeInfo {
             ranges: ranges.to_vec(),
@@ -103,9 +101,11 @@ impl RangeInfo {
 
         // Fill remaining slots with range1 offset
         let range1_compressed_len = ((range1.end_idx - range0.end_idx) as usize).min(15);
-        for i in 1..=range1_compressed_len {
-            offset_lut[i] = range1.offset;
-        }
+        offset_lut
+            .iter_mut()
+            .skip(1)
+            .take(range1_compressed_len)
+            .for_each(|val| *val = range1.offset);
 
         Some(RangeInfo {
             ranges: ranges.to_vec(),
@@ -157,9 +157,12 @@ impl RangeInfo {
         for range in ranges {
             if range.start_idx > subs_threshold {
                 let range_len = (range.end_idx - range.start_idx + 1) as usize;
-                for i in 0..range_len.min(16 - compressed_idx) {
-                    offset_lut[compressed_idx + i] = range.offset;
-                }
+                let fill_count = range_len.min(16 - compressed_idx);
+                offset_lut
+                    .iter_mut()
+                    .skip(compressed_idx)
+                    .take(fill_count)
+                    .for_each(|val| *val = range.offset);
                 compressed_idx += range_len;
                 if compressed_idx >= 15 {
                     break;
@@ -249,13 +252,14 @@ impl RangeInfo {
         for range in ranges {
             let range_len = (range.end_idx - range.start_idx + 1) as usize;
 
-            for _ in 0..range_len {
-                if compressed_idx < 16 {
-                    lut[compressed_idx] = range.offset;
-                    compressed_idx += 1;
-                } else {
-                    break;
-                }
+            let fill_count = range_len.min(16 - compressed_idx);
+            lut.iter_mut()
+                .skip(compressed_idx)
+                .take(fill_count)
+                .for_each(|val| *val = range.offset);
+            compressed_idx += range_len;
+            if compressed_idx >= 16 {
+                break;
             }
         }
 
@@ -318,13 +322,14 @@ impl RangeInfo {
         for range in ranges {
             let range_len = (range.end_idx - range.start_idx + 1) as usize;
 
-            for _ in 0..range_len {
-                if compressed_idx < 16 {
-                    lut[compressed_idx] = range.offset;
-                    compressed_idx += 1;
-                } else {
-                    break;
-                }
+            let fill_count = range_len.min(16 - compressed_idx);
+            lut.iter_mut()
+                .skip(compressed_idx)
+                .take(fill_count)
+                .for_each(|val| *val = range.offset);
+            compressed_idx += range_len;
+            if compressed_idx >= 16 {
+                break;
             }
         }
 
@@ -386,13 +391,14 @@ impl RangeInfo {
         for range in ranges {
             let range_len = (range.end_idx - range.start_idx + 1) as usize;
 
-            for _ in 0..range_len {
-                if compressed_idx < 16 {
-                    lut[compressed_idx] = range.offset;
-                    compressed_idx += 1;
-                } else {
-                    break;
-                }
+            let fill_count = range_len.min(16 - compressed_idx);
+            lut.iter_mut()
+                .skip(compressed_idx)
+                .take(fill_count)
+                .for_each(|val| *val = range.offset);
+            compressed_idx += range_len;
+            if compressed_idx >= 16 {
+                break;
             }
         }
 

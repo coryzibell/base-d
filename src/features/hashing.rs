@@ -4,8 +4,8 @@ use md5::Md5;
 use sha2::{Digest, Sha224, Sha256, Sha384, Sha512};
 use sha3::{Keccak224, Keccak256, Keccak384, Keccak512, Sha3_224, Sha3_256, Sha3_384, Sha3_512};
 use std::hash::Hasher;
-use twox_hash::xxhash3_128::Hasher as Xxh3Hash128;
 use twox_hash::xxhash3_64::Hasher as Xxh3Hash64;
+use twox_hash::xxhash3_128::Hasher as Xxh3Hash128;
 use twox_hash::{XxHash32, XxHash64};
 
 /// Configuration for xxHash algorithms.
@@ -72,6 +72,7 @@ pub enum HashAlgorithm {
 
 impl HashAlgorithm {
     /// Parse hash algorithm from string.
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Result<Self, String> {
         match s.to_lowercase().as_str() {
             "md5" => Ok(HashAlgorithm::Md5),
@@ -307,6 +308,7 @@ pub fn hash_with_config(data: &[u8], algorithm: HashAlgorithm, config: &XxHashCo
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
 
