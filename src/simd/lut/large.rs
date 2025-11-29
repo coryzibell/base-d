@@ -731,13 +731,13 @@ impl LargeLutCodec {
 
         // Shuffle mask: Reshuffle bytes to prepare for 6-bit extraction
         // For each group of 3 input bytes ABC (24 bits) -> 4 output indices (4 x 6 bits)
-        // Matches specialized/base64.rs reshuffle pattern
+        // Matches x86_64 base64.rs pattern: [1,0,2,1, 4,3,5,4, 7,6,8,7, 10,9,11,10]
         let shuffle_indices = vld1q_u8(
             [
-                0, 0, 1, 2, // bytes 0-2 -> positions 0-3
-                3, 3, 4, 5, // bytes 3-5 -> positions 4-7
-                6, 6, 7, 8, // bytes 6-8 -> positions 8-11
-                9, 9, 10, 11, // bytes 9-11 -> positions 12-15
+                1, 0, 2, 1, // bytes 0-2 -> positions 0-3
+                4, 3, 5, 4, // bytes 3-5 -> positions 4-7
+                7, 6, 8, 7, // bytes 6-8 -> positions 8-11
+                10, 9, 11, 10, // bytes 9-11 -> positions 12-15
             ]
             .as_ptr(),
         );
@@ -746,19 +746,38 @@ impl LargeLutCodec {
         let shuffled_u32 = vreinterpretq_u32_u8(shuffled);
 
         // Extract 6-bit groups using shifts and masks
-        // First extraction: positions 0 and 2 in each group
-        // Mask 0x0FC0FC00: isolate specific bit positions
-        let t0 = vandq_u32(shuffled_u32, vdupq_n_u32(0x0FC0FC00));
-        let t0_u16 = vreinterpretq_u16_u32(t0);
-        let mult_hi = vmulq_n_u16(t0_u16, 0x0040);
-        let t1 = vreinterpretq_u32_u16(vshrq_n_u16(mult_hi, 10));
+        // This matches the x86_64 algorithm which uses mulhi_epu16 and mullo_epi16.
+        // NEON doesn't have a direct mulhi equivalent, so we use vmull/vshrn pattern.
 
-        // Second extraction: positions 1 and 3 in each group
-        // Mask 0x003F03F0: isolate different bit positions
+        // First extraction: get bits for positions 0 and 2 in each group of 4
+        // x86: mulhi_epu16(and(shuffled, 0x0FC0FC00), 0x04000040)
+        let t0 = vandq_u32(shuffled_u32, vdupq_n_u32(0x0FC0FC00));
+        let t1 = {
+            let t0_u16 = vreinterpretq_u16_u32(t0);
+            // Implement mulhi_epu16 using vmull + vshrn
+            // 0x04000040 as 16-bit lanes: [0x0040, 0x0400, 0x0040, 0x0400, ...]
+            let mult_pattern = vreinterpretq_u16_u32(vdupq_n_u32(0x04000040));
+            let lo = vget_low_u16(t0_u16);
+            let hi = vget_high_u16(t0_u16);
+            let mult_lo = vget_low_u16(mult_pattern);
+            let mult_hi = vget_high_u16(mult_pattern);
+            let lo_32 = vmull_u16(lo, mult_lo);
+            let hi_32 = vmull_u16(hi, mult_hi);
+            let lo_result = vshrn_n_u32(lo_32, 16);
+            let hi_result = vshrn_n_u32(hi_32, 16);
+            vreinterpretq_u32_u16(vcombine_u16(lo_result, hi_result))
+        };
+
+        // Second extraction: get bits for positions 1 and 3 in each group of 4
+        // x86: mullo_epi16(and(shuffled, 0x003F03F0), 0x01000010)
         let t2 = vandq_u32(shuffled_u32, vdupq_n_u32(0x003F03F0));
-        let t2_u16 = vreinterpretq_u16_u32(t2);
-        let mult_lo = vmulq_n_u16(t2_u16, 0x0010);
-        let t3 = vreinterpretq_u32_u16(vshrq_n_u16(mult_lo, 6));
+        let t3 = {
+            let t2_u16 = vreinterpretq_u16_u32(t2);
+            // mullo is just regular multiply (keep low 16 bits)
+            // 0x01000010 as 16-bit lanes: [0x0010, 0x0100, 0x0010, 0x0100, ...]
+            let mult_pattern = vreinterpretq_u16_u32(vdupq_n_u32(0x01000010));
+            vreinterpretq_u32_u16(vmulq_u16(t2_u16, mult_pattern))
+        };
 
         // Combine the two results
         vreinterpretq_u8_u32(vorrq_u32(t1, t3))
@@ -1870,34 +1889,48 @@ impl LargeLutCodec {
     ) -> std::arch::aarch64::uint8x16_t {
         use std::arch::aarch64::*;
 
-        // Stage 1: Merge adjacent pairs
-        let merge_ab_and_bc = vreinterpretq_u16_s16(vmull_s8(
-            vget_low_s8(vreinterpretq_s8_u8(indices)),
-            vdup_n_s8(1),
-        ));
-        let merge_ab_and_bc_hi =
-            vreinterpretq_u16_s16(vmull_high_s8(vreinterpretq_s8_u8(indices), vdupq_n_s8(1)));
+        // Simulate _mm_maddubs_epi16: multiply adjacent u8 pairs and add
+        // Input: [a0 b0 a1 b1 a2 b2 ...] u8x16
+        // Multiply pattern: [0x01 0x40 0x01 0x40 ...]
+        // Result: [a0*1 + b0*64, a1*1 + b1*64, ...] as i16x8
 
-        // Unpack 6-bit indices to 8-bit bytes
-        // Base64: 4 chars (6 bits each) -> 3 bytes (8 bits each)
-        let mut idx_buf = [0u8; 16];
-        vst1q_u8(idx_buf.as_mut_ptr(), indices);
+        let pairs = vreinterpretq_u16_u8(indices);
 
-        let mut out_buf = [0u8; 16];
-        for j in 0..4 {
-            let base = j * 4;
-            let a = idx_buf[base] as u8;
-            let b = idx_buf[base + 1] as u8;
-            let c = idx_buf[base + 2] as u8;
-            let d = idx_buf[base + 3] as u8;
+        // Extract even bytes (a0, a1, a2, ...) and odd bytes (b0, b1, b2, ...)
+        let even = vandq_u16(pairs, vdupq_n_u16(0xFF)); // Low byte of each pair
+        let odd = vshrq_n_u16(pairs, 8); // High byte of each pair
 
-            // Unpack: [aaaaaa][bbbbbb][cccccc][dddddd] -> [aaaaaabb][bbbbcccc][ccdddddd]
-            out_buf[j * 3] = (a << 2) | (b >> 4);
-            out_buf[j * 3 + 1] = (b << 4) | (c >> 2);
-            out_buf[j * 3 + 2] = (c << 6) | d;
-        }
+        // Stage 1: Emulate maddubs: even * 64 + odd * 1
+        let merge_result = vmlaq_n_u16(odd, even, 64);
 
-        vld1q_u8(out_buf.as_ptr())
+        // Stage 2: Combine 16-bit pairs using multiply-add
+        // _mm_madd_epi16: multiply adjacent i16 and add horizontally
+        // Pattern: [0x1000 0x0001 0x1000 0x0001 ...]
+        // Result: [p0*0x1000 + p1*0x0001, ...] as i32x4
+
+        let merge_u32 = vreinterpretq_u32_u16(merge_result);
+
+        // Extract low and high 16-bit values from each 32-bit pair
+        let lo = vandq_u32(merge_u32, vdupq_n_u32(0xFFFF));
+        let hi = vshrq_n_u32(merge_u32, 16);
+
+        // Combine: lo << 12 | hi
+        let final_32bit = vorrq_u32(vshlq_n_u32(lo, 12), hi);
+
+        // Stage 3: Extract valid bytes (3 bytes per 32-bit group)
+        let shuffle_mask = vld1q_u8(
+            [
+                2, 1, 0, // first group (reversed byte order)
+                6, 5, 4, // second group
+                10, 9, 8, // third group
+                14, 13, 12, // fourth group
+                255, 255, 255, 255,
+            ]
+            .as_ptr(),
+        );
+
+        let result_bytes = vreinterpretq_u8_u32(final_32bit);
+        vqtbl1q_u8(result_bytes, shuffle_mask)
     }
 
     /// Scalar fallback for decoding

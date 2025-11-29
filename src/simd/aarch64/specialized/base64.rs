@@ -126,22 +126,35 @@ unsafe fn reshuffle_neon(input: uint8x16_t) -> uint8x16_t {
 
     let shuffled_u32 = vreinterpretq_u32_u8(shuffled);
 
-    // First extraction: positions 0 and 2 in each group
-    // Mask 0x0FC0FC00: isolate specific bit positions
+    // First extraction: get bits for positions 0 and 2 in each group of 4
+    // x86: mulhi_epu16(and(shuffled, 0x0FC0FC00), 0x04000040)
     let t0 = vandq_u32(shuffled_u32, vdupq_n_u32(0x0FC0FC00));
+    let t1 = {
+        let t0_u16 = vreinterpretq_u16_u32(t0);
+        // Implement mulhi_epu16 using vmull + vshrn
+        // 0x04000040 as 16-bit lanes: [0x0040, 0x0400, 0x0040, 0x0400, ...]
+        let mult_pattern = vreinterpretq_u16_u32(vdupq_n_u32(0x04000040));
+        let lo = vget_low_u16(t0_u16);
+        let hi = vget_high_u16(t0_u16);
+        let mult_lo = vget_low_u16(mult_pattern);
+        let mult_hi = vget_high_u16(mult_pattern);
+        let lo_32 = vmull_u16(lo, mult_lo);
+        let hi_32 = vmull_u16(hi, mult_hi);
+        let lo_result = vshrn_n_u32(lo_32, 16);
+        let hi_result = vshrn_n_u32(hi_32, 16);
+        vreinterpretq_u32_u16(vcombine_u16(lo_result, hi_result))
+    };
 
-    // Simulate mulhi_epu16: multiply and extract high bits
-    // For NEON, use shifts to achieve same effect
-    let t0_u16 = vreinterpretq_u16_u32(t0);
-    let mult_hi = vmulq_n_u16(t0_u16, 0x0040);
-    let t1 = vreinterpretq_u32_u16(vshrq_n_u16(mult_hi, 10));
-
-    // Second extraction: positions 1 and 3 in each group
-    // Mask 0x003F03F0: isolate different bit positions
+    // Second extraction: get bits for positions 1 and 3 in each group of 4
+    // x86: mullo_epi16(and(shuffled, 0x003F03F0), 0x01000010)
     let t2 = vandq_u32(shuffled_u32, vdupq_n_u32(0x003F03F0));
-    let t2_u16 = vreinterpretq_u16_u32(t2);
-    let mult_lo = vmulq_n_u16(t2_u16, 0x0010);
-    let t3 = vreinterpretq_u32_u16(vshrq_n_u16(mult_lo, 6));
+    let t3 = {
+        let t2_u16 = vreinterpretq_u16_u32(t2);
+        // mullo is just regular multiply (keep low 16 bits)
+        // 0x01000010 as 16-bit lanes: [0x0010, 0x0100, 0x0010, 0x0100, ...]
+        let mult_pattern = vreinterpretq_u16_u32(vdupq_n_u32(0x01000010));
+        vreinterpretq_u32_u16(vmulq_u16(t2_u16, mult_pattern))
+    };
 
     // Combine the two results
     vreinterpretq_u8_u32(vorrq_u32(t1, t3))
