@@ -6,6 +6,7 @@ pub use decoder::StreamingDecoder;
 pub use encoder::StreamingEncoder;
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
     use crate::{Dictionary, DictionaryRegistry};

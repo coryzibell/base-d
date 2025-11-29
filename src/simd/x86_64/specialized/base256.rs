@@ -21,8 +21,8 @@ use crate::core::dictionary::Dictionary;
 pub fn encode(data: &[u8], dictionary: &Dictionary) -> Option<String> {
     // Build 256-entry LUT from dictionary
     let mut lut = ['\0'; 256];
-    for i in 0..256 {
-        lut[i] = dictionary.encode_digit(i)?;
+    for (i, lut_entry) in lut.iter_mut().enumerate() {
+        *lut_entry = dictionary.encode_digit(i)?;
     }
 
     // Pre-allocate output (1 char per byte)
@@ -126,9 +126,9 @@ unsafe fn encode_avx2_impl(data: &[u8], lut: &[char; 256], result: &mut String) 
             _mm256_storeu_si256(input_buf.as_mut_ptr() as *mut __m256i, input_vec);
 
             // Translate using LUT (scalar - fastest for 256-entry table)
-            for &byte in &input_buf {
+            input_buf.iter().for_each(|&byte| {
                 result.push(lut[byte as usize]);
-            }
+            });
 
             offset += BLOCK_SIZE;
         }
@@ -175,9 +175,9 @@ unsafe fn encode_ssse3_impl(data: &[u8], lut: &[char; 256], result: &mut String)
             _mm_storeu_si128(input_buf.as_mut_ptr() as *mut __m128i, input_vec);
 
             // Translate using LUT (scalar - fastest for 256-entry table)
-            for &byte in &input_buf {
+            input_buf.iter().for_each(|&byte| {
                 result.push(lut[byte as usize]);
-            }
+            });
 
             offset += BLOCK_SIZE;
         }
@@ -191,9 +191,9 @@ unsafe fn encode_ssse3_impl(data: &[u8], lut: &[char; 256], result: &mut String)
 
 /// Encode remaining bytes using scalar algorithm
 fn encode_scalar_remainder(data: &[u8], lut: &[char; 256], result: &mut String) {
-    for &byte in data {
+    data.iter().for_each(|&byte| {
         result.push(lut[byte as usize]);
-    }
+    });
 }
 
 /// AVX2 base256 decoding implementation (Unicode version)
@@ -221,9 +221,8 @@ unsafe fn decode_avx2_impl_unicode(
         let offset = round * BLOCK_SIZE;
 
         // Process 32 chars
-        for i in 0..BLOCK_SIZE {
-            let ch = chars[offset + i];
-            match reverse_map.get(&ch) {
+        for ch in chars.iter().skip(offset).take(BLOCK_SIZE) {
+            match reverse_map.get(ch) {
                 Some(&byte_val) => result.push(byte_val),
                 None => return false, // Invalid character
             }
@@ -264,9 +263,8 @@ unsafe fn decode_ssse3_impl_unicode(
         let offset = round * BLOCK_SIZE;
 
         // Process 16 chars
-        for i in 0..BLOCK_SIZE {
-            let ch = chars[offset + i];
-            match reverse_map.get(&ch) {
+        for ch in chars.iter().skip(offset).take(BLOCK_SIZE) {
+            match reverse_map.get(ch) {
                 Some(&byte_val) => result.push(byte_val),
                 None => return false, // Invalid character
             }
@@ -285,6 +283,7 @@ unsafe fn decode_ssse3_impl_unicode(
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
     use crate::core::config::{DictionaryRegistry, EncodingMode};

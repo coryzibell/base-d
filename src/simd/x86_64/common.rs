@@ -76,7 +76,6 @@ pub fn encode_scalar_chunked(data: &[u8], dictionary: &Dictionary, result: &mut 
     // Add padding if specified (e.g., base64 '=')
     if let Some(pad_char) = dictionary.padding() {
         // Calculate expected output length
-        let bits_per_char = bits_per_char;
         let input_bits = data.len() * 8;
         let output_chars = input_bits.div_ceil(bits_per_char);
 

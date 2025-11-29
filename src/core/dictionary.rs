@@ -51,6 +51,7 @@ impl Dictionary {
     ///
     /// Use `Dictionary::builder()` instead for more flexible configuration.
     #[deprecated(since = "0.1.0", note = "Use Dictionary::builder() instead")]
+    #[allow(deprecated)]
     pub fn new(chars: Vec<char>) -> Result<Self, String> {
         Self::new_with_mode(chars, EncodingMode::BaseConversion, None)
     }
@@ -73,6 +74,7 @@ impl Dictionary {
     ///
     /// Use `Dictionary::builder()` instead for more flexible configuration.
     #[deprecated(since = "0.1.0", note = "Use Dictionary::builder() instead")]
+    #[allow(deprecated)]
     pub fn new_with_mode(
         chars: Vec<char>,
         mode: EncodingMode,
@@ -252,6 +254,7 @@ impl Dictionary {
         since = "0.1.0",
         note = "Use Dictionary::builder().chars_from_str(s).build() instead"
     )]
+    #[allow(deprecated, clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Result<Self, String> {
         let chars: Vec<char> = s.chars().collect();
         Self::new(chars)
@@ -433,11 +436,11 @@ impl DictionaryBuilder {
     /// - The configuration is invalid for the specified mode
     /// - Required fields are missing
     /// - Validation fails (duplicates, invalid characters, etc.)
+    #[allow(deprecated)]
     pub fn build(self) -> Result<Dictionary, String> {
         let mode = self.mode.unwrap_or(EncodingMode::BaseConversion);
         let chars = self.chars.unwrap_or_default();
 
-        #[allow(deprecated)]
         Dictionary::new_with_mode_and_range(chars, mode, self.padding, self.start_codepoint)
     }
 }
@@ -449,7 +452,7 @@ mod tests {
     #[test]
     fn test_duplicate_character_detection() {
         let chars = vec!['a', 'b', 'c', 'a'];
-        let result = Dictionary::new(chars);
+        let result = Dictionary::builder().chars(chars).build();
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Duplicate character"));
     }
@@ -457,7 +460,7 @@ mod tests {
     #[test]
     fn test_empty_dictionary() {
         let chars = vec![];
-        let result = Dictionary::new(chars);
+        let result = Dictionary::builder().chars(chars).build();
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("cannot be empty"));
     }
@@ -465,7 +468,10 @@ mod tests {
     #[test]
     fn test_chunked_mode_power_of_two() {
         let chars = vec!['a', 'b', 'c']; // 3 is not power of 2
-        let result = Dictionary::new_with_mode(chars, EncodingMode::Chunked, None);
+        let result = Dictionary::builder()
+            .chars(chars)
+            .mode(EncodingMode::Chunked)
+            .build();
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("power-of-two"));
     }
@@ -480,7 +486,10 @@ mod tests {
                     char::from_u32('A' as u32 + (i % 26) + ((i / 26) * 100)).unwrap()
                 })
                 .collect();
-            let result = Dictionary::new_with_mode(chars, EncodingMode::Chunked, None);
+            let result = Dictionary::builder()
+                .chars(chars)
+                .mode(EncodingMode::Chunked)
+                .build();
             assert!(result.is_ok(), "Size {} should be valid", size);
         }
     }
@@ -488,7 +497,7 @@ mod tests {
     #[test]
     fn test_control_character_rejection() {
         let chars = vec!['a', 'b', '\x00', 'c']; // null character
-        let result = Dictionary::new(chars);
+        let result = Dictionary::builder().chars(chars).build();
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Control character"));
     }
@@ -496,7 +505,7 @@ mod tests {
     #[test]
     fn test_whitespace_rejection() {
         let chars = vec!['a', 'b', ' ', 'c'];
-        let result = Dictionary::new(chars);
+        let result = Dictionary::builder().chars(chars).build();
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Whitespace"));
     }
@@ -504,7 +513,11 @@ mod tests {
     #[test]
     fn test_padding_conflict_with_dictionary() {
         let chars = vec!['a', 'b', 'c', 'd'];
-        let result = Dictionary::new_with_mode(chars, EncodingMode::BaseConversion, Some('b'));
+        let result = Dictionary::builder()
+            .chars(chars)
+            .mode(EncodingMode::BaseConversion)
+            .padding('b')
+            .build();
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.contains("Padding character"));
@@ -514,37 +527,36 @@ mod tests {
     #[test]
     fn test_valid_padding() {
         let chars = vec!['a', 'b', 'c', 'd'];
-        let result = Dictionary::new_with_mode(chars, EncodingMode::BaseConversion, Some('='));
+        let result = Dictionary::builder()
+            .chars(chars)
+            .mode(EncodingMode::BaseConversion)
+            .padding('=')
+            .build();
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_byte_range_exceeds_unicode() {
         // Test with a start codepoint so high that start + 255 exceeds max valid Unicode (0x10FFFF)
-        let result = Dictionary::new_with_mode_and_range(
-            Vec::new(),
-            EncodingMode::ByteRange,
-            None,
-            Some(0x10FF80), // 0x10FF80 + 255 = 0x110078, exceeds 0x10FFFF
-        );
+        let result = Dictionary::builder()
+            .mode(EncodingMode::ByteRange)
+            .start_codepoint(0x10FF80) // 0x10FF80 + 255 = 0x110078, exceeds 0x10FFFF
+            .build();
         assert!(result.is_err());
     }
 
     #[test]
     fn test_byte_range_valid_start() {
-        let result = Dictionary::new_with_mode_and_range(
-            Vec::new(),
-            EncodingMode::ByteRange,
-            None,
-            Some(0x1F300), // Valid start in emoji range
-        );
+        let result = Dictionary::builder()
+            .mode(EncodingMode::ByteRange)
+            .start_codepoint(0x1F300) // Valid start in emoji range
+            .build();
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_byte_range_no_start_codepoint() {
-        let result =
-            Dictionary::new_with_mode_and_range(Vec::new(), EncodingMode::ByteRange, None, None);
+        let result = Dictionary::builder().mode(EncodingMode::ByteRange).build();
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("requires start_codepoint"));
     }
@@ -553,7 +565,7 @@ mod tests {
     fn test_detailed_error_messages() {
         // Test that error messages include useful information
         let chars = vec!['a', 'b', 'a'];
-        let err = Dictionary::new(chars).unwrap_err();
+        let err = Dictionary::builder().chars(chars).build().unwrap_err();
         assert!(err.contains("'a'") || err.contains("U+"));
     }
 

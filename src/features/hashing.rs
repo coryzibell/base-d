@@ -72,6 +72,7 @@ pub enum HashAlgorithm {
 
 impl HashAlgorithm {
     /// Parse hash algorithm from string.
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Result<Self, String> {
         match s.to_lowercase().as_str() {
             "md5" => Ok(HashAlgorithm::Md5),
@@ -307,6 +308,7 @@ pub fn hash_with_config(data: &[u8], algorithm: HashAlgorithm, config: &XxHashCo
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
 

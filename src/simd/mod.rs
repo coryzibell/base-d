@@ -414,7 +414,7 @@ mod tests {
         // Create custom base16 dictionary starting at ASCII '!' (0x21)
         // This should automatically use GenericSimdCodec
         let chars: Vec<char> = (0x21..0x31).map(|cp| char::from_u32(cp).unwrap()).collect();
-        let dict = Dictionary::new(chars).unwrap();
+        let dict = Dictionary::builder().chars(chars).build().unwrap();
 
         // Test data: 32 bytes (enough for two SIMD rounds)
         let data = b"\x01\x23\x45\x67\x89\xAB\xCD\xEF\xFE\xDC\xBA\x98\x76\x54\x32\x10\
@@ -461,7 +461,12 @@ mod tests {
         let chars: Vec<char> = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
             .chars()
             .collect();
-        let dict = Dictionary::new_with_mode(chars, EncodingMode::Chunked, Some('=')).unwrap();
+        let dict = Dictionary::builder()
+            .chars(chars)
+            .mode(EncodingMode::Chunked)
+            .padding('=')
+            .build()
+            .unwrap();
 
         let data = b"Hello, World!";
         let result = encode_with_simd(data, &dict);
@@ -482,7 +487,7 @@ mod tests {
 
         // Standard hex dictionary should use specialized implementation
         let chars: Vec<char> = "0123456789abcdef".chars().collect();
-        let dict = Dictionary::new(chars).unwrap();
+        let dict = Dictionary::builder().chars(chars).build().unwrap();
 
         let data = b"\x01\x23\x45\x67\x89\xAB\xCD\xEF\xFE\xDC\xBA\x98\x76\x54\x32\x10";
         let result = encode_with_simd(data, &dict);
@@ -505,7 +510,11 @@ mod tests {
         let chars: Vec<char> = "ZYXWVUTSRQPONMLKJIHGFEDCBAzyxwvutsrqponmlkjihgfedcba9876543210+/"
             .chars()
             .collect();
-        let dict = Dictionary::new_with_mode(chars, EncodingMode::Chunked, None).unwrap();
+        let dict = Dictionary::builder()
+            .chars(chars)
+            .mode(EncodingMode::Chunked)
+            .build()
+            .unwrap();
 
         let data = b"Hello, World!";
         let result = encode_with_simd(data, &dict);
@@ -528,7 +537,11 @@ mod tests {
         let chars: Vec<char> = (0x100..0x140)
             .map(|cp| char::from_u32(cp).unwrap())
             .collect();
-        let dict = Dictionary::new_with_mode(chars, EncodingMode::Chunked, None).unwrap();
+        let dict = Dictionary::builder()
+            .chars(chars)
+            .mode(EncodingMode::Chunked)
+            .build()
+            .unwrap();
 
         let data = b"Hello, World!!!!\x00";
         let result = encode_with_simd(data, &dict);
@@ -551,7 +564,12 @@ mod tests {
         let chars: Vec<char> = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
             .chars()
             .collect();
-        let dict = Dictionary::new_with_mode(chars, EncodingMode::Chunked, Some('=')).unwrap();
+        let dict = Dictionary::builder()
+            .chars(chars)
+            .mode(EncodingMode::Chunked)
+            .padding('=')
+            .build()
+            .unwrap();
 
         let data = b"The quick brown fox jumps over the lazy dog";
 
@@ -583,7 +601,11 @@ mod tests {
 
         // Standard hex dictionary
         let chars: Vec<char> = "0123456789ABCDEF".chars().collect();
-        let dict = Dictionary::new_with_mode(chars, EncodingMode::Chunked, None).unwrap();
+        let dict = Dictionary::builder()
+            .chars(chars)
+            .mode(EncodingMode::Chunked)
+            .build()
+            .unwrap();
 
         let data: Vec<u8> = (0..32).map(|i| (i * 7) as u8).collect();
 
@@ -611,7 +633,7 @@ mod tests {
 
         // Custom base16 dictionary starting at ASCII '!' (0x21)
         let chars: Vec<char> = (0x21..0x31).map(|cp| char::from_u32(cp).unwrap()).collect();
-        let dict = Dictionary::new(chars).unwrap();
+        let dict = Dictionary::builder().chars(chars).build().unwrap();
 
         let data = b"\x01\x23\x45\x67\x89\xAB\xCD\xEF\xFE\xDC\xBA\x98\x76\x54\x32\x10\
                      \x00\x11\x22\x33\x44\x55\x66\x77\x88\x99\xAA\xBB\xCC\xDD\xEE\xFF";

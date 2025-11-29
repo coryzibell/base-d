@@ -1,6 +1,7 @@
 use crate::features::hashing::HashAlgorithm;
 
 // Helper for managing hash state during streaming
+#[allow(clippy::large_enum_variant)]
 pub(super) enum HasherWriter {
     Md5(md5::Md5),
     Sha224(sha2::Sha224),

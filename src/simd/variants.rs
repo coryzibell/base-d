@@ -473,6 +473,7 @@ impl DictionaryMetadata {
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
     use crate::core::config::EncodingMode;

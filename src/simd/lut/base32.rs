@@ -385,9 +385,7 @@ impl Base64LutCodec {
             _mm_storeu_si128(idx_buf.as_mut_ptr() as *mut __m128i, indices);
 
             // Mask to 5 bits (indices may have high bits set from blending)
-            for i in 0..16 {
-                idx_buf[i] &= 0x1F;
-            }
+            idx_buf.iter_mut().for_each(|val| *val &= 0x1F);
 
             // Pack 16×5-bit → 10×8-bit
             // This is complex bit manipulation - using optimized scalar for now

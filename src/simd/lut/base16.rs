@@ -56,7 +56,7 @@ impl SmallLutCodec {
 
         // Build encoding LUT (index → char)
         let mut encode_lut = [0u8; 16];
-        for i in 0..metadata.base {
+        for (i, lut_entry) in encode_lut.iter_mut().enumerate().take(metadata.base) {
             let ch = dict.encode_digit(i)?;
 
             // Validation: char must be ASCII (single-byte)
@@ -64,7 +64,7 @@ impl SmallLutCodec {
                 return None; // Multi-byte UTF-8 not supported
             }
 
-            encode_lut[i] = ch as u8;
+            *lut_entry = ch as u8;
         }
 
         // Build decoding LUT (char → index, 256-entry sparse table)
@@ -581,6 +581,7 @@ impl SmallLutCodec {
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
 

@@ -766,6 +766,7 @@ fn decode_scalar_remainder(
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
     use crate::core::config::EncodingMode;
