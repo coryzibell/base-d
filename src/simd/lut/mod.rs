@@ -3,8 +3,10 @@
 //! This module provides SIMD acceleration for non-sequential dictionaries
 //! through lookup table techniques.
 
-pub mod large;
-pub mod small;
+pub mod base16;
+mod base32; // Base32-specific implementations for Base64LutCodec
+pub mod base64;
+mod common;
 
-pub use large::LargeLutCodec;
-pub use small::SmallLutCodec;
+pub use base16::SmallLutCodec;
+pub use base64::Base64LutCodec;

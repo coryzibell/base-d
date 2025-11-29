@@ -39,7 +39,7 @@ pub use aarch64::{
 #[cfg(target_arch = "x86_64")]
 pub use generic::GenericSimdCodec;
 
-pub use lut::{LargeLutCodec, SmallLutCodec};
+pub use lut::{Base64LutCodec, SmallLutCodec};
 
 // CPU feature detection cache
 static HAS_AVX2: OnceLock<bool> = OnceLock::new();
@@ -151,9 +151,9 @@ pub fn encode_with_simd(data: &[u8], dict: &Dictionary) -> Option<String> {
         }
     }
 
-    // 7. Try LargeLutCodec for large arbitrary dictionaries (17-64 chars)
+    // 7. Try Base64LutCodec for large arbitrary dictionaries (17-64 chars)
     if (17..=64).contains(&base) && base.is_power_of_two() {
-        if let Some(codec) = LargeLutCodec::from_dictionary(dict) {
+        if let Some(codec) = Base64LutCodec::from_dictionary(dict) {
             return codec.encode(data, dict);
         }
     }
@@ -210,9 +210,9 @@ pub fn encode_with_simd(data: &[u8], dict: &Dictionary) -> Option<String> {
         }
     }
 
-    // 7. Try LargeLutCodec for large arbitrary dictionaries (17-64 chars)
+    // 7. Try Base64LutCodec for large arbitrary dictionaries (17-64 chars)
     if (17..=64).contains(&base) && base.is_power_of_two() {
-        if let Some(codec) = LargeLutCodec::from_dictionary(dict) {
+        if let Some(codec) = Base64LutCodec::from_dictionary(dict) {
             return codec.encode(data, dict);
         }
     }
@@ -287,9 +287,9 @@ pub fn decode_with_simd(encoded: &str, dict: &Dictionary) -> Option<Vec<u8>> {
         }
     }
 
-    // 7. Try LargeLutCodec for large arbitrary dictionaries (17-64 chars)
+    // 7. Try Base64LutCodec for large arbitrary dictionaries (17-64 chars)
     if (17..=64).contains(&base) && base.is_power_of_two() {
-        if let Some(codec) = LargeLutCodec::from_dictionary(dict) {
+        if let Some(codec) = Base64LutCodec::from_dictionary(dict) {
             return codec.decode(encoded, dict);
         }
     }
@@ -347,9 +347,9 @@ pub fn decode_with_simd(encoded: &str, dict: &Dictionary) -> Option<Vec<u8>> {
         }
     }
 
-    // 7. Try LargeLutCodec for large arbitrary dictionaries (17-64 chars)
+    // 7. Try Base64LutCodec for large arbitrary dictionaries (17-64 chars)
     if (17..=64).contains(&base) && base.is_power_of_two() {
-        if let Some(codec) = LargeLutCodec::from_dictionary(dict) {
+        if let Some(codec) = Base64LutCodec::from_dictionary(dict) {
             return codec.decode(encoded, dict);
         }
     }
@@ -501,7 +501,7 @@ mod tests {
             return;
         }
 
-        // Arbitrary (shuffled) base64 dictionary should use LargeLutCodec
+        // Arbitrary (shuffled) base64 dictionary should use Base64LutCodec
         let chars: Vec<char> = "ZYXWVUTSRQPONMLKJIHGFEDCBAzyxwvutsrqponmlkjihgfedcba9876543210+/"
             .chars()
             .collect();
@@ -512,7 +512,7 @@ mod tests {
 
         assert!(
             result.is_some(),
-            "Arbitrary base64 dictionary should get SIMD acceleration via LargeLutCodec"
+            "Arbitrary base64 dictionary should get SIMD acceleration via Base64LutCodec"
         );
     }
 
