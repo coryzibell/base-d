@@ -329,12 +329,29 @@ MIT OR Apache-2.0
 
 ## Documentation
 
-- [Dictionary Reference](docs/DICTIONARIES.md) - Complete guide to all numerous built-in dictionaries
+### Core Concepts
+- [Dictionary Reference](docs/DICTIONARIES.md) - Complete guide to all built-in dictionaries
 - [Custom Dictionaries](docs/CUSTOM_DICTIONARIES.md) - Create and load your own dictionaries
-- [Encoding Modes](docs/ENCODING_MODES.md) - Detailed explanation of mathematical vs chunked vs byte range encoding
-- [SIMD Optimizations](docs/SIMD.md) - Performance enhancements with AVX2/SSSE3 (x86_64)
+- [Encoding Modes](docs/ENCODING_MODES.md) - Mathematical vs chunked vs byte range encoding
+- [Base1024](docs/BASE1024.md) - High-density CJK encoding
+
+### Features
+- [Hashing](docs/HASHING.md) - 24 hash algorithms (SHA, BLAKE, CRC, xxHash)
+- [Compression](docs/COMPRESSION.md) - gzip, zstd, brotli, lz4, snappy, lzma support
+- [Detection](docs/DETECTION.md) - Auto-detect encoding format
 - [Streaming](docs/STREAMING.md) - Memory-efficient processing for large files
-- [Hexadecimal Explained](docs/HEX_EXPLANATION.md) - Special case where both modes produce identical output
+
+### Performance
+- [SIMD Optimizations](docs/SIMD.md) - AVX2/SSSE3/NEON acceleration
+- [Performance Guide](docs/PERFORMANCE.md) - Benchmarks and optimization tips
+
+### Matrix Mode
+- [Matrix Mode](docs/MATRIX.md) - Live Matrix-style visualization
+- [Neo Mode](docs/NEO.md) - `--neo` flag deep dive
+
+### Reference
+- [API Reference](docs/API.md) - Library API documentation
+- [Hexadecimal Explained](docs/HEX_EXPLANATION.md) - Why hex is special
 - [Roadmap](docs/ROADMAP.md) - Planned features and development phases
 - [CI/CD Setup](docs/CI_CD.md) - GitHub Actions workflow documentation
 
