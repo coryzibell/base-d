@@ -43,6 +43,12 @@
 //! - **Streaming Support**: Memory-efficient processing for large files
 //! - **Custom Dictionaries**: Define your own via TOML configuration
 //! - **User Configuration**: Load dictionaries from `~/.config/base-d/dictionaries.toml`
+//! - **SIMD Acceleration**: AVX2/SSSE3 on x86_64, NEON on aarch64 (enabled by default)
+//!
+//! ## Cargo Features
+//!
+//! - `simd` (default): Enable SIMD acceleration for encoding/decoding.
+//!   Disable with `--no-default-features` for scalar-only builds.
 //!
 //! ## Encoding Modes
 //!
@@ -139,6 +145,7 @@ mod core;
 mod encoders;
 mod features;
 
+#[cfg(feature = "simd")]
 mod simd;
 
 pub use core::config::{

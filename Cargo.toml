@@ -12,6 +12,10 @@ readme = "README.md"
 keywords = ["encoding", "base64", "cli", "unicode", "converter"]
 categories = ["command-line-utilities", "encoding", "text-processing"]
 
+[features]
+default = ["simd"]
+simd = []  # Enable SIMD acceleration (AVX2/SSSE3 on x86_64, NEON on aarch64)
+
 [dependencies]
 num-bigint = "0.4"
 num-traits = "0.2"

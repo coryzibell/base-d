@@ -1747,12 +1747,14 @@ mod tests {
         assert!(codec.is_some(), "Should create codec for arbitrary base64");
         let codec = codec.unwrap();
 
+        // 4 ranges: 3+ range SSSE3 disabled due to bugs, falls back to scalar
+        // range_info will be None for 3+ ranges
         assert!(
-            codec.range_info.is_some(),
-            "Should build range info for base64"
+            codec.range_info.is_none(),
+            "3+ ranges should use scalar fallback (SSSE3 range-reduction disabled)"
         );
 
-        // Test encoding
+        // Test encoding (uses scalar path)
         let data = b"Hello, World!";
         let encoded = codec.encode(data, &dict).unwrap();
         let decoded = codec.decode(&encoded, &dict).unwrap();
@@ -2172,7 +2174,7 @@ mod tests {
     #[test]
     #[cfg(target_arch = "x86_64")]
     fn test_range_strategy_detection() {
-        // Test strategy detection for 1-5 ranges (6+ ranges not supported yet)
+        // Test strategy detection for 1-2 ranges (3+ ranges disabled due to bugs)
 
         // Test 2-range dictionary (RFC4648 base32)
         let dictionary_2: Vec<char> = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567".chars().collect();
@@ -2184,14 +2186,13 @@ mod tests {
             RangeStrategy::Small
         );
 
-        // Test 3-range dictionary
+        // Test 3-range dictionary - should NOT have range_info (3+ ranges use scalar)
         let dictionary_3 = generate_synthetic_dictionary(3, 32);
         let dict_3 = Dictionary::new(dictionary_3).unwrap();
         let codec_3 = Base64LutCodec::from_dictionary(&dict_3).unwrap();
-        assert!(codec_3.range_info.is_some());
-        assert_eq!(
-            codec_3.range_info.as_ref().unwrap().strategy,
-            RangeStrategy::SmallMulti
+        assert!(
+            codec_3.range_info.is_none(),
+            "3+ ranges should use scalar fallback (SSSE3 range-reduction disabled)"
         );
 
         // 6+ ranges should not have range_info

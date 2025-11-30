@@ -41,16 +41,16 @@ pub(super) struct RangeInfo {
 
 #[cfg(target_arch = "x86_64")]
 impl RangeInfo {
-    /// Build range-reduction metadata for 2-5 contiguous ranges
+    /// Build range-reduction metadata for 1-2 contiguous ranges
     ///
-    /// Note: 6-16 range support is not implemented yet (multi-threshold compression
-    /// creates collisions and doesn't fit in 16-byte LUT). Fall back to scalar for these.
+    /// Note: 3+ range support is disabled due to bugs in the SSSE3 range-reduction
+    /// algorithm (produces invalid characters for some dictionaries like geohash).
+    /// Fall back to scalar for these cases.
     pub(super) fn build_multi_range(ranges: &[CharRange]) -> Option<Self> {
         let num_ranges = ranges.len();
 
-        // Reject if >5 ranges (6-16 range multi-threshold not implemented yet)
-        // Also reject if 0 or >16 ranges
-        if num_ranges == 0 || num_ranges > 5 {
+        // Only support 1-2 ranges (3+ range multi-threshold has bugs)
+        if num_ranges == 0 || num_ranges > 2 {
             return None;
         }
 
@@ -58,8 +58,7 @@ impl RangeInfo {
         match num_ranges {
             1 => Self::build_single_range(ranges),
             2 => Self::build_two_ranges(ranges),
-            3..=5 => Self::build_small_multirange(ranges),
-            _ => None, // 6-16 ranges not supported yet (multi-threshold broken)
+            _ => None, // 3+ ranges fall back to scalar
         }
     }
 
@@ -120,6 +119,8 @@ impl RangeInfo {
     }
 
     /// Build for 3-5 ranges (base64-style)
+    /// NOTE: Currently disabled due to bugs - produces invalid characters for some dictionaries
+    #[allow(dead_code)]
     fn build_small_multirange(ranges: &[CharRange]) -> Option<Self> {
         // Strategy: Use boundary of second-largest range as threshold
         // This maps the two largest ranges to 0, distinguish via comparison

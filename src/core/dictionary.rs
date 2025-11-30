@@ -1,4 +1,5 @@
 use crate::core::config::EncodingMode;
+#[cfg(feature = "simd")]
 use crate::simd::variants::DictionaryMetadata;
 use std::collections::HashMap;
 
@@ -334,6 +335,7 @@ impl Dictionary {
     ///
     /// This provides information about whether SIMD acceleration is available
     /// for this dictionary and which implementation to use.
+    #[cfg(feature = "simd")]
     pub fn simd_metadata(&self) -> DictionaryMetadata {
         DictionaryMetadata::from_dictionary(self)
     }
@@ -342,8 +344,17 @@ impl Dictionary {
     ///
     /// This is a convenience method that checks if SIMD can be used with
     /// the current CPU features and dictionary configuration.
+    #[cfg(feature = "simd")]
     pub fn simd_available(&self) -> bool {
         self.simd_metadata().simd_available()
+    }
+
+    /// Returns whether SIMD acceleration is available for this dictionary.
+    ///
+    /// When the `simd` feature is disabled, this always returns `false`.
+    #[cfg(not(feature = "simd"))]
+    pub fn simd_available(&self) -> bool {
+        false
     }
 }
 

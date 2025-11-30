@@ -1,13 +1,14 @@
 use crate::core::dictionary::Dictionary;
+use num_integer::lcm;
 
 pub use super::errors::DecodeError;
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(feature = "simd", target_arch = "x86_64"))]
 use crate::simd;
 
 pub fn encode_chunked(data: &[u8], dictionary: &Dictionary) -> String {
     // Try unified SIMD auto-selection
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(all(feature = "simd", target_arch = "x86_64"))]
     {
         if let Some(result) = simd::encode_with_simd(data, dictionary) {
             return result;
@@ -79,9 +80,13 @@ fn encode_chunked_scalar(data: &[u8], dictionary: &Dictionary) -> String {
 
     // Add padding if specified
     if let Some(pad_char) = dictionary.padding() {
-        let input_bits = data.len() * 8;
-        let output_chars = input_bits.div_ceil(bits_per_char);
-        let padded_chars = output_chars.div_ceil(4) * 4;
+        // Calculate padding group size based on LCM(bits_per_char, 8) / bits_per_char
+        // Base64: LCM(6,8)=24, group=24/6=4
+        // Base32: LCM(5,8)=40, group=40/5=8
+        // Base16: LCM(4,8)=8, group=8/4=2
+        let lcm = lcm(bits_per_char, 8);
+        let group_size = lcm / bits_per_char;
+        let padded_chars = result.len().div_ceil(group_size) * group_size;
 
         while result.len() < padded_chars {
             result.push(pad_char);
@@ -97,7 +102,7 @@ pub fn decode_chunked(encoded: &str, dictionary: &Dictionary) -> Result<Vec<u8>,
     }
 
     // Try SIMD acceleration
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(all(feature = "simd", target_arch = "x86_64"))]
     {
         if simd::has_avx2() || simd::has_ssse3() {
             match dictionary.base() {
