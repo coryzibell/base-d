@@ -8,6 +8,7 @@ Complete reference for all numerous built-in dictionaries in base-d.
 |------|------|------|----------|-----|
 | **base16** | 16 | chunk | Hex (uppercase) | RFC 4648 |
 | **hex** | 16 | chunk | Hex (lowercase) | - |
+| **bioctal** | 16 | chunk | Cognitive-optimized hex | RFC 9226 |
 | **base32** | 32 | chunk | Data encoding | RFC 4648 |
 | **base32hex** | 32 | chunk | Extended hex dictionary | RFC 4648 |
 | **base64** | 64 | chunk | Standard base64 | RFC 4648 |
@@ -38,6 +39,14 @@ Padding:  No
 Example:  "Hi" → "4869"
 ```
 Standard hexadecimal encoding (uppercase). Power-of-2 base.
+
+#### bioctal
+```
+Dictionary: 01234567cjzwfsbv
+Padding:  No
+Example:  "Hi" → "4c6j"
+```
+RFC 9226 "Bioctal: Hexadecimal 2.0". Cognitive-optimized hex for easier mental binary conversion. Uses Arabic numerals 0-7 for the lower nibble, and shaped letters for 8-F: c→8, j→9, z→A, w→B, f→C, s→D, b→E, v→F. The letter shapes hint at their binary values. See [RFC 9226](https://www.rfc-editor.org/rfc/rfc9226).
 
 #### base32
 ```
@@ -191,6 +200,7 @@ echo "Secret" | base-d -a cards
 Input: "Hello, World!"
 
 base16:     48656C6C6F2C20576F726C6421
+bioctal:    4c6s6f6f6v2f20576v726f6421
 base32:     JBSWY3DPFQQFO33SNRSCC===
 base64:     SGVsbG8sIFdvcmxkIQ==
 base58:     72k1xXWG59fYdzSNoA

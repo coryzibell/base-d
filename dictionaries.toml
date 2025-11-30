@@ -94,6 +94,14 @@ mode = "chunked"
 chars = "0123456789abcdef"
 mode = "chunked"
 
+[dictionaries.bioctal]
+chars = "01234567cjzwfsbv"
+mode = "chunked"
+# RFC 9226 - Bioctal: Hexadecimal 2.0
+# Cognitive-optimized hex for easier mental binary conversion
+# 0-7 use Arabic numerals, 8-F use shaped letters (c=8, j=9, z=A, w=B, f=C, s=D, b=E, v=F)
+# https://www.rfc-editor.org/rfc/rfc9226
+
 # ============================================================================
 # RFC 9285 - Base45 (QR codes, COVID certificates)
 # ============================================================================
