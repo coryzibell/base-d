@@ -824,6 +824,7 @@ impl GappedSequentialCodec {
             if is_x86_feature_detected!("ssse3") {
                 return unsafe { self.decode_ssse3(encoded) };
             }
+            return self.decode_scalar(encoded);
         }
 
         #[cfg(target_arch = "aarch64")]
@@ -873,6 +874,7 @@ impl GappedSequentialCodec {
     /// SSSE3 decoding implementation
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "ssse3")]
+    #[allow(unsafe_op_in_unsafe_fn)]
     unsafe fn decode_ssse3(&self, encoded: &str) -> Option<Vec<u8>> {
         match self.bits_per_symbol {
             5 => self.decode_ssse3_5bit(encoded),
@@ -964,9 +966,6 @@ impl GappedSequentialCodec {
                 }
             }
         }
-
-        // Suppress unused variable warnings
-        let _ = (lo_nibbles, hi_nibbles, lut_tables);
 
         Some(result)
     }
