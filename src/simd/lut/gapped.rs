@@ -264,6 +264,12 @@ impl GappedSequentialCodec {
             let mut offset = 0;
             for _ in 0..num_blocks {
                 // Load 5 bytes and extract 8 x 5-bit indices
+                debug_assert!(
+                    offset + 5 <= data.len(),
+                    "SIMD bounds check: offset {} + 5 exceeds len {}",
+                    offset,
+                    data.len()
+                );
                 let b0 = *data.get_unchecked(offset);
                 let b1 = *data.get_unchecked(offset + 1);
                 let b2 = *data.get_unchecked(offset + 2);
@@ -349,6 +355,12 @@ impl GappedSequentialCodec {
 
             let mut offset = 0;
             for _ in 0..num_blocks {
+                debug_assert!(
+                    offset + 3 <= data.len(),
+                    "SIMD bounds check: offset {} + 3 exceeds len {}",
+                    offset,
+                    data.len()
+                );
                 let b0 = *data.get_unchecked(offset);
                 let b1 = *data.get_unchecked(offset + 1);
                 let b2 = *data.get_unchecked(offset + 2);
@@ -420,6 +432,12 @@ impl GappedSequentialCodec {
             let mut offset = 0;
             for _ in 0..num_blocks {
                 // Extract 16 x 4-bit indices from 8 bytes
+                debug_assert!(
+                    offset + 8 <= data.len(),
+                    "SIMD bounds check: offset {} + 8 exceeds len {}",
+                    offset,
+                    data.len()
+                );
                 let mut indices = [0u8; 16];
                 for i in 0..8 {
                     let byte = *data.get_unchecked(offset + i);
@@ -501,6 +519,12 @@ impl GappedSequentialCodec {
 
             let mut offset = 0;
             for _ in 0..num_blocks {
+                debug_assert!(
+                    offset + 5 <= data.len(),
+                    "SIMD bounds check: offset {} + 5 exceeds len {}",
+                    offset,
+                    data.len()
+                );
                 let b0 = *data.get_unchecked(offset);
                 let b1 = *data.get_unchecked(offset + 1);
                 let b2 = *data.get_unchecked(offset + 2);
@@ -578,6 +602,12 @@ impl GappedSequentialCodec {
 
             let mut offset = 0;
             for _ in 0..num_blocks {
+                debug_assert!(
+                    offset + 3 <= data.len(),
+                    "SIMD bounds check: offset {} + 3 exceeds len {}",
+                    offset,
+                    data.len()
+                );
                 let b0 = *data.get_unchecked(offset);
                 let b1 = *data.get_unchecked(offset + 1);
                 let b2 = *data.get_unchecked(offset + 2);
@@ -648,6 +678,12 @@ impl GappedSequentialCodec {
 
             let mut offset = 0;
             for _ in 0..num_blocks {
+                debug_assert!(
+                    offset + 8 <= data.len(),
+                    "SIMD bounds check: offset {} + 8 exceeds len {}",
+                    offset,
+                    data.len()
+                );
                 let mut indices = [0u8; 16];
                 for i in 0..8 {
                     let byte = *data.get_unchecked(offset + i);
