@@ -66,31 +66,40 @@ unsafe fn encode_neon_impl(
 
     const BLOCK_SIZE: usize = 12;
 
+    // Safe: size check
     if data.len() < 16 {
         encode_scalar_remainder(data, dictionary, result);
         return;
     }
 
+    // Safe: arithmetic, bounds checks
     let safe_len = if data.len() >= 4 { data.len() - 4 } else { 0 };
     let num_blocks = safe_len / BLOCK_SIZE;
     let simd_bytes = num_blocks * BLOCK_SIZE;
 
     let mut offset = 0;
     for _ in 0..num_blocks {
-        let input_vec = vld1q_u8(data.as_ptr().add(offset));
-        let reshuffled = reshuffle_neon(input_vec);
-        let encoded = translate_neon(reshuffled, variant);
+        // Unsafe: SIMD load, pointer arithmetic
+        let input_vec = unsafe { vld1q_u8(data.as_ptr().add(offset)) };
 
+        // Unsafe: SIMD intrinsics
+        let reshuffled = unsafe { reshuffle_neon(input_vec) };
+        let encoded = unsafe { translate_neon(reshuffled, variant) };
+
+        // Unsafe: SIMD store
         let mut output_buf = [0u8; 16];
-        vst1q_u8(output_buf.as_mut_ptr(), encoded);
+        unsafe { vst1q_u8(output_buf.as_mut_ptr(), encoded) };
 
+        // Safe: iteration, push
         for &byte in &output_buf {
             result.push(byte as char);
         }
 
+        // Safe: arithmetic
         offset += BLOCK_SIZE;
     }
 
+    // Safe: comparison
     if simd_bytes < data.len() {
         encode_scalar_remainder(&data[simd_bytes..], dictionary, result);
     }
@@ -105,59 +114,63 @@ unsafe fn encode_neon_impl(
 unsafe fn reshuffle_neon(input: uint8x16_t) -> uint8x16_t {
     use std::arch::aarch64::*;
 
-    // Shuffle mask: Duplicate bytes to prepare for 6-bit extraction
-    // Each group of 3 input bytes becomes 4 output bytes with duplicates
-    let shuffle_indices = vld1q_u8(
-        [
-            0, 0, 1, 2, // bytes 0-2 -> positions 0-3
-            3, 3, 4, 5, // bytes 3-5 -> positions 4-7
-            6, 6, 7, 8, // bytes 6-8 -> positions 8-11
-            9, 9, 10, 11, // bytes 9-11 -> positions 12-15
-        ]
-        .as_ptr(),
-    );
-
-    let shuffled = vqtbl1q_u8(input, shuffle_indices);
-
-    // Extract 6-bit groups using shifts and masks
-    // Pattern for 3 bytes ABC (24 bits) -> 4x 6-bit values:
-    // [AAAAAA??] [??BBBBBB] [????CCCC] [CC??????]
-    // After shuffle, we have bytes duplicated to allow extraction
-
-    let shuffled_u32 = vreinterpretq_u32_u8(shuffled);
-
-    // First extraction: get bits for positions 0 and 2 in each group of 4
-    // x86: mulhi_epu16(and(shuffled, 0x0FC0FC00), 0x04000040)
-    let t0 = vandq_u32(shuffled_u32, vdupq_n_u32(0x0FC0FC00));
-    let t1 = {
-        let t0_u16 = vreinterpretq_u16_u32(t0);
-        // Implement mulhi_epu16 using vmull + vshrn
-        // 0x04000040 as 16-bit lanes: [0x0040, 0x0400, 0x0040, 0x0400, ...]
-        let mult_pattern = vreinterpretq_u16_u32(vdupq_n_u32(0x04000040));
-        let lo = vget_low_u16(t0_u16);
-        let hi = vget_high_u16(t0_u16);
-        let mult_lo = vget_low_u16(mult_pattern);
-        let mult_hi = vget_high_u16(mult_pattern);
-        let lo_32 = vmull_u16(lo, mult_lo);
-        let hi_32 = vmull_u16(hi, mult_hi);
-        let lo_result = vshrn_n_u32(lo_32, 16);
-        let hi_result = vshrn_n_u32(hi_32, 16);
-        vreinterpretq_u32_u16(vcombine_u16(lo_result, hi_result))
+    // Unsafe: SIMD load
+    let shuffle_indices = unsafe {
+        vld1q_u8(
+            [
+                0, 0, 1, 2, // bytes 0-2 -> positions 0-3
+                3, 3, 4, 5, // bytes 3-5 -> positions 4-7
+                6, 6, 7, 8, // bytes 6-8 -> positions 8-11
+                9, 9, 10, 11, // bytes 9-11 -> positions 12-15
+            ]
+            .as_ptr(),
+        )
     };
 
-    // Second extraction: get bits for positions 1 and 3 in each group of 4
-    // x86: mullo_epi16(and(shuffled, 0x003F03F0), 0x01000010)
-    let t2 = vandq_u32(shuffled_u32, vdupq_n_u32(0x003F03F0));
-    let t3 = {
-        let t2_u16 = vreinterpretq_u16_u32(t2);
-        // mullo is just regular multiply (keep low 16 bits)
-        // 0x01000010 as 16-bit lanes: [0x0010, 0x0100, 0x0010, 0x0100, ...]
-        let mult_pattern = vreinterpretq_u16_u32(vdupq_n_u32(0x01000010));
-        vreinterpretq_u32_u16(vmulq_u16(t2_u16, mult_pattern))
-    };
+    // Unsafe: SIMD intrinsics for shuffle and extraction
+    unsafe {
+        let shuffled = vqtbl1q_u8(input, shuffle_indices);
 
-    // Combine the two results
-    vreinterpretq_u8_u32(vorrq_u32(t1, t3))
+        // Extract 6-bit groups using shifts and masks
+        // Pattern for 3 bytes ABC (24 bits) -> 4x 6-bit values:
+        // [AAAAAA??] [??BBBBBB] [????CCCC] [CC??????]
+        // After shuffle, we have bytes duplicated to allow extraction
+
+        let shuffled_u32 = vreinterpretq_u32_u8(shuffled);
+
+        // First extraction: get bits for positions 0 and 2 in each group of 4
+        // x86: mulhi_epu16(and(shuffled, 0x0FC0FC00), 0x04000040)
+        let t0 = vandq_u32(shuffled_u32, vdupq_n_u32(0x0FC0FC00));
+        let t1 = {
+            let t0_u16 = vreinterpretq_u16_u32(t0);
+            // Implement mulhi_epu16 using vmull + vshrn
+            // 0x04000040 as 16-bit lanes: [0x0040, 0x0400, 0x0040, 0x0400, ...]
+            let mult_pattern = vreinterpretq_u16_u32(vdupq_n_u32(0x04000040));
+            let lo = vget_low_u16(t0_u16);
+            let hi = vget_high_u16(t0_u16);
+            let mult_lo = vget_low_u16(mult_pattern);
+            let mult_hi = vget_high_u16(mult_pattern);
+            let lo_32 = vmull_u16(lo, mult_lo);
+            let hi_32 = vmull_u16(hi, mult_hi);
+            let lo_result = vshrn_n_u32(lo_32, 16);
+            let hi_result = vshrn_n_u32(hi_32, 16);
+            vreinterpretq_u32_u16(vcombine_u16(lo_result, hi_result))
+        };
+
+        // Second extraction: get bits for positions 1 and 3 in each group of 4
+        // x86: mullo_epi16(and(shuffled, 0x003F03F0), 0x01000010)
+        let t2 = vandq_u32(shuffled_u32, vdupq_n_u32(0x003F03F0));
+        let t3 = {
+            let t2_u16 = vreinterpretq_u16_u32(t2);
+            // mullo is just regular multiply (keep low 16 bits)
+            // 0x01000010 as 16-bit lanes: [0x0010, 0x0100, 0x0010, 0x0100, ...]
+            let mult_pattern = vreinterpretq_u16_u32(vdupq_n_u32(0x01000010));
+            vreinterpretq_u32_u16(vmulq_u16(t2_u16, mult_pattern))
+        };
+
+        // Combine the two results
+        vreinterpretq_u8_u32(vorrq_u32(t1, t3))
+    }
 }
 
 /// Translate 6-bit indices to base64 ASCII characters (NEON)
@@ -168,29 +181,32 @@ unsafe fn reshuffle_neon(input: uint8x16_t) -> uint8x16_t {
 unsafe fn translate_neon(indices: uint8x16_t, variant: DictionaryVariant) -> uint8x16_t {
     use std::arch::aarch64::*;
 
-    // Offset-based approach (same as x86_64)
-    let lut = match variant {
-        DictionaryVariant::Base64Standard => vld1q_u8(
-            [
-                65, 71, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 237, 240, 0, 0,
-            ]
-            .as_ptr(),
-        ),
-        DictionaryVariant::Base64Url => vld1q_u8(
-            [
-                65, 71, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 239, 32, 0, 0,
-            ]
-            .as_ptr(),
-        ),
-    };
+    // Unsafe: SIMD intrinsics
+    unsafe {
+        // Offset-based approach (same as x86_64)
+        let lut = match variant {
+            DictionaryVariant::Base64Standard => vld1q_u8(
+                [
+                    65, 71, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 237, 240, 0, 0,
+                ]
+                .as_ptr(),
+            ),
+            DictionaryVariant::Base64Url => vld1q_u8(
+                [
+                    65, 71, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 239, 32, 0, 0,
+                ]
+                .as_ptr(),
+            ),
+        };
 
-    let mut lut_indices = vqsubq_u8(indices, vdupq_n_u8(51));
-    let indices_signed = vreinterpretq_s8_u8(indices);
-    let mask = vcgtq_s8(indices_signed, vdupq_n_s8(25)); // Returns uint8x16_t mask already
-    lut_indices = vsubq_u8(lut_indices, mask);
+        let mut lut_indices = vqsubq_u8(indices, vdupq_n_u8(51));
+        let indices_signed = vreinterpretq_s8_u8(indices);
+        let mask = vcgtq_s8(indices_signed, vdupq_n_s8(25)); // Returns uint8x16_t mask already
+        lut_indices = vsubq_u8(lut_indices, mask);
 
-    let offsets = vqtbl1q_u8(lut, lut_indices);
-    vaddq_u8(indices, offsets)
+        let offsets = vqtbl1q_u8(lut, lut_indices);
+        vaddq_u8(indices, offsets)
+    }
 }
 
 /// NEON base64 decoding implementation
@@ -208,33 +224,45 @@ unsafe fn decode_neon_impl(
     const INPUT_BLOCK_SIZE: usize = 16;
     const OUTPUT_BLOCK_SIZE: usize = 12;
 
+    // Safe: iterator, comparison
     let input_no_padding = if let Some(last_non_pad) = encoded.iter().rposition(|&b| b != b'=') {
         &encoded[..=last_non_pad]
     } else {
         encoded
     };
 
-    let (lut_lo, lut_hi, lut_roll) = get_decode_luts_neon(variant);
+    // Unsafe: SIMD intrinsics
+    let (lut_lo, lut_hi, lut_roll) = unsafe { get_decode_luts_neon(variant) };
 
+    // Safe: arithmetic
     let num_blocks = input_no_padding.len() / INPUT_BLOCK_SIZE;
     let simd_bytes = num_blocks * INPUT_BLOCK_SIZE;
 
+    // Safe: iteration
     for round in 0..num_blocks {
         let offset = round * INPUT_BLOCK_SIZE;
-        let input_vec = vld1q_u8(input_no_padding.as_ptr().add(offset));
 
-        if !validate_neon(input_vec, lut_lo, lut_hi) {
+        // Unsafe: SIMD load, pointer arithmetic
+        let input_vec = unsafe { vld1q_u8(input_no_padding.as_ptr().add(offset)) };
+
+        // Unsafe: SIMD validation
+        if !unsafe { validate_neon(input_vec, lut_lo, lut_hi) } {
             return false;
         }
 
-        let indices = translate_decode_neon(input_vec, lut_hi, lut_roll);
-        let decoded = reshuffle_decode_neon(indices);
+        // Unsafe: SIMD intrinsics
+        let indices = unsafe { translate_decode_neon(input_vec, lut_hi, lut_roll) };
+        let decoded = unsafe { reshuffle_decode_neon(indices) };
 
+        // Unsafe: SIMD store
         let mut output_buf = [0u8; 16];
-        vst1q_u8(output_buf.as_mut_ptr(), decoded);
+        unsafe { vst1q_u8(output_buf.as_mut_ptr(), decoded) };
+
+        // Safe: slice extension
         result.extend_from_slice(&output_buf[0..OUTPUT_BLOCK_SIZE]);
     }
 
+    // Safe: comparison
     if simd_bytes < input_no_padding.len() {
         let remainder = &input_no_padding[simd_bytes..];
         if !decode_scalar_remainder(
@@ -264,32 +292,35 @@ unsafe fn decode_neon_impl(
 unsafe fn get_decode_luts_neon(variant: DictionaryVariant) -> (uint8x16_t, uint8x16_t, uint8x16_t) {
     use std::arch::aarch64::*;
 
-    let lut_lo = vld1q_u8(
-        [
-            0x15, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x13, 0x1A, 0x1B, 0x1B,
-            0x1B, 0x1A,
-        ]
-        .as_ptr(),
-    );
+    // Unsafe: SIMD loads
+    unsafe {
+        let lut_lo = vld1q_u8(
+            [
+                0x15, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x13, 0x1A, 0x1B, 0x1B,
+                0x1B, 0x1A,
+            ]
+            .as_ptr(),
+        );
 
-    let lut_hi = vld1q_u8(
-        [
-            0x10, 0x10, 0x01, 0x02, 0x04, 0x08, 0x04, 0x08, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10,
-            0x10, 0x10,
-        ]
-        .as_ptr(),
-    );
+        let lut_hi = vld1q_u8(
+            [
+                0x10, 0x10, 0x01, 0x02, 0x04, 0x08, 0x04, 0x08, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10,
+                0x10, 0x10,
+            ]
+            .as_ptr(),
+        );
 
-    let lut_roll = match variant {
-        DictionaryVariant::Base64Standard => {
-            vld1q_u8([0, 16, 19, 4, 191, 191, 185, 185, 0, 0, 0, 0, 0, 0, 0, 0].as_ptr())
-        }
-        DictionaryVariant::Base64Url => {
-            vld1q_u8([0, 17, 224, 4, 191, 191, 185, 185, 0, 0, 0, 0, 0, 0, 0, 0].as_ptr())
-        }
-    };
+        let lut_roll = match variant {
+            DictionaryVariant::Base64Standard => {
+                vld1q_u8([0, 16, 19, 4, 191, 191, 185, 185, 0, 0, 0, 0, 0, 0, 0, 0].as_ptr())
+            }
+            DictionaryVariant::Base64Url => {
+                vld1q_u8([0, 17, 224, 4, 191, 191, 185, 185, 0, 0, 0, 0, 0, 0, 0, 0].as_ptr())
+            }
+        };
 
-    (lut_lo, lut_hi, lut_roll)
+        (lut_lo, lut_hi, lut_roll)
+    }
 }
 
 /// Validate input characters (NEON)
@@ -298,16 +329,19 @@ unsafe fn get_decode_luts_neon(variant: DictionaryVariant) -> (uint8x16_t, uint8
 unsafe fn validate_neon(input: uint8x16_t, lut_lo: uint8x16_t, lut_hi: uint8x16_t) -> bool {
     use std::arch::aarch64::*;
 
-    let lo_nibbles = vandq_u8(input, vdupq_n_u8(0x0F));
-    let hi_nibbles = vandq_u8(vshrq_n_u8(input, 4), vdupq_n_u8(0x0F));
+    // Unsafe: SIMD intrinsics
+    unsafe {
+        let lo_nibbles = vandq_u8(input, vdupq_n_u8(0x0F));
+        let hi_nibbles = vandq_u8(vshrq_n_u8(input, 4), vdupq_n_u8(0x0F));
 
-    let lo_lookup = vqtbl1q_u8(lut_lo, lo_nibbles);
-    let hi_lookup = vqtbl1q_u8(lut_hi, hi_nibbles);
+        let lo_lookup = vqtbl1q_u8(lut_lo, lo_nibbles);
+        let hi_lookup = vqtbl1q_u8(lut_hi, hi_nibbles);
 
-    let validation = vandq_u8(lo_lookup, hi_lookup);
+        let validation = vandq_u8(lo_lookup, hi_lookup);
 
-    // Check if all bytes are 0 (no movemask in NEON, use vmaxvq)
-    vmaxvq_u8(validation) == 0
+        // Check if all bytes are 0 (no movemask in NEON, use vmaxvq)
+        vmaxvq_u8(validation) == 0
+    }
 }
 
 /// Translate ASCII to 6-bit indices (NEON)
@@ -320,12 +354,15 @@ unsafe fn translate_decode_neon(
 ) -> uint8x16_t {
     use std::arch::aarch64::*;
 
-    let hi_nibbles = vandq_u8(vshrq_n_u8(input, 4), vdupq_n_u8(0x0F));
-    let eq_2f = vceqq_u8(input, vdupq_n_u8(0x2F));
-    let roll_index = vaddq_u8(eq_2f, hi_nibbles);
-    let offsets = vqtbl1q_u8(lut_roll, roll_index);
+    // Unsafe: SIMD intrinsics
+    unsafe {
+        let hi_nibbles = vandq_u8(vshrq_n_u8(input, 4), vdupq_n_u8(0x0F));
+        let eq_2f = vceqq_u8(input, vdupq_n_u8(0x2F));
+        let roll_index = vaddq_u8(eq_2f, hi_nibbles);
+        let offsets = vqtbl1q_u8(lut_roll, roll_index);
 
-    vaddq_u8(input, offsets)
+        vaddq_u8(input, offsets)
+    }
 }
 
 /// Reshuffle 6-bit indices to packed 8-bit bytes (NEON)
@@ -337,48 +374,51 @@ unsafe fn translate_decode_neon(
 unsafe fn reshuffle_decode_neon(indices: uint8x16_t) -> uint8x16_t {
     use std::arch::aarch64::*;
 
-    // Simulate _mm_maddubs_epi16: multiply adjacent u8 pairs and add
-    // Input: [a0 b0 a1 b1 a2 b2 ...] u8x16
-    // Multiply pattern: [0x01 0x40 0x01 0x40 ...]
-    // Result: [a0*1 + b0*64, a1*1 + b1*64, ...] as i16x8
+    // Unsafe: SIMD intrinsics
+    unsafe {
+        // Simulate _mm_maddubs_epi16: multiply adjacent u8 pairs and add
+        // Input: [a0 b0 a1 b1 a2 b2 ...] u8x16
+        // Multiply pattern: [0x01 0x40 0x01 0x40 ...]
+        // Result: [a0*1 + b0*64, a1*1 + b1*64, ...] as i16x8
 
-    let pairs = vreinterpretq_u16_u8(indices);
+        let pairs = vreinterpretq_u16_u8(indices);
 
-    // Extract even bytes (a0, a1, a2, ...) and odd bytes (b0, b1, b2, ...)
-    let even = vandq_u16(pairs, vdupq_n_u16(0xFF)); // Low byte of each pair
-    let odd = vshrq_n_u16(pairs, 8); // High byte of each pair
+        // Extract even bytes (a0, a1, a2, ...) and odd bytes (b0, b1, b2, ...)
+        let even = vandq_u16(pairs, vdupq_n_u16(0xFF)); // Low byte of each pair
+        let odd = vshrq_n_u16(pairs, 8); // High byte of each pair
 
-    // Stage 1: merge_ab_and_bc = a + (b << 6)
-    let merge_result = vaddq_u16(even, vshlq_n_u16(odd, 6));
+        // Stage 1: merge_ab_and_bc = a + (b << 6)
+        let merge_result = vaddq_u16(even, vshlq_n_u16(odd, 6));
 
-    // Stage 2: Combine 16-bit pairs using multiply-add
-    // _mm_madd_epi16: multiply adjacent i16 and add horizontally
-    // Pattern: [0x1000 0x0001 0x1000 0x0001 ...]
-    // Result: [p0*0x1000 + p1*0x0001, ...] as i32x4
+        // Stage 2: Combine 16-bit pairs using multiply-add
+        // _mm_madd_epi16: multiply adjacent i16 and add horizontally
+        // Pattern: [0x1000 0x0001 0x1000 0x0001 ...]
+        // Result: [p0*0x1000 + p1*0x0001, ...] as i32x4
 
-    let merge_u32 = vreinterpretq_u32_u16(merge_result);
+        let merge_u32 = vreinterpretq_u32_u16(merge_result);
 
-    // Extract low and high 16-bit values from each 32-bit pair
-    let lo = vandq_u32(merge_u32, vdupq_n_u32(0xFFFF));
-    let hi = vshrq_n_u32(merge_u32, 16);
+        // Extract low and high 16-bit values from each 32-bit pair
+        let lo = vandq_u32(merge_u32, vdupq_n_u32(0xFFFF));
+        let hi = vshrq_n_u32(merge_u32, 16);
 
-    // Combine: lo << 12 | hi
-    let final_32bit = vorrq_u32(vshlq_n_u32(lo, 12), hi);
+        // Combine: lo << 12 | hi
+        let final_32bit = vorrq_u32(vshlq_n_u32(lo, 12), hi);
 
-    // Stage 3: Extract valid bytes (3 bytes per 32-bit group)
-    let shuffle_mask = vld1q_u8(
-        [
-            2, 1, 0, // first group (reversed byte order)
-            6, 5, 4, // second group
-            10, 9, 8, // third group
-            14, 13, 12, // fourth group
-            255, 255, 255, 255,
-        ]
-        .as_ptr(),
-    );
+        // Stage 3: Extract valid bytes (3 bytes per 32-bit group)
+        let shuffle_mask = vld1q_u8(
+            [
+                2, 1, 0, // first group (reversed byte order)
+                6, 5, 4, // second group
+                10, 9, 8, // third group
+                14, 13, 12, // fourth group
+                255, 255, 255, 255,
+            ]
+            .as_ptr(),
+        );
 
-    let result_bytes = vreinterpretq_u8_u32(final_32bit);
-    vqtbl1q_u8(result_bytes, shuffle_mask)
+        let result_bytes = vreinterpretq_u8_u32(final_32bit);
+        vqtbl1q_u8(result_bytes, shuffle_mask)
+    }
 }
 
 /// Encode remaining bytes using scalar algorithm

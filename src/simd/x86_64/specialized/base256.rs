@@ -29,19 +29,28 @@ pub fn encode(data: &[u8], dictionary: &Dictionary) -> Option<String> {
     let output_len = data.len();
     let mut result = String::with_capacity(output_len);
 
-    // SAFETY: Runtime detection verifies CPU feature support
+    // Runtime detection verifies CPU feature support
     #[cfg(target_arch = "x86_64")]
-    unsafe {
+    {
         if is_x86_feature_detected!("avx2") {
-            encode_avx2_impl(data, &lut, &mut result);
+            // Unsafe: calling target_feature function
+            unsafe {
+                encode_avx2_impl(data, &lut, &mut result);
+            }
         } else {
-            encode_ssse3_impl(data, &lut, &mut result);
+            // Unsafe: calling target_feature function
+            unsafe {
+                encode_ssse3_impl(data, &lut, &mut result);
+            }
         }
     }
 
     #[cfg(not(target_arch = "x86_64"))]
-    unsafe {
-        encode_ssse3_impl(data, &lut, &mut result);
+    {
+        // Unsafe: calling target_feature function
+        unsafe {
+            encode_ssse3_impl(data, &lut, &mut result);
+        }
     }
 
     Some(result)
@@ -67,21 +76,26 @@ pub fn decode(encoded: &str, dictionary: &Dictionary) -> Option<Vec<u8>> {
     let chars: Vec<char> = encoded.chars().collect();
     let mut result = Vec::with_capacity(chars.len());
 
-    // SAFETY: Runtime detection verifies CPU feature support
+    // Runtime detection verifies CPU feature support
     #[cfg(target_arch = "x86_64")]
-    unsafe {
+    {
         if is_x86_feature_detected!("avx2") {
-            if !decode_avx2_impl_unicode(&chars, &reverse_map, &mut result) {
+            // Unsafe: calling target_feature function
+            if !unsafe { decode_avx2_impl_unicode(&chars, &reverse_map, &mut result) } {
                 return None;
             }
-        } else if !decode_ssse3_impl_unicode(&chars, &reverse_map, &mut result) {
-            return None;
+        } else {
+            // Unsafe: calling target_feature function
+            if !unsafe { decode_ssse3_impl_unicode(&chars, &reverse_map, &mut result) } {
+                return None;
+            }
         }
     }
 
     #[cfg(not(target_arch = "x86_64"))]
-    unsafe {
-        if !decode_ssse3_impl_unicode(&chars, &reverse_map, &mut result) {
+    {
+        // Unsafe: calling target_feature function
+        if !unsafe { decode_ssse3_impl_unicode(&chars, &reverse_map, &mut result) } {
             return None;
         }
     }
@@ -103,40 +117,40 @@ pub fn decode(encoded: &str, dictionary: &Dictionary) -> Option<Vec<u8>> {
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
 unsafe fn encode_avx2_impl(data: &[u8], lut: &[char; 256], result: &mut String) {
-    unsafe {
-        use std::arch::x86_64::*;
+    use std::arch::x86_64::*;
 
-        const BLOCK_SIZE: usize = 32;
+    const BLOCK_SIZE: usize = 32;
 
-        // For small inputs, scalar is faster due to setup cost
-        if data.len() < BLOCK_SIZE {
-            encode_scalar_remainder(data, lut, result);
-            return;
-        }
+    // For small inputs, scalar is faster due to setup cost
+    if data.len() < BLOCK_SIZE {
+        encode_scalar_remainder(data, lut, result);
+        return;
+    }
 
-        let (num_rounds, simd_bytes) = common::calculate_blocks(data.len(), BLOCK_SIZE);
+    let (num_rounds, simd_bytes) = common::calculate_blocks(data.len(), BLOCK_SIZE);
 
-        let mut offset = 0;
-        for _ in 0..num_rounds {
-            // Load 32 bytes with AVX2
-            let input_vec = _mm256_loadu_si256(data.as_ptr().add(offset) as *const __m256i);
+    let mut offset = 0;
+    for _ in 0..num_rounds {
+        // Unsafe: SIMD load and pointer arithmetic
+        let input_vec = unsafe { _mm256_loadu_si256(data.as_ptr().add(offset) as *const __m256i) };
 
-            // Store to buffer
-            let mut input_buf = [0u8; 32];
+        // Unsafe: SIMD store
+        let mut input_buf = [0u8; 32];
+        unsafe {
             _mm256_storeu_si256(input_buf.as_mut_ptr() as *mut __m256i, input_vec);
-
-            // Translate using LUT (scalar - fastest for 256-entry table)
-            input_buf.iter().for_each(|&byte| {
-                result.push(lut[byte as usize]);
-            });
-
-            offset += BLOCK_SIZE;
         }
 
-        // Handle remainder with scalar code
-        if simd_bytes < data.len() {
-            encode_scalar_remainder(&data[simd_bytes..], lut, result);
-        }
+        // Safe: LUT lookup and push
+        input_buf.iter().for_each(|&byte| {
+            result.push(lut[byte as usize]);
+        });
+
+        offset += BLOCK_SIZE;
+    }
+
+    // Safe: scalar remainder
+    if simd_bytes < data.len() {
+        encode_scalar_remainder(&data[simd_bytes..], lut, result);
     }
 }
 
@@ -152,40 +166,40 @@ unsafe fn encode_avx2_impl(data: &[u8], lut: &[char; 256], result: &mut String) 
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "ssse3")]
 unsafe fn encode_ssse3_impl(data: &[u8], lut: &[char; 256], result: &mut String) {
-    unsafe {
-        use std::arch::x86_64::*;
+    use std::arch::x86_64::*;
 
-        const BLOCK_SIZE: usize = 16;
+    const BLOCK_SIZE: usize = 16;
 
-        // For small inputs, scalar is faster due to setup cost
-        if data.len() < BLOCK_SIZE {
-            encode_scalar_remainder(data, lut, result);
-            return;
-        }
+    // For small inputs, scalar is faster due to setup cost
+    if data.len() < BLOCK_SIZE {
+        encode_scalar_remainder(data, lut, result);
+        return;
+    }
 
-        let (num_rounds, simd_bytes) = common::calculate_blocks(data.len(), BLOCK_SIZE);
+    let (num_rounds, simd_bytes) = common::calculate_blocks(data.len(), BLOCK_SIZE);
 
-        let mut offset = 0;
-        for _ in 0..num_rounds {
-            // Load 16 bytes with SIMD
-            let input_vec = _mm_loadu_si128(data.as_ptr().add(offset) as *const __m128i);
+    let mut offset = 0;
+    for _ in 0..num_rounds {
+        // Unsafe: SIMD load and pointer arithmetic
+        let input_vec = unsafe { _mm_loadu_si128(data.as_ptr().add(offset) as *const __m128i) };
 
-            // Store to buffer
-            let mut input_buf = [0u8; 16];
+        // Unsafe: SIMD store
+        let mut input_buf = [0u8; 16];
+        unsafe {
             _mm_storeu_si128(input_buf.as_mut_ptr() as *mut __m128i, input_vec);
-
-            // Translate using LUT (scalar - fastest for 256-entry table)
-            input_buf.iter().for_each(|&byte| {
-                result.push(lut[byte as usize]);
-            });
-
-            offset += BLOCK_SIZE;
         }
 
-        // Handle remainder with scalar code
-        if simd_bytes < data.len() {
-            encode_scalar_remainder(&data[simd_bytes..], lut, result);
-        }
+        // Safe: LUT lookup and push
+        input_buf.iter().for_each(|&byte| {
+            result.push(lut[byte as usize]);
+        });
+
+        offset += BLOCK_SIZE;
+    }
+
+    // Safe: scalar remainder
+    if simd_bytes < data.len() {
+        encode_scalar_remainder(&data[simd_bytes..], lut, result);
     }
 }
 

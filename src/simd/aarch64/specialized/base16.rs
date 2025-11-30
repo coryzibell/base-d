@@ -101,15 +101,17 @@ unsafe fn encode_neon_impl(data: &[u8], variant: HexVariant, result: &mut String
 
     const BLOCK_SIZE: usize = 16;
 
+    // Safe: size check
     if data.len() < BLOCK_SIZE {
         encode_scalar_remainder(data, variant, result);
         return;
     }
 
+    // Safe: arithmetic
     let num_blocks = data.len() / BLOCK_SIZE;
     let simd_bytes = num_blocks * BLOCK_SIZE;
 
-    // Lookup table for hex digits (16 bytes)
+    // Safe: array initialization
     let lut = match variant {
         HexVariant::Uppercase => [
             b'0', b'1', b'2', b'3', b'4', b'5', b'6', b'7', b'8', b'9', b'A', b'B', b'C', b'D',
@@ -120,44 +122,54 @@ unsafe fn encode_neon_impl(data: &[u8], variant: HexVariant, result: &mut String
             b'e', b'f',
         ],
     };
-    let lut_vec = vld1q_u8(lut.as_ptr());
 
-    let mask_0f = vdupq_n_u8(0x0F);
+    // Unsafe: SIMD load, SIMD constant
+    let lut_vec = unsafe { vld1q_u8(lut.as_ptr()) };
+    let mask_0f = unsafe { vdupq_n_u8(0x0F) };
 
     let mut offset = 0;
     for _ in 0..num_blocks {
-        // Load 16 bytes
-        let input_vec = vld1q_u8(data.as_ptr().add(offset));
+        // Unsafe: SIMD load, pointer arithmetic
+        let input_vec = unsafe { vld1q_u8(data.as_ptr().add(offset)) };
 
-        // Extract high nibbles (shift right by 4)
-        let hi_nibbles = vandq_u8(vshrq_n_u8(input_vec, 4), mask_0f);
+        // Unsafe: SIMD intrinsics for nibble extraction
+        let (hi_nibbles, lo_nibbles) = unsafe {
+            let hi_nibbles = vandq_u8(vshrq_n_u8(input_vec, 4), mask_0f);
+            let lo_nibbles = vandq_u8(input_vec, mask_0f);
+            (hi_nibbles, lo_nibbles)
+        };
 
-        // Extract low nibbles
-        let lo_nibbles = vandq_u8(input_vec, mask_0f);
+        // Unsafe: SIMD table lookups
+        let (hi_ascii, lo_ascii) = unsafe {
+            let hi_ascii = vqtbl1q_u8(lut_vec, hi_nibbles);
+            let lo_ascii = vqtbl1q_u8(lut_vec, lo_nibbles);
+            (hi_ascii, lo_ascii)
+        };
 
-        // Translate nibbles to ASCII using table lookup
-        let hi_ascii = vqtbl1q_u8(lut_vec, hi_nibbles);
-        let lo_ascii = vqtbl1q_u8(lut_vec, lo_nibbles);
+        // Unsafe: SIMD interleave
+        let (result_lo, result_hi) = unsafe {
+            let result_lo = vzip1q_u8(hi_ascii, lo_ascii);
+            let result_hi = vzip2q_u8(hi_ascii, lo_ascii);
+            (result_lo, result_hi)
+        };
 
-        // Interleave high and low bytes: hi[0], lo[0], hi[1], lo[1], ...
-        // NEON advantage: vzip1q_u8/vzip2q_u8 are cleaner than x86 unpack
-        let result_lo = vzip1q_u8(hi_ascii, lo_ascii);
-        let result_hi = vzip2q_u8(hi_ascii, lo_ascii);
-
-        // Store 32 output characters
+        // Unsafe: SIMD stores
         let mut output_buf = [0u8; 32];
-        vst1q_u8(output_buf.as_mut_ptr(), result_lo);
-        vst1q_u8(output_buf.as_mut_ptr().add(16), result_hi);
+        unsafe {
+            vst1q_u8(output_buf.as_mut_ptr(), result_lo);
+            vst1q_u8(output_buf.as_mut_ptr().add(16), result_hi);
+        }
 
-        // Append to result (safe because hex is ASCII)
+        // Safe: iteration, push
         for &byte in &output_buf {
             result.push(byte as char);
         }
 
+        // Safe: arithmetic
         offset += BLOCK_SIZE;
     }
 
-    // Handle remainder with scalar code
+    // Safe: comparison
     if simd_bytes < data.len() {
         encode_scalar_remainder(&data[simd_bytes..], variant, result);
     }
@@ -172,50 +184,60 @@ unsafe fn decode_neon_impl(encoded: &[u8], result: &mut Vec<u8>) -> bool {
     const INPUT_BLOCK_SIZE: usize = 32;
     const OUTPUT_BLOCK_SIZE: usize = 16;
 
+    // Safe: size check
     if encoded.len() < INPUT_BLOCK_SIZE {
         return decode_scalar_remainder(encoded, result);
     }
 
+    // Safe: arithmetic
     let num_blocks = encoded.len() / INPUT_BLOCK_SIZE;
     let simd_bytes = num_blocks * INPUT_BLOCK_SIZE;
 
-    // Process full blocks
+    // Safe: iteration
     for round in 0..num_blocks {
         let offset = round * INPUT_BLOCK_SIZE;
 
-        // Load 32 bytes (16 pairs of hex chars)
-        let input_lo = vld1q_u8(encoded.as_ptr().add(offset));
-        let input_hi = vld1q_u8(encoded.as_ptr().add(offset + 16));
+        // Unsafe: SIMD loads, pointer arithmetic
+        let (input_lo, input_hi) = unsafe {
+            let input_lo = vld1q_u8(encoded.as_ptr().add(offset));
+            let input_hi = vld1q_u8(encoded.as_ptr().add(offset + 16));
+            (input_lo, input_hi)
+        };
 
-        // Deinterleave: separate high and low nibble chars
-        // Input: [h0,l0, h1,l1, ...] → [h0,h1,...], [l0,l1,...]
-        let deinterleaved = vuzpq_u8(input_lo, input_hi);
-        let hi_chars = deinterleaved.0;
-        let lo_chars = deinterleaved.1;
+        // Unsafe: SIMD deinterleave
+        let (hi_chars, lo_chars) = unsafe {
+            let deinterleaved = vuzpq_u8(input_lo, input_hi);
+            (deinterleaved.0, deinterleaved.1)
+        };
 
-        // Decode both nibble streams
-        let hi_vals = decode_nibble_chars_neon(hi_chars);
-        let lo_vals = decode_nibble_chars_neon(lo_chars);
+        // Unsafe: SIMD decode
+        let hi_vals = unsafe { decode_nibble_chars_neon(hi_chars) };
+        let lo_vals = unsafe { decode_nibble_chars_neon(lo_chars) };
 
-        // Check for invalid characters (255 in decoded values)
-        // Use vmaxvq_u8 to find maximum value in vector
-        if vmaxvq_u8(vceqq_u8(hi_vals, vdupq_n_u8(255))) != 0 {
+        // Unsafe: SIMD validation check
+        let (hi_invalid, lo_invalid) = unsafe {
+            let hi_invalid = vmaxvq_u8(vceqq_u8(hi_vals, vdupq_n_u8(255)));
+            let lo_invalid = vmaxvq_u8(vceqq_u8(lo_vals, vdupq_n_u8(255)));
+            (hi_invalid, lo_invalid)
+        };
+
+        // Safe: validation check
+        if hi_invalid != 0 || lo_invalid != 0 {
             return false;
         }
-        if vmaxvq_u8(vceqq_u8(lo_vals, vdupq_n_u8(255))) != 0 {
-            return false;
-        }
 
-        // Pack nibbles into bytes: (high << 4) | low
-        let packed = vorrq_u8(vshlq_n_u8(hi_vals, 4), lo_vals);
+        // Unsafe: SIMD packing
+        let packed = unsafe { vorrq_u8(vshlq_n_u8(hi_vals, 4), lo_vals) };
 
-        // Store 16 bytes
+        // Unsafe: SIMD store
         let mut output_buf = [0u8; OUTPUT_BLOCK_SIZE];
-        vst1q_u8(output_buf.as_mut_ptr(), packed);
+        unsafe { vst1q_u8(output_buf.as_mut_ptr(), packed) };
+
+        // Safe: extend slice
         result.extend_from_slice(&output_buf);
     }
 
-    // Handle remainder with scalar fallback
+    // Safe: comparison
     if simd_bytes < encoded.len() {
         if !decode_scalar_remainder(&encoded[simd_bytes..], result) {
             return false;
@@ -235,41 +257,44 @@ unsafe fn decode_nibble_chars_neon(
 ) -> std::arch::aarch64::uint8x16_t {
     use std::arch::aarch64::*;
 
-    // Strategy: Use character ranges to select appropriate offset
-    // '0'-'9': 0x30-0x39 → subtract 0x30 → 0-9
-    // 'A'-'F': 0x41-0x46 → subtract 0x37 → 10-15
-    // 'a'-'f': 0x61-0x66 → subtract 0x57 → 10-15
+    // Unsafe: SIMD intrinsics
+    unsafe {
+        // Strategy: Use character ranges to select appropriate offset
+        // '0'-'9': 0x30-0x39 → subtract 0x30 → 0-9
+        // 'A'-'F': 0x41-0x46 → subtract 0x37 → 10-15
+        // 'a'-'f': 0x61-0x66 → subtract 0x57 → 10-15
 
-    let zero_30 = vdupq_n_u8(0x30);
-    let nine_39 = vdupq_n_u8(0x39);
-    let a_41 = vdupq_n_u8(0x41);
-    let f_46 = vdupq_n_u8(0x46);
-    let a_61 = vdupq_n_u8(0x61);
-    let f_66 = vdupq_n_u8(0x66);
+        let zero_30 = vdupq_n_u8(0x30);
+        let nine_39 = vdupq_n_u8(0x39);
+        let a_41 = vdupq_n_u8(0x41);
+        let f_46 = vdupq_n_u8(0x46);
+        let a_61 = vdupq_n_u8(0x61);
+        let f_66 = vdupq_n_u8(0x66);
 
-    // Check if char is a digit ('0'-'9')
-    let is_digit = vandq_u8(vcgeq_u8(chars, zero_30), vcleq_u8(chars, nine_39));
+        // Check if char is a digit ('0'-'9')
+        let is_digit = vandq_u8(vcgeq_u8(chars, zero_30), vcleq_u8(chars, nine_39));
 
-    // Check if char is uppercase hex ('A'-'F')
-    let is_upper = vandq_u8(vcgeq_u8(chars, a_41), vcleq_u8(chars, f_46));
+        // Check if char is uppercase hex ('A'-'F')
+        let is_upper = vandq_u8(vcgeq_u8(chars, a_41), vcleq_u8(chars, f_46));
 
-    // Check if char is lowercase hex ('a'-'f')
-    let is_lower = vandq_u8(vcgeq_u8(chars, a_61), vcleq_u8(chars, f_66));
+        // Check if char is lowercase hex ('a'-'f')
+        let is_lower = vandq_u8(vcgeq_u8(chars, a_61), vcleq_u8(chars, f_66));
 
-    // Decode using appropriate offset
-    let digit_vals = vandq_u8(is_digit, vsubq_u8(chars, vdupq_n_u8(0x30)));
-    let upper_vals = vandq_u8(is_upper, vsubq_u8(chars, vdupq_n_u8(0x37)));
-    let lower_vals = vandq_u8(is_lower, vsubq_u8(chars, vdupq_n_u8(0x57)));
+        // Decode using appropriate offset
+        let digit_vals = vandq_u8(is_digit, vsubq_u8(chars, vdupq_n_u8(0x30)));
+        let upper_vals = vandq_u8(is_upper, vsubq_u8(chars, vdupq_n_u8(0x37)));
+        let lower_vals = vandq_u8(is_lower, vsubq_u8(chars, vdupq_n_u8(0x57)));
 
-    // Combine results (only one should be non-zero per byte)
-    let valid_vals = vorrq_u8(vorrq_u8(digit_vals, upper_vals), lower_vals);
+        // Combine results (only one should be non-zero per byte)
+        let valid_vals = vorrq_u8(vorrq_u8(digit_vals, upper_vals), lower_vals);
 
-    // Set invalid chars to 255
-    let is_valid = vorrq_u8(vorrq_u8(is_digit, is_upper), is_lower);
-    vorrq_u8(
-        vandq_u8(is_valid, valid_vals),
-        vbicq_u8(vdupq_n_u8(255), is_valid),
-    )
+        // Set invalid chars to 255
+        let is_valid = vorrq_u8(vorrq_u8(is_digit, is_upper), is_lower);
+        vorrq_u8(
+            vandq_u8(is_valid, valid_vals),
+            vbicq_u8(vdupq_n_u8(255), is_valid),
+        )
+    }
 }
 
 /// Encode remaining bytes using scalar algorithm

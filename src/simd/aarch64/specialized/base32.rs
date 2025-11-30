@@ -129,43 +129,43 @@ unsafe fn encode_neon_impl(
 
     const BLOCK_SIZE: usize = 10; // 10 bytes -> 16 chars
 
-    // Need at least 16 bytes in buffer to safely load 128 bits
+    // Safe: size check, arithmetic
     if data.len() < 16 {
         // Fall back to scalar for small inputs
         encode_scalar_remainder(data, dictionary, result);
         return;
     }
 
-    // Process blocks of 10 bytes. We load 16 bytes but only use 10.
-    // Ensure we don't read past the buffer: need 6 extra bytes after last block
+    // Safe: arithmetic, bounds checks
     let safe_len = if data.len() >= 6 { data.len() - 6 } else { 0 };
     let num_blocks = safe_len / BLOCK_SIZE;
     let simd_bytes = num_blocks * BLOCK_SIZE;
 
     let mut offset = 0;
     for _ in 0..num_blocks {
-        // Load 16 bytes (we only use the first 10)
-        let input_vec = vld1q_u8(data.as_ptr().add(offset));
+        // Unsafe: SIMD load, pointer arithmetic
+        let input_vec = unsafe { vld1q_u8(data.as_ptr().add(offset)) };
 
-        // Extract 5-bit indices from 10 packed bytes
-        let indices = unpack_5bit_simple_neon(input_vec);
+        // Unsafe: SIMD intrinsics
+        let indices = unsafe { unpack_5bit_simple_neon(input_vec) };
 
-        // Translate 5-bit indices to ASCII
-        let encoded = translate_encode_neon(indices, variant);
+        // Unsafe: SIMD intrinsics
+        let encoded = unsafe { translate_encode_neon(indices, variant) };
 
-        // Store 16 output characters
+        // Unsafe: SIMD store
         let mut output_buf = [0u8; 16];
-        vst1q_u8(output_buf.as_mut_ptr(), encoded);
+        unsafe { vst1q_u8(output_buf.as_mut_ptr(), encoded) };
 
-        // Append to result (safe because base32 is ASCII)
+        // Safe: iteration, push
         for &byte in &output_buf {
             result.push(byte as char);
         }
 
+        // Safe: arithmetic
         offset += BLOCK_SIZE;
     }
 
-    // Handle remainder with scalar code
+    // Safe: comparison
     if simd_bytes < data.len() {
         encode_scalar_remainder(&data[simd_bytes..], dictionary, result);
     }
@@ -181,11 +181,11 @@ unsafe fn unpack_5bit_simple_neon(
 ) -> std::arch::aarch64::uint8x16_t {
     use std::arch::aarch64::*;
 
-    // Extract bytes 0-9 into a buffer for easier manipulation
+    // Unsafe: SIMD store
     let mut buf = [0u8; 16];
-    vst1q_u8(buf.as_mut_ptr(), input);
+    unsafe { vst1q_u8(buf.as_mut_ptr(), input) };
 
-    // Extract 5-bit indices manually (two 5-byte groups)
+    // Safe: bit manipulation
     let mut indices = [0u8; 16];
 
     // First group: bytes 0-4 -> indices 0-7
@@ -208,7 +208,8 @@ unsafe fn unpack_5bit_simple_neon(
     indices[14] = ((buf[8] & 0x03) << 3) | (buf[9] >> 5);
     indices[15] = buf[9] & 0x1F;
 
-    vld1q_u8(indices.as_ptr())
+    // Unsafe: SIMD load
+    unsafe { vld1q_u8(indices.as_ptr()) }
 }
 
 /// Translate 5-bit indices (0-31) to base32 ASCII characters (NEON)
@@ -222,36 +223,42 @@ unsafe fn translate_encode_neon(
 
     match variant {
         Base32Variant::Rfc4648 => {
-            // RFC 4648 standard: 0-25 -> 'A'-'Z', 26-31 -> '2'-'7'
-            // Create mask for indices >= 26
-            let indices_signed = vreinterpretq_s8_u8(indices);
-            let ge_26 = vcgtq_s8(indices_signed, vdupq_n_s8(25));
+            // Unsafe: SIMD intrinsics
+            unsafe {
+                // RFC 4648 standard: 0-25 -> 'A'-'Z', 26-31 -> '2'-'7'
+                // Create mask for indices >= 26
+                let indices_signed = vreinterpretq_s8_u8(indices);
+                let ge_26 = vcgtq_s8(indices_signed, vdupq_n_s8(25));
 
-            // Base offset is 'A' (65) for all
-            let base = vdupq_n_u8(b'A');
+                // Base offset is 'A' (65) for all
+                let base = vdupq_n_u8(b'A');
 
-            // Adjustment for >= 26: we want '2' (50) for index 26
-            // So offset should be 50 - 26 = 24 instead of 65
-            // Difference: 24 - 65 = -41
-            let adjustment = vandq_u8(ge_26, vdupq_n_u8((-41i8) as u8));
+                // Adjustment for >= 26: we want '2' (50) for index 26
+                // So offset should be 50 - 26 = 24 instead of 65
+                // Difference: 24 - 65 = -41
+                let adjustment = vandq_u8(ge_26, vdupq_n_u8((-41i8) as u8));
 
-            vaddq_u8(vaddq_u8(indices, base), adjustment)
+                vaddq_u8(vaddq_u8(indices, base), adjustment)
+            }
         }
         Base32Variant::Rfc4648Hex => {
-            // RFC 4648 hex: 0-9 -> '0'-'9', 10-31 -> 'A'-'V'
-            // Create mask for indices >= 10
-            let indices_signed = vreinterpretq_s8_u8(indices);
-            let ge_10 = vcgtq_s8(indices_signed, vdupq_n_s8(9));
+            // Unsafe: SIMD intrinsics
+            unsafe {
+                // RFC 4648 hex: 0-9 -> '0'-'9', 10-31 -> 'A'-'V'
+                // Create mask for indices >= 10
+                let indices_signed = vreinterpretq_s8_u8(indices);
+                let ge_10 = vcgtq_s8(indices_signed, vdupq_n_s8(9));
 
-            // Base offset is '0' (48) for indices 0-9
-            let base = vdupq_n_u8(b'0');
+                // Base offset is '0' (48) for indices 0-9
+                let base = vdupq_n_u8(b'0');
 
-            // Adjustment for >= 10: we want 'A' (65) for index 10
-            // So offset should be 65 - 10 = 55 instead of 48
-            // Difference: 55 - 48 = 7
-            let adjustment = vandq_u8(ge_10, vdupq_n_u8(7));
+                // Adjustment for >= 10: we want 'A' (65) for index 10
+                // So offset should be 65 - 10 = 55 instead of 48
+                // Difference: 55 - 48 = 7
+                let adjustment = vandq_u8(ge_10, vdupq_n_u8(7));
 
-            vaddq_u8(vaddq_u8(indices, base), adjustment)
+                vaddq_u8(vaddq_u8(indices, base), adjustment)
+            }
         }
     }
 }
@@ -267,52 +274,61 @@ unsafe fn decode_neon_impl(encoded: &[u8], variant: Base32Variant, result: &mut 
 
     const INPUT_BLOCK_SIZE: usize = 16;
 
-    // Get decode LUTs for this variant
-    let (delta_check, delta_rebase) = get_decode_delta_tables_neon(variant);
+    // Unsafe: SIMD intrinsics
+    let (delta_check, delta_rebase) = unsafe { get_decode_delta_tables_neon(variant) };
 
-    // Calculate number of full 16-byte blocks
+    // Safe: arithmetic
     let num_blocks = encoded.len() / INPUT_BLOCK_SIZE;
     let simd_bytes = num_blocks * INPUT_BLOCK_SIZE;
 
-    // Process full blocks
+    // Safe: iteration
     for round in 0..num_blocks {
         let offset = round * INPUT_BLOCK_SIZE;
 
-        // Load 16 bytes
-        let input_vec = vld1q_u8(encoded.as_ptr().add(offset));
+        // Unsafe: SIMD load, pointer arithmetic
+        let input_vec = unsafe { vld1q_u8(encoded.as_ptr().add(offset)) };
 
-        // Validate and translate using hash-based approach
-        // 1. Extract hash key (upper 4 bits)
-        let input_u32 = vreinterpretq_u32_u8(input_vec);
-        let hash_key_u32 = vandq_u32(vshrq_n_u32(input_u32, 4), vdupq_n_u32(0x0F0F0F0F));
-        let hash_key = vreinterpretq_u8_u32(hash_key_u32);
+        // Unsafe: SIMD intrinsics for validation and translation
+        let (is_valid, indices) = unsafe {
+            // Validate and translate using hash-based approach
+            // 1. Extract hash key (upper 4 bits)
+            let input_u32 = vreinterpretq_u32_u8(input_vec);
+            let hash_key_u32 = vandq_u32(vshrq_n_u32(input_u32, 4), vdupq_n_u32(0x0F0F0F0F));
+            let hash_key = vreinterpretq_u8_u32(hash_key_u32);
 
-        // 2. Validate: check = delta_check[hash_key] + input
-        let check = vaddq_u8(vqtbl1q_u8(delta_check, hash_key), input_vec);
+            // 2. Validate: check = delta_check[hash_key] + input
+            let check = vaddq_u8(vqtbl1q_u8(delta_check, hash_key), input_vec);
 
-        // 3. Check should be <= 0x1F (31) for valid base32 characters
-        let check_signed = vreinterpretq_s8_u8(check);
-        let invalid_mask = vcgtq_s8(check_signed, vdupq_n_s8(0x1F));
+            // 3. Check should be <= 0x1F (31) for valid base32 characters
+            let check_signed = vreinterpretq_s8_u8(check);
+            let invalid_mask = vcgtq_s8(check_signed, vdupq_n_s8(0x1F));
 
-        // Check if any byte is invalid (use vmaxvq_u8 to test if any bit set)
-        // vcgtq_s8 returns uint8x16_t, already the correct type
-        if vmaxvq_u8(invalid_mask) != 0 {
-            return false; // Invalid characters
+            // Check if any byte is invalid (use vmaxvq_u8 to test if any bit set)
+            let is_valid = vmaxvq_u8(invalid_mask) == 0;
+
+            // 4. Translate: indices = input + delta_rebase[hash_key]
+            let indices = vaddq_u8(input_vec, vqtbl1q_u8(delta_rebase, hash_key));
+
+            (is_valid, indices)
+        };
+
+        // Safe: validation check
+        if !is_valid {
+            return false;
         }
 
-        // 4. Translate: indices = input + delta_rebase[hash_key]
-        let indices = vaddq_u8(input_vec, vqtbl1q_u8(delta_rebase, hash_key));
+        // Unsafe: SIMD intrinsics for packing
+        let decoded = unsafe { pack_5bit_to_8bit_neon(indices) };
 
-        // Pack 5-bit values into bytes (16 chars -> 10 bytes)
-        let decoded = pack_5bit_to_8bit_neon(indices);
-
-        // Store 10 bytes
+        // Unsafe: SIMD store
         let mut output_buf = [0u8; 16];
-        vst1q_u8(output_buf.as_mut_ptr(), decoded);
+        unsafe { vst1q_u8(output_buf.as_mut_ptr(), decoded) };
+
+        // Safe: slice operation, extend
         result.extend_from_slice(&output_buf[0..10]);
     }
 
-    // Handle remainder with scalar fallback
+    // Safe: comparison
     if simd_bytes < encoded.len() {
         let remainder = &encoded[simd_bytes..];
         if !decode_scalar_remainder(
@@ -362,51 +378,54 @@ unsafe fn get_decode_delta_tables_neon(
             // 0x4x: 'A'-'O' (0x41-0x4F)
             // 0x5x: 'P'-'Z' (0x50-0x5A)
 
-            let delta_check = vld1q_u8(
-                [
-                    0x7F,
-                    0x7F,
-                    0x7F,                // 0x0, 0x1, 0x2 - invalid
-                    (0x1F - 0x37) as u8, // 0x3: '2'-'7' -> check <= 0x1F
-                    (0x1F - 0x4F) as u8, // 0x4: 'A'-'O' -> check <= 0x1F
-                    (0x1F - 0x5A) as u8, // 0x5: 'P'-'Z' -> check <= 0x1F
-                    0x7F,
-                    0x7F,
-                    0x7F,
-                    0x7F,
-                    0x7F,
-                    0x7F,
-                    0x7F,
-                    0x7F,
-                    0x7F,
-                    0x7F, // 0x6-0xF - invalid
-                ]
-                .as_ptr(),
-            );
+            // Unsafe: SIMD loads
+            unsafe {
+                let delta_check = vld1q_u8(
+                    [
+                        0x7F,
+                        0x7F,
+                        0x7F,                // 0x0, 0x1, 0x2 - invalid
+                        (0x1F - 0x37) as u8, // 0x3: '2'-'7' -> check <= 0x1F
+                        (0x1F - 0x4F) as u8, // 0x4: 'A'-'O' -> check <= 0x1F
+                        (0x1F - 0x5A) as u8, // 0x5: 'P'-'Z' -> check <= 0x1F
+                        0x7F,
+                        0x7F,
+                        0x7F,
+                        0x7F,
+                        0x7F,
+                        0x7F,
+                        0x7F,
+                        0x7F,
+                        0x7F,
+                        0x7F, // 0x6-0xF - invalid
+                    ]
+                    .as_ptr(),
+                );
 
-            let delta_rebase = vld1q_u8(
-                [
-                    0,
-                    0,
-                    0,                           // 0x0, 0x1, 0x2 - unused
-                    (26i16 - b'2' as i16) as u8, // 0x3: '2' -> 26
-                    (0i16 - b'A' as i16) as u8,  // 0x4: 'A' -> 0
-                    (0i16 - b'A' as i16) as u8,  // 0x5: 'A' -> 0 (P-Z use same offset)
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0, // 0x6-0xF - unused
-                ]
-                .as_ptr(),
-            );
+                let delta_rebase = vld1q_u8(
+                    [
+                        0,
+                        0,
+                        0,                           // 0x0, 0x1, 0x2 - unused
+                        (26i16 - b'2' as i16) as u8, // 0x3: '2' -> 26
+                        (0i16 - b'A' as i16) as u8,  // 0x4: 'A' -> 0
+                        (0i16 - b'A' as i16) as u8,  // 0x5: 'A' -> 0 (P-Z use same offset)
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0, // 0x6-0xF - unused
+                    ]
+                    .as_ptr(),
+                );
 
-            (delta_check, delta_rebase)
+                (delta_check, delta_rebase)
+            }
         }
         Base32Variant::Rfc4648Hex => {
             // RFC 4648 hex: 0-9 (0x30-0x39) -> 0-9, A-V (0x41-0x56) -> 10-31
@@ -415,51 +434,54 @@ unsafe fn get_decode_delta_tables_neon(
             // 0x4x: 'A'-'O' (0x41-0x4F)
             // 0x5x: 'P'-'V' (0x50-0x56)
 
-            let delta_check = vld1q_u8(
-                [
-                    0x7F,
-                    0x7F,
-                    0x7F,                // 0x0, 0x1, 0x2 - invalid
-                    (0x1F - 0x39) as u8, // 0x3: '0'-'9' -> check <= 0x1F
-                    (0x1F - 0x4F) as u8, // 0x4: 'A'-'O' -> check <= 0x1F
-                    (0x1F - 0x56) as u8, // 0x5: 'P'-'V' -> check <= 0x1F
-                    0x7F,
-                    0x7F,
-                    0x7F,
-                    0x7F,
-                    0x7F,
-                    0x7F,
-                    0x7F,
-                    0x7F,
-                    0x7F,
-                    0x7F, // 0x6-0xF - invalid
-                ]
-                .as_ptr(),
-            );
+            // Unsafe: SIMD loads
+            unsafe {
+                let delta_check = vld1q_u8(
+                    [
+                        0x7F,
+                        0x7F,
+                        0x7F,                // 0x0, 0x1, 0x2 - invalid
+                        (0x1F - 0x39) as u8, // 0x3: '0'-'9' -> check <= 0x1F
+                        (0x1F - 0x4F) as u8, // 0x4: 'A'-'O' -> check <= 0x1F
+                        (0x1F - 0x56) as u8, // 0x5: 'P'-'V' -> check <= 0x1F
+                        0x7F,
+                        0x7F,
+                        0x7F,
+                        0x7F,
+                        0x7F,
+                        0x7F,
+                        0x7F,
+                        0x7F,
+                        0x7F,
+                        0x7F, // 0x6-0xF - invalid
+                    ]
+                    .as_ptr(),
+                );
 
-            let delta_rebase = vld1q_u8(
-                [
-                    0,
-                    0,
-                    0,                           // 0x0, 0x1, 0x2 - unused
-                    (0i16 - b'0' as i16) as u8,  // 0x3: '0' -> 0
-                    (10i16 - b'A' as i16) as u8, // 0x4: 'A' -> 10
-                    (10i16 - b'A' as i16) as u8, // 0x5: 'A' -> 10 (P-V use same offset)
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0, // 0x6-0xF - unused
-                ]
-                .as_ptr(),
-            );
+                let delta_rebase = vld1q_u8(
+                    [
+                        0,
+                        0,
+                        0,                           // 0x0, 0x1, 0x2 - unused
+                        (0i16 - b'0' as i16) as u8,  // 0x3: '0' -> 0
+                        (10i16 - b'A' as i16) as u8, // 0x4: 'A' -> 10
+                        (10i16 - b'A' as i16) as u8, // 0x5: 'A' -> 10 (P-V use same offset)
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0, // 0x6-0xF - unused
+                    ]
+                    .as_ptr(),
+                );
 
-            (delta_check, delta_rebase)
+                (delta_check, delta_rebase)
+            }
         }
     }
 }
@@ -476,10 +498,11 @@ unsafe fn pack_5bit_to_8bit_neon(
 ) -> std::arch::aarch64::uint8x16_t {
     use std::arch::aarch64::*;
 
-    // Extract indices to buffer for bit manipulation
+    // Unsafe: SIMD store
     let mut idx = [0u8; 16];
-    vst1q_u8(idx.as_mut_ptr(), indices);
+    unsafe { vst1q_u8(idx.as_mut_ptr(), indices) };
 
+    // Safe: bit manipulation
     let mut out = [0u8; 16];
 
     // Pack first group: 8 x 5-bit values -> 5 bytes
@@ -497,7 +520,8 @@ unsafe fn pack_5bit_to_8bit_neon(
     out[8] = (idx[12] << 7) | (idx[13] << 2) | (idx[14] >> 3);
     out[9] = (idx[14] << 5) | idx[15];
 
-    vld1q_u8(out.as_ptr())
+    // Unsafe: SIMD load
+    unsafe { vld1q_u8(out.as_ptr()) }
 }
 
 /// Decode bytes using scalar algorithm

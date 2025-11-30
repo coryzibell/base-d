@@ -171,6 +171,7 @@ impl SimdTranslate for SequentialTranslate {
         // Index 63 → 63 + 0x40 = '\x7F'
         //
         // Compiles to: paddb xmm0, xmm1
+        // Safe: SIMD intrinsics are safe with target_feature
         let offset = _mm_set1_epi8(self.start_codepoint as i8);
         _mm_add_epi8(indices, offset)
     }

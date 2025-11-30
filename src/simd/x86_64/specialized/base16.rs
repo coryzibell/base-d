@@ -100,38 +100,43 @@ pub fn decode(encoded: &str, _variant: HexVariant) -> Option<Vec<u8>> {
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
 unsafe fn encode_avx2_impl(data: &[u8], variant: HexVariant, result: &mut String) {
-    unsafe {
-        use std::arch::x86_64::*;
+    use std::arch::x86_64::*;
 
-        const BLOCK_SIZE: usize = 32;
+    const BLOCK_SIZE: usize = 32;
 
-        if data.len() < BLOCK_SIZE {
-            // Fall back to SSSE3 for small inputs
+    // Safe: length check, arithmetic
+    if data.len() < BLOCK_SIZE {
+        // Fall back to SSSE3 for small inputs
+        unsafe {
             encode_ssse3_impl(data, variant, result);
-            return;
         }
+        return;
+    }
 
-        let (num_rounds, simd_bytes) = common::calculate_blocks(data.len(), BLOCK_SIZE);
+    let (num_rounds, simd_bytes) = common::calculate_blocks(data.len(), BLOCK_SIZE);
 
-        // Build 256-bit lookup table (duplicate 128-bit pattern across both lanes)
-        let lut_128 = match variant {
-            HexVariant::Uppercase => _mm_setr_epi8(
-                b'0' as i8, b'1' as i8, b'2' as i8, b'3' as i8, b'4' as i8, b'5' as i8, b'6' as i8,
-                b'7' as i8, b'8' as i8, b'9' as i8, b'A' as i8, b'B' as i8, b'C' as i8, b'D' as i8,
-                b'E' as i8, b'F' as i8,
-            ),
-            HexVariant::Lowercase => _mm_setr_epi8(
-                b'0' as i8, b'1' as i8, b'2' as i8, b'3' as i8, b'4' as i8, b'5' as i8, b'6' as i8,
-                b'7' as i8, b'8' as i8, b'9' as i8, b'a' as i8, b'b' as i8, b'c' as i8, b'd' as i8,
-                b'e' as i8, b'f' as i8,
-            ),
-        };
-        let lut = _mm256_broadcastsi128_si256(lut_128);
+    // Unsafe: SIMD intrinsics (target_feature makes entire body unsafe)
+    // Build 256-bit lookup table (duplicate 128-bit pattern across both lanes)
+    let lut_128 = match variant {
+        HexVariant::Uppercase => _mm_setr_epi8(
+            b'0' as i8, b'1' as i8, b'2' as i8, b'3' as i8, b'4' as i8, b'5' as i8, b'6' as i8,
+            b'7' as i8, b'8' as i8, b'9' as i8, b'A' as i8, b'B' as i8, b'C' as i8, b'D' as i8,
+            b'E' as i8, b'F' as i8,
+        ),
+        HexVariant::Lowercase => _mm_setr_epi8(
+            b'0' as i8, b'1' as i8, b'2' as i8, b'3' as i8, b'4' as i8, b'5' as i8, b'6' as i8,
+            b'7' as i8, b'8' as i8, b'9' as i8, b'a' as i8, b'b' as i8, b'c' as i8, b'd' as i8,
+            b'e' as i8, b'f' as i8,
+        ),
+    };
+    let lut = _mm256_broadcastsi128_si256(lut_128);
 
-        let mask_0f = _mm256_set1_epi8(0x0F);
+    let mask_0f = _mm256_set1_epi8(0x0F);
 
-        let mut offset = 0;
-        for _ in 0..num_rounds {
+    let mut offset = 0;
+    for _ in 0..num_rounds {
+        // Unsafe: SIMD load, pointer arithmetic, all SIMD intrinsics
+        let output_buf = unsafe {
             // Load 32 bytes
             let input_vec = _mm256_loadu_si256(data.as_ptr().add(offset) as *const __m256i);
 
@@ -164,17 +169,21 @@ unsafe fn encode_avx2_impl(data: &[u8], variant: HexVariant, result: &mut String
             let mut output_buf = [0u8; 64];
             _mm256_storeu_si256(output_buf.as_mut_ptr() as *mut __m256i, result_lo);
             _mm256_storeu_si256(output_buf.as_mut_ptr().add(32) as *mut __m256i, result_hi);
+            output_buf
+        };
 
-            // Append to result (safe because hex is ASCII)
-            for &byte in &output_buf {
-                result.push(byte as char);
-            }
-
-            offset += BLOCK_SIZE;
+        // Safe: iteration, push
+        for &byte in &output_buf {
+            result.push(byte as char);
         }
 
-        // Handle remainder with SSSE3 or scalar
-        if simd_bytes < data.len() {
+        offset += BLOCK_SIZE;
+    }
+
+    // Safe: bounds check, slicing
+    // Handle remainder with SSSE3 or scalar
+    if simd_bytes < data.len() {
+        unsafe {
             encode_ssse3_impl(&data[simd_bytes..], variant, result);
         }
     }
@@ -192,23 +201,26 @@ unsafe fn encode_avx2_impl(data: &[u8], variant: HexVariant, result: &mut String
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
 unsafe fn decode_avx2_impl(encoded: &[u8], result: &mut Vec<u8>) -> bool {
-    unsafe {
-        use std::arch::x86_64::*;
+    use std::arch::x86_64::*;
 
-        const INPUT_BLOCK_SIZE: usize = 64;
-        const OUTPUT_BLOCK_SIZE: usize = 32;
+    const INPUT_BLOCK_SIZE: usize = 64;
+    const OUTPUT_BLOCK_SIZE: usize = 32;
 
-        if encoded.len() < INPUT_BLOCK_SIZE {
-            // Fall back to SSSE3 for small inputs
-            return decode_ssse3_impl(encoded, result);
-        }
+    // Safe: length check
+    if encoded.len() < INPUT_BLOCK_SIZE {
+        // Fall back to SSSE3 for small inputs
+        return unsafe { decode_ssse3_impl(encoded, result) };
+    }
 
-        let (num_rounds, simd_bytes) = common::calculate_blocks(encoded.len(), INPUT_BLOCK_SIZE);
+    let (num_rounds, simd_bytes) = common::calculate_blocks(encoded.len(), INPUT_BLOCK_SIZE);
 
-        // Process full blocks
-        for round in 0..num_rounds {
-            let offset = round * INPUT_BLOCK_SIZE;
+    // Process full blocks
+    for round in 0..num_rounds {
+        // Safe: arithmetic
+        let offset = round * INPUT_BLOCK_SIZE;
 
+        // Unsafe: SIMD load, pointer arithmetic, all SIMD intrinsics
+        let (is_valid, output_buf) = unsafe {
             // Load 64 bytes (32 pairs of hex chars)
             let input_lo = _mm256_loadu_si256(encoded.as_ptr().add(offset) as *const __m256i);
             let input_hi = _mm256_loadu_si256(encoded.as_ptr().add(offset + 32) as *const __m256i);
@@ -239,29 +251,40 @@ unsafe fn decode_avx2_impl(encoded: &[u8], result: &mut Vec<u8>) -> bool {
             let lo_vals = decode_nibble_chars_avx2(lo_chars);
 
             // Check for invalid characters (-1 in decoded values)
-            if _mm256_movemask_epi8(_mm256_cmpgt_epi8(_mm256_setzero_si256(), hi_vals)) != 0 {
-                return false; // Invalid character in high nibbles
+            let hi_valid =
+                _mm256_movemask_epi8(_mm256_cmpgt_epi8(_mm256_setzero_si256(), hi_vals)) == 0;
+            let lo_valid =
+                _mm256_movemask_epi8(_mm256_cmpgt_epi8(_mm256_setzero_si256(), lo_vals)) == 0;
+
+            if !hi_valid || !lo_valid {
+                (false, [0u8; 32])
+            } else {
+                // Pack nibbles into bytes: (high << 4) | low
+                let packed = _mm256_or_si256(_mm256_slli_epi32(hi_vals, 4), lo_vals);
+
+                // Store 32 bytes
+                let mut output_buf = [0u8; 32];
+                _mm256_storeu_si256(output_buf.as_mut_ptr() as *mut __m256i, packed);
+                (true, output_buf)
             }
-            if _mm256_movemask_epi8(_mm256_cmpgt_epi8(_mm256_setzero_si256(), lo_vals)) != 0 {
-                return false; // Invalid character in low nibbles
-            }
+        };
 
-            // Pack nibbles into bytes: (high << 4) | low
-            let packed = _mm256_or_si256(_mm256_slli_epi32(hi_vals, 4), lo_vals);
-
-            // Store 32 bytes
-            let mut output_buf = [0u8; 32];
-            _mm256_storeu_si256(output_buf.as_mut_ptr() as *mut __m256i, packed);
-            result.extend_from_slice(&output_buf[0..OUTPUT_BLOCK_SIZE]);
-        }
-
-        // Handle remainder with SSSE3 fallback
-        if simd_bytes < encoded.len() && !decode_ssse3_impl(&encoded[simd_bytes..], result) {
+        // Safe: check for validation failure
+        if !is_valid {
             return false;
         }
 
-        true
+        // Safe: extend from slice
+        result.extend_from_slice(&output_buf[0..OUTPUT_BLOCK_SIZE]);
     }
+
+    // Safe: bounds check, slicing
+    // Handle remainder with SSSE3 fallback
+    if simd_bytes < encoded.len() && !unsafe { decode_ssse3_impl(&encoded[simd_bytes..], result) } {
+        return false;
+    }
+
+    true
 }
 
 /// Decode a 256-bit vector of hex characters to nibble values (0-15)
@@ -274,6 +297,7 @@ unsafe fn decode_nibble_chars_avx2(
 ) -> std::arch::x86_64::__m256i {
     use std::arch::x86_64::*;
 
+    // Unsafe: all SIMD intrinsics (target_feature makes entire body unsafe)
     // Strategy: Use character ranges to select appropriate lookup
     // '0'-'9': 0x30-0x39 → subtract 0x30 → 0-9
     // 'A'-'F': 0x41-0x46 → subtract 0x37 → 10-15
@@ -323,35 +347,38 @@ unsafe fn decode_nibble_chars_avx2(
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "ssse3")]
 unsafe fn encode_ssse3_impl(data: &[u8], variant: HexVariant, result: &mut String) {
-    unsafe {
-        use std::arch::x86_64::*;
+    use std::arch::x86_64::*;
 
-        const BLOCK_SIZE: usize = 16;
+    const BLOCK_SIZE: usize = 16;
 
-        if data.len() < BLOCK_SIZE {
-            // Fall back to scalar for small inputs
-            encode_scalar_remainder(data, variant, result);
-            return;
-        }
+    // Safe: length check
+    if data.len() < BLOCK_SIZE {
+        // Fall back to scalar for small inputs
+        encode_scalar_remainder(data, variant, result);
+        return;
+    }
 
-        let (num_rounds, simd_bytes) = common::calculate_blocks(data.len(), BLOCK_SIZE);
+    let (num_rounds, simd_bytes) = common::calculate_blocks(data.len(), BLOCK_SIZE);
 
-        // Lookup table for hex digits
-        let lut = match variant {
-            HexVariant::Uppercase => _mm_setr_epi8(
-                b'0' as i8, b'1' as i8, b'2' as i8, b'3' as i8, b'4' as i8, b'5' as i8, b'6' as i8,
-                b'7' as i8, b'8' as i8, b'9' as i8, b'A' as i8, b'B' as i8, b'C' as i8, b'D' as i8,
-                b'E' as i8, b'F' as i8,
-            ),
-            HexVariant::Lowercase => _mm_setr_epi8(
-                b'0' as i8, b'1' as i8, b'2' as i8, b'3' as i8, b'4' as i8, b'5' as i8, b'6' as i8,
-                b'7' as i8, b'8' as i8, b'9' as i8, b'a' as i8, b'b' as i8, b'c' as i8, b'd' as i8,
-                b'e' as i8, b'f' as i8,
-            ),
-        };
+    // Unsafe: SIMD intrinsics (target_feature makes entire body unsafe)
+    // Lookup table for hex digits
+    let lut = match variant {
+        HexVariant::Uppercase => _mm_setr_epi8(
+            b'0' as i8, b'1' as i8, b'2' as i8, b'3' as i8, b'4' as i8, b'5' as i8, b'6' as i8,
+            b'7' as i8, b'8' as i8, b'9' as i8, b'A' as i8, b'B' as i8, b'C' as i8, b'D' as i8,
+            b'E' as i8, b'F' as i8,
+        ),
+        HexVariant::Lowercase => _mm_setr_epi8(
+            b'0' as i8, b'1' as i8, b'2' as i8, b'3' as i8, b'4' as i8, b'5' as i8, b'6' as i8,
+            b'7' as i8, b'8' as i8, b'9' as i8, b'a' as i8, b'b' as i8, b'c' as i8, b'd' as i8,
+            b'e' as i8, b'f' as i8,
+        ),
+    };
 
-        let mut offset = 0;
-        for _ in 0..num_rounds {
+    let mut offset = 0;
+    for _ in 0..num_rounds {
+        // Unsafe: SIMD load, pointer arithmetic, all SIMD intrinsics
+        let output_buf = unsafe {
             // Load 16 bytes
             let input_vec = _mm_loadu_si128(data.as_ptr().add(offset) as *const __m128i);
 
@@ -373,19 +400,21 @@ unsafe fn encode_ssse3_impl(data: &[u8], variant: HexVariant, result: &mut Strin
             let mut output_buf = [0u8; 32];
             _mm_storeu_si128(output_buf.as_mut_ptr() as *mut __m128i, result_lo);
             _mm_storeu_si128(output_buf.as_mut_ptr().add(16) as *mut __m128i, result_hi);
+            output_buf
+        };
 
-            // Append to result (safe because hex is ASCII)
-            for &byte in &output_buf {
-                result.push(byte as char);
-            }
-
-            offset += BLOCK_SIZE;
+        // Safe: iteration, push
+        for &byte in &output_buf {
+            result.push(byte as char);
         }
 
-        // Handle remainder with scalar code
-        if simd_bytes < data.len() {
-            encode_scalar_remainder(&data[simd_bytes..], variant, result);
-        }
+        offset += BLOCK_SIZE;
+    }
+
+    // Safe: bounds check, slicing
+    // Handle remainder with scalar code
+    if simd_bytes < data.len() {
+        encode_scalar_remainder(&data[simd_bytes..], variant, result);
     }
 }
 
@@ -415,35 +444,38 @@ fn encode_scalar_remainder(data: &[u8], variant: HexVariant, result: &mut String
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "ssse3")]
 unsafe fn decode_ssse3_impl(encoded: &[u8], result: &mut Vec<u8>) -> bool {
-    unsafe {
-        use std::arch::x86_64::*;
+    use std::arch::x86_64::*;
 
-        const INPUT_BLOCK_SIZE: usize = 32;
-        const OUTPUT_BLOCK_SIZE: usize = 16;
+    const INPUT_BLOCK_SIZE: usize = 32;
+    const OUTPUT_BLOCK_SIZE: usize = 16;
 
-        let (num_rounds, simd_bytes) = common::calculate_blocks(encoded.len(), INPUT_BLOCK_SIZE);
+    let (num_rounds, simd_bytes) = common::calculate_blocks(encoded.len(), INPUT_BLOCK_SIZE);
 
-        // Lookup table for decoding hex chars
-        // Uses -1 for invalid characters
-        let decode_lut_lo = _mm_setr_epi8(
-            -1, -1, -1, -1, -1, -1, -1, -1, // 0x00-0x07
-            -1, -1, -1, -1, -1, -1, -1, -1, // 0x08-0x0F
-        );
+    // Unsafe: SIMD intrinsics (target_feature makes entire body unsafe)
+    // Lookup table for decoding hex chars
+    // Uses -1 for invalid characters
+    let decode_lut_lo = _mm_setr_epi8(
+        -1, -1, -1, -1, -1, -1, -1, -1, // 0x00-0x07
+        -1, -1, -1, -1, -1, -1, -1, -1, // 0x08-0x0F
+    );
 
-        let decode_lut_hi = _mm_setr_epi8(
-            -1, -1, -1, 0, 1, 2, 3, 4, // 0x00-0x07: '0'-'7' are 0x30-0x37
-            5, 6, 7, 8, 9, -1, -1, -1, // 0x08-0x0F: '8'-'9' are 0x38-0x39
-        );
+    let decode_lut_hi = _mm_setr_epi8(
+        -1, -1, -1, 0, 1, 2, 3, 4, // 0x00-0x07: '0'-'7' are 0x30-0x37
+        5, 6, 7, 8, 9, -1, -1, -1, // 0x08-0x0F: '8'-'9' are 0x38-0x39
+    );
 
-        let decode_lut_alpha = _mm_setr_epi8(
-            -1, 10, 11, 12, 13, 14, 15, -1, // 0x00-0x07: 'A'-'F' are 0x41-0x46
-            -1, -1, -1, -1, -1, -1, -1, -1, // 0x08-0x0F
-        );
+    let decode_lut_alpha = _mm_setr_epi8(
+        -1, 10, 11, 12, 13, 14, 15, -1, // 0x00-0x07: 'A'-'F' are 0x41-0x46
+        -1, -1, -1, -1, -1, -1, -1, -1, // 0x08-0x0F
+    );
 
-        // Process full blocks
-        for round in 0..num_rounds {
-            let offset = round * INPUT_BLOCK_SIZE;
+    // Process full blocks
+    for round in 0..num_rounds {
+        // Safe: arithmetic
+        let offset = round * INPUT_BLOCK_SIZE;
 
+        // Unsafe: SIMD load, pointer arithmetic, all SIMD intrinsics
+        let (is_valid, output_buf) = unsafe {
             // Load 32 bytes (16 pairs of hex chars)
             let input_lo = _mm_loadu_si128(encoded.as_ptr().add(offset) as *const __m128i);
             let input_hi = _mm_loadu_si128(encoded.as_ptr().add(offset + 16) as *const __m128i);
@@ -466,29 +498,38 @@ unsafe fn decode_ssse3_impl(encoded: &[u8], result: &mut Vec<u8>) -> bool {
                 decode_nibble_chars(lo_chars, decode_lut_lo, decode_lut_hi, decode_lut_alpha);
 
             // Check for invalid characters (-1 in decoded values)
-            if _mm_movemask_epi8(_mm_cmplt_epi8(hi_vals, _mm_setzero_si128())) != 0 {
-                return false; // Invalid character in high nibbles
+            let hi_valid = _mm_movemask_epi8(_mm_cmplt_epi8(hi_vals, _mm_setzero_si128())) == 0;
+            let lo_valid = _mm_movemask_epi8(_mm_cmplt_epi8(lo_vals, _mm_setzero_si128())) == 0;
+
+            if !hi_valid || !lo_valid {
+                (false, [0u8; 16])
+            } else {
+                // Pack nibbles into bytes: (high << 4) | low
+                let packed = _mm_or_si128(_mm_slli_epi32(hi_vals, 4), lo_vals);
+
+                // Store 16 bytes
+                let mut output_buf = [0u8; 16];
+                _mm_storeu_si128(output_buf.as_mut_ptr() as *mut __m128i, packed);
+                (true, output_buf)
             }
-            if _mm_movemask_epi8(_mm_cmplt_epi8(lo_vals, _mm_setzero_si128())) != 0 {
-                return false; // Invalid character in low nibbles
-            }
+        };
 
-            // Pack nibbles into bytes: (high << 4) | low
-            let packed = _mm_or_si128(_mm_slli_epi32(hi_vals, 4), lo_vals);
-
-            // Store 16 bytes
-            let mut output_buf = [0u8; 16];
-            _mm_storeu_si128(output_buf.as_mut_ptr() as *mut __m128i, packed);
-            result.extend_from_slice(&output_buf[0..OUTPUT_BLOCK_SIZE]);
-        }
-
-        // Handle remainder with scalar fallback
-        if simd_bytes < encoded.len() && !decode_scalar_remainder(&encoded[simd_bytes..], result) {
+        // Safe: check for validation failure
+        if !is_valid {
             return false;
         }
 
-        true
+        // Safe: extend from slice
+        result.extend_from_slice(&output_buf[0..OUTPUT_BLOCK_SIZE]);
     }
+
+    // Safe: bounds check, slicing
+    // Handle remainder with scalar fallback
+    if simd_bytes < encoded.len() && !decode_scalar_remainder(&encoded[simd_bytes..], result) {
+        return false;
+    }
+
+    true
 }
 
 /// Decode a vector of hex characters to nibble values (0-15)
@@ -504,6 +545,7 @@ unsafe fn decode_nibble_chars(
 ) -> std::arch::x86_64::__m128i {
     use std::arch::x86_64::*;
 
+    // Unsafe: all SIMD intrinsics (target_feature makes entire body unsafe)
     // Strategy: Use character ranges to select appropriate lookup
     // '0'-'9': 0x30-0x39 → subtract 0x30 → 0-9
     // 'A'-'F': 0x41-0x46 → subtract 0x37 → 10-15

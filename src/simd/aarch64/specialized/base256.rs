@@ -75,33 +75,35 @@ unsafe fn encode_neon_impl(data: &[u8], lut: &[char; 256], result: &mut String) 
 
     const BLOCK_SIZE: usize = 16;
 
-    // For small inputs, scalar is faster due to setup cost
+    // Safe: size check
     if data.len() < BLOCK_SIZE {
         encode_scalar_remainder(data, lut, result);
         return;
     }
 
+    // Safe: arithmetic
     let num_rounds = data.len() / BLOCK_SIZE;
     let simd_bytes = num_rounds * BLOCK_SIZE;
 
     let mut offset = 0;
     for _ in 0..num_rounds {
-        // Load 16 bytes with NEON
-        let input_vec = vld1q_u8(data.as_ptr().add(offset));
+        // Unsafe: SIMD load, pointer arithmetic
+        let input_vec = unsafe { vld1q_u8(data.as_ptr().add(offset)) };
 
-        // Store to buffer
+        // Unsafe: SIMD store
         let mut input_buf = [0u8; 16];
-        vst1q_u8(input_buf.as_mut_ptr(), input_vec);
+        unsafe { vst1q_u8(input_buf.as_mut_ptr(), input_vec) };
 
-        // Translate using LUT (scalar - fastest for 256-entry table)
+        // Safe: LUT lookup, iteration, push
         for &byte in &input_buf {
             result.push(lut[byte as usize]);
         }
 
+        // Safe: arithmetic
         offset += BLOCK_SIZE;
     }
 
-    // Handle remainder with scalar code
+    // Safe: comparison
     if simd_bytes < data.len() {
         encode_scalar_remainder(&data[simd_bytes..], lut, result);
     }
@@ -130,14 +132,15 @@ unsafe fn decode_neon_impl_unicode(
 ) -> bool {
     const BLOCK_SIZE: usize = 16;
 
+    // Safe: arithmetic
     let num_rounds = chars.len() / BLOCK_SIZE;
     let simd_bytes = num_rounds * BLOCK_SIZE;
 
-    // Process full blocks
+    // Safe: iteration (no unsafe operations in this function)
     for round in 0..num_rounds {
         let offset = round * BLOCK_SIZE;
 
-        // Process 16 chars
+        // Safe: HashMap lookup, iteration, push
         for i in 0..BLOCK_SIZE {
             let ch = chars[offset + i];
             match reverse_map.get(&ch) {
@@ -147,7 +150,7 @@ unsafe fn decode_neon_impl_unicode(
         }
     }
 
-    // Handle remainder with scalar fallback
+    // Safe: iteration, HashMap lookup
     for &ch in &chars[simd_bytes..] {
         match reverse_map.get(&ch) {
             Some(&byte_val) => result.push(byte_val),

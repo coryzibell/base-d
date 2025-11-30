@@ -320,9 +320,11 @@ mod tests {
 
     #[test]
     fn test_error_display_no_color() {
-        // Set NO_COLOR to disable colors for testing
+        // Unsafe: environment variable access (not thread-safe)
         // TODO: Audit that the environment access only happens in single-threaded code.
-        unsafe { std::env::set_var("NO_COLOR", "1") };
+        unsafe {
+            std::env::set_var("NO_COLOR", "1");
+        }
 
         let err = DecodeError::invalid_character('_', 12, "SGVsbG9faW52YWxpZA==", "A-Za-z0-9+/=");
         let display = format!("{}", err);
@@ -332,14 +334,20 @@ mod tests {
         assert!(display.contains("^"));
         assert!(display.contains("hint:"));
 
+        // Unsafe: environment variable access (not thread-safe)
         // TODO: Audit that the environment access only happens in single-threaded code.
-        unsafe { std::env::remove_var("NO_COLOR") };
+        unsafe {
+            std::env::remove_var("NO_COLOR");
+        }
     }
 
     #[test]
     fn test_invalid_length_error() {
+        // Unsafe: environment variable access (not thread-safe)
         // TODO: Audit that the environment access only happens in single-threaded code.
-        unsafe { std::env::set_var("NO_COLOR", "1") };
+        unsafe {
+            std::env::set_var("NO_COLOR", "1");
+        }
 
         let err = DecodeError::invalid_length(
             13,
@@ -353,14 +361,20 @@ mod tests {
         assert!(display.contains("multiple of 4"));
         assert!(display.contains("add padding"));
 
+        // Unsafe: environment variable access (not thread-safe)
         // TODO: Audit that the environment access only happens in single-threaded code.
-        unsafe { std::env::remove_var("NO_COLOR") };
+        unsafe {
+            std::env::remove_var("NO_COLOR");
+        }
     }
 
     #[test]
     fn test_dictionary_not_found_error() {
+        // Unsafe: environment variable access (not thread-safe)
         // TODO: Audit that the environment access only happens in single-threaded code.
-        unsafe { std::env::set_var("NO_COLOR", "1") };
+        unsafe {
+            std::env::set_var("NO_COLOR", "1");
+        }
 
         let err = DictionaryNotFoundError::new("bas64", Some("base64".to_string()));
         let display = format!("{}", err);
@@ -369,7 +383,10 @@ mod tests {
         assert!(display.contains("did you mean 'base64'?"));
         assert!(display.contains("base-d config --dictionaries"));
 
+        // Unsafe: environment variable access (not thread-safe)
         // TODO: Audit that the environment access only happens in single-threaded code.
-        unsafe { std::env::remove_var("NO_COLOR") };
+        unsafe {
+            std::env::remove_var("NO_COLOR");
+        }
     }
 }

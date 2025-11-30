@@ -93,49 +93,47 @@ impl GenericSimdCodec {
 
         const BLOCK_SIZE: usize = 12;
 
-        // Pre-allocate output
+        // Safe: bounds check
+        if data.len() < 16 {
+            // TODO: Fall back to scalar for small inputs
+            return None;
+        }
+
+        // Safe: arithmetic, capacity calculation
         let output_len = ((data.len() + 2) / 3) * 4;
         let mut result = String::with_capacity(output_len);
 
-        unsafe {
-            // Need at least 16 bytes in buffer to safely load 128 bits
-            if data.len() < 16 {
-                // TODO: Fall back to scalar for small inputs
-                return None;
-            }
+        // Safe: arithmetic
+        let safe_len = if data.len() >= 4 { data.len() - 4 } else { 0 };
+        let (num_rounds, simd_bytes) = common::calculate_blocks(safe_len, BLOCK_SIZE);
 
-            // Process blocks of 12 bytes
-            let safe_len = if data.len() >= 4 { data.len() - 4 } else { 0 };
-            let (num_rounds, simd_bytes) = common::calculate_blocks(safe_len, BLOCK_SIZE);
-
-            let mut offset = 0;
-            for _ in 0..num_rounds {
-                // Load 16 bytes (we only use the first 12)
+        let mut offset = 0;
+        for _ in 0..num_rounds {
+            // Unsafe: SIMD load, intrinsics
+            let (reshuffled, encoded) = unsafe {
                 let input_vec = vld1q_u8(data.as_ptr().add(offset));
-
-                // Reshuffle bytes to extract 6-bit groups
                 let reshuffled = self.reshuffle_6bit(input_vec);
-
-                // Translate 6-bit indices to ASCII using pluggable translator
                 let encoded = self.translator.translate_encode(reshuffled);
+                (reshuffled, encoded)
+            };
 
-                // Store 16 output characters
-                let mut output_buf = [0u8; 16];
+            // Unsafe: SIMD store
+            let mut output_buf = [0u8; 16];
+            unsafe {
                 vst1q_u8(output_buf.as_mut_ptr(), encoded);
-
-                // Append to result (safe because output is ASCII-like)
-                for &byte in &output_buf {
-                    result.push(byte as char);
-                }
-
-                offset += BLOCK_SIZE;
             }
 
+            // Safe: iteration, push
+            for &byte in &output_buf {
+                result.push(byte as char);
+            }
+
+            offset += BLOCK_SIZE;
+        }
+
+        // Safe: bounds check
+        if simd_bytes < data.len() {
             // TODO: Handle remainder with scalar code
-            if simd_bytes < data.len() {
-                // For now, we don't handle remainder
-                // This will be improved in future iterations
-            }
         }
 
         Some(result)
@@ -150,54 +148,50 @@ impl GenericSimdCodec {
 
         const BLOCK_SIZE: usize = 16;
 
-        // Pre-allocate output (2 chars per byte)
+        // Safe: bounds check
+        if data.len() < BLOCK_SIZE {
+            // TODO: Fall back to scalar for small inputs
+            return None;
+        }
+
+        // Safe: arithmetic, capacity calculation
         let output_len = data.len() * 2;
         let mut result = String::with_capacity(output_len);
 
-        unsafe {
-            if data.len() < BLOCK_SIZE {
-                // TODO: Fall back to scalar for small inputs
-                return None;
-            }
+        let (num_rounds, simd_bytes) = common::calculate_blocks(data.len(), BLOCK_SIZE);
 
-            let (num_rounds, simd_bytes) = common::calculate_blocks(data.len(), BLOCK_SIZE);
-
-            let mut offset = 0;
-            for _ in 0..num_rounds {
-                // Load 16 bytes
+        let mut offset = 0;
+        for _ in 0..num_rounds {
+            // Unsafe: SIMD load and intrinsics
+            let (hi_ascii, lo_ascii) = unsafe {
                 let input_vec = vld1q_u8(data.as_ptr().add(offset));
-
-                // Extract high nibbles (shift right by 4)
                 let hi_nibbles = vandq_u8(vshrq_n_u8(input_vec, 4), vdupq_n_u8(0x0F));
-
-                // Extract low nibbles
                 let lo_nibbles = vandq_u8(input_vec, vdupq_n_u8(0x0F));
-
-                // Translate nibbles to ASCII using pluggable translator
                 let hi_ascii = self.translator.translate_encode(hi_nibbles);
                 let lo_ascii = self.translator.translate_encode(lo_nibbles);
+                (hi_ascii, lo_ascii)
+            };
 
-                // Interleave high and low bytes: hi[0], lo[0], hi[1], lo[1], ...
+            // Unsafe: SIMD interleave and store
+            let mut output_buf = [0u8; 32];
+            unsafe {
                 let result_lo = vzip1q_u8(hi_ascii, lo_ascii);
                 let result_hi = vzip2q_u8(hi_ascii, lo_ascii);
-
-                // Store 32 output characters
-                let mut output_buf = [0u8; 32];
                 vst1q_u8(output_buf.as_mut_ptr(), result_lo);
                 vst1q_u8(output_buf.as_mut_ptr().add(16), result_hi);
-
-                // Append to result
-                for &byte in &output_buf {
-                    result.push(byte as char);
-                }
-
-                offset += BLOCK_SIZE;
             }
 
+            // Safe: iteration, push
+            for &byte in &output_buf {
+                result.push(byte as char);
+            }
+
+            offset += BLOCK_SIZE;
+        }
+
+        // Safe: bounds check
+        if simd_bytes < data.len() {
             // TODO: Handle remainder with scalar code
-            if simd_bytes < data.len() {
-                // For now, we don't handle remainder
-            }
         }
 
         Some(result)
@@ -210,42 +204,44 @@ impl GenericSimdCodec {
     fn encode_8bit(&self, data: &[u8], _dict: &Dictionary) -> Option<String> {
         const BLOCK_SIZE: usize = 16;
 
-        // For base256, output length equals input length
+        // Safe: bounds check
+        if data.len() < BLOCK_SIZE {
+            // TODO: Fall back to scalar for small inputs
+            return None;
+        }
+
+        // Safe: capacity calculation
         let mut result = String::with_capacity(data.len());
 
-        unsafe {
-            if data.len() < BLOCK_SIZE {
-                // TODO: Fall back to scalar for small inputs
-                return None;
-            }
+        // Safe: arithmetic
+        let num_blocks = data.len() / BLOCK_SIZE;
+        let simd_bytes = num_blocks * BLOCK_SIZE;
 
-            let num_blocks = data.len() / BLOCK_SIZE;
-            let simd_bytes = num_blocks * BLOCK_SIZE;
-
-            let mut offset = 0;
-            for _ in 0..num_blocks {
-                // Load 16 bytes (they are already 8-bit indices)
+        let mut offset = 0;
+        for _ in 0..num_blocks {
+            // Unsafe: SIMD load and intrinsics
+            let encoded = unsafe {
                 let input_vec = vld1q_u8(data.as_ptr().add(offset));
+                self.translator.translate_encode(input_vec)
+            };
 
-                // Translate directly using pluggable translator
-                let encoded = self.translator.translate_encode(input_vec);
-
-                // Store 16 output characters
-                let mut output_buf = [0u8; 16];
+            // Unsafe: SIMD store
+            let mut output_buf = [0u8; 16];
+            unsafe {
                 vst1q_u8(output_buf.as_mut_ptr(), encoded);
-
-                // Append to result
-                for &byte in &output_buf {
-                    result.push(byte as char);
-                }
-
-                offset += BLOCK_SIZE;
             }
 
+            // Safe: iteration, push
+            for &byte in &output_buf {
+                result.push(byte as char);
+            }
+
+            offset += BLOCK_SIZE;
+        }
+
+        // Safe: bounds check
+        if simd_bytes < data.len() {
             // TODO: Handle remainder with scalar code
-            if simd_bytes < data.len() {
-                // For now, we don't handle remainder
-            }
         }
 
         Some(result)
@@ -259,50 +255,51 @@ impl GenericSimdCodec {
         const BLOCK_SIZE: usize = 32; // 32 chars → 16 bytes
 
         let encoded_bytes = encoded.as_bytes();
+
+        // Safe: bounds check
+        if encoded_bytes.len() < BLOCK_SIZE {
+            // TODO: Fall back to scalar for small inputs
+            return None;
+        }
+
+        // Safe: capacity calculation
         let mut result = Vec::with_capacity(encoded_bytes.len() / 2);
 
-        unsafe {
-            if encoded_bytes.len() < BLOCK_SIZE {
-                // TODO: Fall back to scalar for small inputs
-                return None;
-            }
+        // Safe: arithmetic
+        let num_blocks = encoded_bytes.len() / BLOCK_SIZE;
+        let simd_bytes = num_blocks * BLOCK_SIZE;
 
-            let num_blocks = encoded_bytes.len() / BLOCK_SIZE;
-            let simd_bytes = num_blocks * BLOCK_SIZE;
-
-            let mut offset = 0;
-            for _ in 0..num_blocks {
-                // Load 32 ASCII characters (16 high nibbles, 16 low nibbles interleaved)
+        let mut offset = 0;
+        for _ in 0..num_blocks {
+            // Unsafe: SIMD load and deinterleave
+            let (hi_chars, lo_chars) = unsafe {
                 let input_lo = vld1q_u8(encoded_bytes.as_ptr().add(offset));
                 let input_hi = vld1q_u8(encoded_bytes.as_ptr().add(offset + 16));
+                let even_lo = vuzp1q_u8(input_lo, input_hi);
+                let odd_lo = vuzp2q_u8(input_lo, input_hi);
+                (even_lo, odd_lo)
+            };
 
-                // Deinterleave using uzp: extract even/odd lanes
-                let (hi_chars, lo_chars) = {
-                    // Combine into even/odd extraction
-                    let even_lo = vuzp1q_u8(input_lo, input_hi); // Even positions: 0,2,4,...
-                    let odd_lo = vuzp2q_u8(input_lo, input_hi); // Odd positions: 1,3,5,...
-                    (even_lo, odd_lo)
-                };
+            // Safe: translate (includes validation)
+            let hi_vals = self.translator.translate_decode(hi_chars)?;
+            let lo_vals = self.translator.translate_decode(lo_chars)?;
 
-                // Translate chars to nibble values
-                let hi_vals = self.translator.translate_decode(hi_chars)?;
-                let lo_vals = self.translator.translate_decode(lo_chars)?;
-
-                // Pack nibbles into bytes: (high << 4) | low
+            // Unsafe: SIMD bit manipulation and store
+            let mut output_buf = [0u8; 16];
+            unsafe {
                 let bytes = vorrq_u8(vshlq_n_u8(hi_vals, 4), lo_vals);
-
-                // Store 16 output bytes
-                let mut output_buf = [0u8; 16];
                 vst1q_u8(output_buf.as_mut_ptr(), bytes);
-                result.extend_from_slice(&output_buf);
-
-                offset += BLOCK_SIZE;
             }
 
+            // Safe: Vec append
+            result.extend_from_slice(&output_buf);
+
+            offset += BLOCK_SIZE;
+        }
+
+        // Safe: bounds check
+        if simd_bytes < encoded_bytes.len() {
             // TODO: Handle remainder with scalar
-            if simd_bytes < encoded_bytes.len() {
-                // For now, we don't handle remainder
-            }
         }
 
         Some(result)
@@ -316,39 +313,45 @@ impl GenericSimdCodec {
         const BLOCK_SIZE: usize = 16; // 16 chars → 12 bytes
 
         let encoded_bytes = encoded.as_bytes();
+
+        // Safe: bounds check
+        if encoded_bytes.len() < BLOCK_SIZE {
+            // TODO: Fall back to scalar for small inputs
+            return None;
+        }
+
+        // Safe: capacity calculation
         let mut result = Vec::with_capacity(encoded_bytes.len() * 3 / 4);
 
-        unsafe {
-            if encoded_bytes.len() < BLOCK_SIZE {
-                // TODO: Fall back to scalar for small inputs
-                return None;
-            }
+        // Safe: arithmetic
+        let num_blocks = encoded_bytes.len() / BLOCK_SIZE;
+        let simd_bytes = num_blocks * BLOCK_SIZE;
 
-            let num_blocks = encoded_bytes.len() / BLOCK_SIZE;
-            let simd_bytes = num_blocks * BLOCK_SIZE;
+        for round in 0..num_blocks {
+            let offset = round * BLOCK_SIZE;
 
-            for round in 0..num_blocks {
-                let offset = round * BLOCK_SIZE;
+            // Unsafe: SIMD load
+            let chars = unsafe { vld1q_u8(encoded_bytes.as_ptr().add(offset)) };
 
-                // Load 16 ASCII chars
-                let chars = vld1q_u8(encoded_bytes.as_ptr().add(offset));
+            // Safe: translate (includes validation)
+            let indices = self.translator.translate_decode(chars)?;
 
-                // Translate to 6-bit indices (validation included)
-                let indices = self.translator.translate_decode(chars)?;
+            // Unsafe: SIMD unshuffle intrinsic
+            let bytes = unsafe { self.unshuffle_6bit(indices) };
 
-                // Unpack 6-bit indices back to bytes (inverse of reshuffle_6bit)
-                let bytes = self.unshuffle_6bit(indices);
-
-                // Store 12 output bytes
-                let mut output_buf = [0u8; 16];
+            // Unsafe: SIMD store
+            let mut output_buf = [0u8; 16];
+            unsafe {
                 vst1q_u8(output_buf.as_mut_ptr(), bytes);
-                result.extend_from_slice(&output_buf[..12]);
             }
 
+            // Safe: Vec append
+            result.extend_from_slice(&output_buf[..12]);
+        }
+
+        // Safe: bounds check
+        if simd_bytes < encoded_bytes.len() {
             // TODO: Handle remainder with scalar
-            if simd_bytes < encoded_bytes.len() {
-                // For now, we don't handle remainder
-            }
         }
 
         Some(result)
@@ -362,37 +365,43 @@ impl GenericSimdCodec {
         const BLOCK_SIZE: usize = 16; // 16 chars → 16 bytes
 
         let encoded_bytes = encoded.as_bytes();
+
+        // Safe: bounds check
+        if encoded_bytes.len() < BLOCK_SIZE {
+            // TODO: Fall back to scalar for small inputs
+            return None;
+        }
+
+        // Safe: capacity calculation
         let mut result = Vec::with_capacity(encoded_bytes.len());
 
-        unsafe {
-            if encoded_bytes.len() < BLOCK_SIZE {
-                // TODO: Fall back to scalar for small inputs
-                return None;
-            }
+        // Safe: arithmetic
+        let num_blocks = encoded_bytes.len() / BLOCK_SIZE;
+        let simd_bytes = num_blocks * BLOCK_SIZE;
 
-            let num_blocks = encoded_bytes.len() / BLOCK_SIZE;
-            let simd_bytes = num_blocks * BLOCK_SIZE;
+        let mut offset = 0;
+        for _ in 0..num_blocks {
+            // Unsafe: SIMD load
+            let chars = unsafe { vld1q_u8(encoded_bytes.as_ptr().add(offset)) };
 
-            let mut offset = 0;
-            for _ in 0..num_blocks {
-                // Load 16 ASCII chars
-                let chars = vld1q_u8(encoded_bytes.as_ptr().add(offset));
+            // Safe: translate (includes validation)
+            let bytes = self.translator.translate_decode(chars)?;
 
-                // Translate to bytes (validation included)
-                let bytes = self.translator.translate_decode(chars)?;
-
-                // No unpacking needed - direct 1:1 mapping
-                let mut output_buf = [0u8; 16];
+            // Unsafe: SIMD store
+            let mut output_buf = [0u8; 16];
+            unsafe {
                 vst1q_u8(output_buf.as_mut_ptr(), bytes);
-                result.extend_from_slice(&output_buf);
-
-                offset += BLOCK_SIZE;
             }
 
+            // Safe: Vec append
+            result.extend_from_slice(&output_buf);
+
+            offset += BLOCK_SIZE;
+        }
+
+        // Safe: bounds check
+        if simd_bytes < encoded_bytes.len() {
             // TODO: Handle remainder with scalar
-            if simd_bytes < encoded_bytes.len() {
-                // For now, we don't handle remainder
-            }
         }
 
         Some(result)
@@ -412,16 +421,20 @@ impl GenericSimdCodec {
         // Shuffle indices to duplicate bytes for 6-bit extraction
         // Each group of 3 input bytes becomes 4 output bytes with duplicates
         // Matches x86_64 base64.rs pattern: [1,0,2,1, 4,3,5,4, 7,6,8,7, 10,9,11,10]
-        let shuffle_indices = vld1q_u8(
-            [
-                1, 0, 2, 1, // bytes 0-2 -> positions 0-3
-                4, 3, 5, 4, // bytes 3-5 -> positions 4-7
-                7, 6, 8, 7, // bytes 6-8 -> positions 8-11
-                10, 9, 11, 10, // bytes 9-11 -> positions 12-15
-            ]
-            .as_ptr(),
-        );
+        // Unsafe: pointer dereference and SIMD load
+        let shuffle_indices = unsafe {
+            vld1q_u8(
+                [
+                    1, 0, 2, 1, // bytes 0-2 -> positions 0-3
+                    4, 3, 5, 4, // bytes 3-5 -> positions 4-7
+                    7, 6, 8, 7, // bytes 6-8 -> positions 8-11
+                    10, 9, 11, 10, // bytes 9-11 -> positions 12-15
+                ]
+                .as_ptr(),
+            )
+        };
 
+        // Safe: SIMD intrinsics (target_feature enabled)
         let shuffled = vqtbl1q_u8(input, shuffle_indices);
 
         // Extract 6-bit groups using multiplication tricks
@@ -459,11 +472,11 @@ impl GenericSimdCodec {
             // mullo is just regular multiply (keep low 16 bits)
             // 0x01000010 as 16-bit lanes: [0x0010, 0x0100, 0x0010, 0x0100, ...]
             let mult_pattern = vreinterpretq_u16_u32(vdupq_n_u32(0x01000010_u32));
-            vreinterpretq_u32_u16(vmulq_u16(t2_u16, mult_pattern))
+            vmulq_u16(t2_u16, mult_pattern)
         };
 
         // Combine the two results
-        vreinterpretq_u8_u32(vorrq_u32(t1, t3))
+        vreinterpretq_u8_u32(vorrq_u32(t1, vreinterpretq_u32_u16(t3)))
     }
 
     /// Unshuffle 6-bit indices back to 8-bit bytes
@@ -475,6 +488,7 @@ impl GenericSimdCodec {
         // This is the same algorithm as base64.rs::reshuffle_decode
         // Uses multiply-add to efficiently pack 6-bit values back to 8-bit
 
+        // Safe: SIMD intrinsics (target_feature enabled)
         // Stage 1: Merge adjacent pairs using multiply-add
         // Emulate x86 maddubs: result[i] = indices[2i] * 64 + indices[2i+1] * 1
         let pairs = vreinterpretq_u16_u8(indices);
@@ -492,16 +506,19 @@ impl GenericSimdCodec {
         // Stage 3: Extract the valid bytes from each 32-bit group
         // Each group of 4 indices (24 bits) became 1 32-bit value
         // We extract the 3 meaningful bytes from each 32-bit group
-        let shuffle_mask = vld1q_u8(
-            [
-                2, 1, 0, // first group of 3 bytes (reversed for little endian)
-                6, 5, 4, // second group of 3 bytes
-                10, 9, 8, // third group of 3 bytes
-                14, 13, 12, // fourth group of 3 bytes
-                255, 255, 255, 255, // unused bytes (will be zero)
-            ]
-            .as_ptr(),
-        );
+        // Unsafe: pointer dereference and SIMD load
+        let shuffle_mask = unsafe {
+            vld1q_u8(
+                [
+                    2, 1, 0, // first group of 3 bytes (reversed for little endian)
+                    6, 5, 4, // second group of 3 bytes
+                    10, 9, 8, // third group of 3 bytes
+                    14, 13, 12, // fourth group of 3 bytes
+                    255, 255, 255, 255, // unused bytes (will be zero)
+                ]
+                .as_ptr(),
+            )
+        };
 
         let result_bytes = vreinterpretq_u8_u32(final_32bit);
         vqtbl1q_u8(result_bytes, shuffle_mask)
