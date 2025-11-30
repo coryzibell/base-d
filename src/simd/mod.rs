@@ -422,8 +422,10 @@ fn is_standard_hex_aarch64(dict: &Dictionary) -> bool {
 #[cfg(test)]
 mod tests {
     #[cfg(target_arch = "x86_64")]
-    use super::{Dictionary, decode_with_simd, encode_with_simd, has_ssse3};
-    #[cfg(target_arch = "x86_64")]
+    use super::has_ssse3;
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    use super::{Dictionary, decode_with_simd, encode_with_simd};
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
     use crate::core::config::EncodingMode;
 
     #[test]
@@ -610,13 +612,10 @@ mod tests {
         );
     }
 
-    // NOTE: Standard base16 decode has a known issue and is temporarily disabled
-    // Custom base16 (via GenericSimdCodec) works correctly
-    // TODO: Fix specialized base16 decode implementation
     #[test]
-    #[cfg(target_arch = "x86_64")]
-    #[ignore]
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
     fn test_decode_with_simd_base16_round_trip() {
+        #[cfg(target_arch = "x86_64")]
         if !has_ssse3() {
             eprintln!("SSSE3 not available, skipping test");
             return;
