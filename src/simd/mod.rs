@@ -11,14 +11,14 @@ use crate::core::dictionary::Dictionary;
 #[cfg(target_arch = "x86_64")]
 use std::sync::OnceLock;
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
 pub mod lut;
 pub mod variants;
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
 pub mod generic;
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
 pub mod translate;
 
 #[cfg(target_arch = "x86_64")]
@@ -39,10 +39,10 @@ pub use aarch64::{
     encode_base16_simd, encode_base32_simd, encode_base64_simd, encode_base256_simd,
 };
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
 pub use generic::GenericSimdCodec;
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
 pub use lut::{Base64LutCodec, GappedSequentialCodec, SmallLutCodec};
 
 // CPU feature detection cache
@@ -282,7 +282,8 @@ use crate::core::dictionary::Dictionary;
 /// 2. Known base32 variants → specialized base32 NEON
 /// 3. Known hex variants (base16) → specialized base16 NEON
 /// 4. Base256 → specialized base256 NEON
-/// 5. None → caller falls back to scalar
+/// 5. LUT-based codecs for arbitrary dictionaries
+/// 6. None → caller falls back to scalar
 #[cfg(target_arch = "aarch64")]
 pub fn encode_with_simd(data: &[u8], dict: &Dictionary) -> Option<String> {
     let base = dict.base();
@@ -305,6 +306,22 @@ pub fn encode_with_simd(data: &[u8], dict: &Dictionary) -> Option<String> {
     // 4. Try specialized base256
     if base == 256 {
         return encode_base256_simd(data, dict);
+    }
+
+    // 5. Try LUT-based codecs for arbitrary dictionaries
+    // SmallLutCodec for base <= 16
+    if base <= 16
+        && base.is_power_of_two()
+        && let Some(codec) = SmallLutCodec::from_dictionary(dict)
+    {
+        return codec.encode(data, dict);
+    }
+
+    // Base64LutCodec for base 32/64
+    if (base == 32 || base == 64)
+        && let Some(codec) = Base64LutCodec::from_dictionary(dict)
+    {
+        return codec.encode(data, dict);
     }
 
     // No SIMD optimization available for this dictionary
@@ -335,6 +352,22 @@ pub fn decode_with_simd(encoded: &str, dict: &Dictionary) -> Option<Vec<u8>> {
     // 4. Try specialized base256
     if base == 256 {
         return decode_base256_simd(encoded, dict);
+    }
+
+    // 5. Try LUT-based codecs for arbitrary dictionaries
+    // SmallLutCodec for base <= 16
+    if base <= 16
+        && base.is_power_of_two()
+        && let Some(codec) = SmallLutCodec::from_dictionary(dict)
+    {
+        return codec.decode(encoded, dict);
+    }
+
+    // Base64LutCodec for base 32/64
+    if (base == 32 || base == 64)
+        && let Some(codec) = Base64LutCodec::from_dictionary(dict)
+    {
+        return codec.decode(encoded, dict);
     }
 
     // No SIMD optimization available

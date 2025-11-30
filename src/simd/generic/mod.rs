@@ -15,6 +15,7 @@ use crate::simd::variants::{DictionaryMetadata, TranslationStrategy};
 use std::arch::x86_64::*;
 
 #[cfg(target_arch = "aarch64")]
+#[allow(unused_imports)]
 use std::arch::aarch64::*;
 
 /// SIMD-accelerated codec that works with any compatible dictionary
@@ -28,6 +29,7 @@ use std::arch::aarch64::*;
 /// - Codec: Reuses reshuffle logic from specialized implementations
 pub struct GenericSimdCodec {
     metadata: DictionaryMetadata,
+    #[allow(dead_code)]
     translator: Box<dyn SimdTranslate>,
 }
 

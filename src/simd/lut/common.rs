@@ -2,6 +2,7 @@
 
 /// Character range in dictionary (contiguous ASCII sequence)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 pub(super) struct CharRange {
     pub(super) start_idx: u8,  // First index in this range
     pub(super) end_idx: u8,    // Last index (inclusive)
