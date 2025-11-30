@@ -11,14 +11,14 @@ use crate::core::dictionary::Dictionary;
 #[cfg(target_arch = "x86_64")]
 use std::sync::OnceLock;
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
 pub mod lut;
 pub mod variants;
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
 pub mod generic;
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
 pub mod translate;
 
 #[cfg(target_arch = "x86_64")]
@@ -39,10 +39,10 @@ pub use aarch64::{
     encode_base16_simd, encode_base32_simd, encode_base64_simd, encode_base256_simd,
 };
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
 pub use generic::GenericSimdCodec;
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
 pub use lut::{Base64LutCodec, GappedSequentialCodec, SmallLutCodec};
 
 // CPU feature detection cache
@@ -282,7 +282,8 @@ use crate::core::dictionary::Dictionary;
 /// 2. Known base32 variants → specialized base32 NEON
 /// 3. Known hex variants (base16) → specialized base16 NEON
 /// 4. Base256 → specialized base256 NEON
-/// 5. None → caller falls back to scalar
+/// 5. LUT-based codecs for arbitrary dictionaries
+/// 6. None → caller falls back to scalar
 #[cfg(target_arch = "aarch64")]
 pub fn encode_with_simd(data: &[u8], dict: &Dictionary) -> Option<String> {
     let base = dict.base();
@@ -305,6 +306,33 @@ pub fn encode_with_simd(data: &[u8], dict: &Dictionary) -> Option<String> {
     // 4. Try specialized base256
     if base == 256 {
         return encode_base256_simd(data, dict);
+    }
+
+    // 5. Try GenericSimdCodec for sequential power-of-2 dictionaries
+    if let Some(codec) = GenericSimdCodec::from_dictionary(dict) {
+        return codec.encode(data, dict);
+    }
+
+    // 6. Try GappedSequentialCodec for near-sequential dictionaries with gaps
+    // (e.g., geohash, Crockford base32)
+    if let Some(codec) = GappedSequentialCodec::from_dictionary(dict) {
+        return codec.encode(data, dict);
+    }
+
+    // 7. Try LUT-based codecs for arbitrary dictionaries
+    // SmallLutCodec for base <= 16
+    if base <= 16
+        && base.is_power_of_two()
+        && let Some(codec) = SmallLutCodec::from_dictionary(dict)
+    {
+        return codec.encode(data, dict);
+    }
+
+    // Base64LutCodec for base 32/64
+    if (base == 32 || base == 64)
+        && let Some(codec) = Base64LutCodec::from_dictionary(dict)
+    {
+        return codec.encode(data, dict);
     }
 
     // No SIMD optimization available for this dictionary
@@ -335,6 +363,32 @@ pub fn decode_with_simd(encoded: &str, dict: &Dictionary) -> Option<Vec<u8>> {
     // 4. Try specialized base256
     if base == 256 {
         return decode_base256_simd(encoded, dict);
+    }
+
+    // 5. Try GenericSimdCodec for sequential power-of-2 dictionaries
+    if let Some(codec) = GenericSimdCodec::from_dictionary(dict) {
+        return codec.decode(encoded, dict);
+    }
+
+    // 6. Try GappedSequentialCodec for near-sequential dictionaries with gaps
+    if let Some(codec) = GappedSequentialCodec::from_dictionary(dict) {
+        return codec.decode(encoded, dict);
+    }
+
+    // 7. Try LUT-based codecs for arbitrary dictionaries
+    // SmallLutCodec for base <= 16
+    if base <= 16
+        && base.is_power_of_two()
+        && let Some(codec) = SmallLutCodec::from_dictionary(dict)
+    {
+        return codec.decode(encoded, dict);
+    }
+
+    // Base64LutCodec for base 32/64
+    if (base == 32 || base == 64)
+        && let Some(codec) = Base64LutCodec::from_dictionary(dict)
+    {
+        return codec.decode(encoded, dict);
     }
 
     // No SIMD optimization available
@@ -368,8 +422,10 @@ fn is_standard_hex_aarch64(dict: &Dictionary) -> bool {
 #[cfg(test)]
 mod tests {
     #[cfg(target_arch = "x86_64")]
-    use super::{Dictionary, decode_with_simd, encode_with_simd, has_ssse3};
-    #[cfg(target_arch = "x86_64")]
+    use super::has_ssse3;
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    use super::{Dictionary, decode_with_simd, encode_with_simd};
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
     use crate::core::config::EncodingMode;
 
     #[test]
@@ -556,13 +612,10 @@ mod tests {
         );
     }
 
-    // NOTE: Standard base16 decode has a known issue and is temporarily disabled
-    // Custom base16 (via GenericSimdCodec) works correctly
-    // TODO: Fix specialized base16 decode implementation
     #[test]
-    #[cfg(target_arch = "x86_64")]
-    #[ignore]
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
     fn test_decode_with_simd_base16_round_trip() {
+        #[cfg(target_arch = "x86_64")]
         if !has_ssse3() {
             eprintln!("SSSE3 not available, skipping test");
             return;

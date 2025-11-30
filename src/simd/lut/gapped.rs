@@ -819,6 +819,27 @@ impl GappedSequentialCodec {
             return Some(Vec::new());
         }
 
+        #[cfg(target_arch = "x86_64")]
+        {
+            if is_x86_feature_detected!("ssse3") {
+                return unsafe { self.decode_ssse3(encoded) };
+            }
+            self.decode_scalar(encoded)
+        }
+
+        #[cfg(target_arch = "aarch64")]
+        unsafe {
+            self.decode_neon(encoded)
+        }
+
+        #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+        {
+            self.decode_scalar(encoded)
+        }
+    }
+
+    /// Scalar decoding (fallback)
+    fn decode_scalar(&self, encoded: &str) -> Option<Vec<u8>> {
         let bits_per_char = self.bits_per_symbol as usize;
 
         // Estimate output size
@@ -844,6 +865,404 @@ impl GappedSequentialCodec {
             while bits_in_buffer >= 8 {
                 bits_in_buffer -= 8;
                 result.push(((bit_buffer >> bits_in_buffer) & 0xFF) as u8);
+            }
+        }
+
+        Some(result)
+    }
+
+    /// SSSE3 decoding implementation
+    #[cfg(target_arch = "x86_64")]
+    #[target_feature(enable = "ssse3")]
+    unsafe fn decode_ssse3(&self, encoded: &str) -> Option<Vec<u8>> {
+        match self.bits_per_symbol {
+            5 => unsafe { self.decode_ssse3_5bit(encoded) },
+            6 => unsafe { self.decode_ssse3_6bit(encoded) },
+            4 => unsafe { self.decode_ssse3_4bit(encoded) },
+            _ => self.decode_scalar(encoded),
+        }
+    }
+
+    /// SSSE3-targeted 5-bit decoding (base32: 8 chars -> 5 bytes)
+    /// Currently uses scalar LUT lookup; SIMD bit-packing is a future optimization
+    #[cfg(target_arch = "x86_64")]
+    #[target_feature(enable = "ssse3")]
+    unsafe fn decode_ssse3_5bit(&self, encoded: &str) -> Option<Vec<u8>> {
+        const INPUT_BLOCK: usize = 8;
+
+        let encoded_bytes = encoded.as_bytes();
+        let estimated_len = (encoded_bytes.len() * 5) / 8;
+        let mut result = Vec::with_capacity(estimated_len);
+
+        let num_blocks = encoded_bytes.len() / INPUT_BLOCK;
+        let simd_chars = num_blocks * INPUT_BLOCK;
+
+        for block in 0..num_blocks {
+            let offset = block * INPUT_BLOCK;
+
+            // Load 8 characters into array for processing
+            let mut chars = [0u8; 16];
+            chars[..8].copy_from_slice(&encoded_bytes[offset..offset + INPUT_BLOCK]);
+
+            // Decode using LUT lookup
+            let mut indices = [0u8; 8];
+            for i in 0..8 {
+                let ch = chars[i];
+                let idx = self.decode_lut[ch as usize];
+                if idx == 0xFF {
+                    return None;
+                }
+                indices[i] = idx;
+            }
+
+            // Pack 8 5-bit indices into 5 bytes
+            result.push((indices[0] << 3) | (indices[1] >> 2));
+            result.push((indices[1] << 6) | (indices[2] << 1) | (indices[3] >> 4));
+            result.push((indices[3] << 4) | (indices[4] >> 1));
+            result.push((indices[4] << 7) | (indices[5] << 2) | (indices[6] >> 3));
+            result.push((indices[6] << 5) | indices[7]);
+        }
+
+        // Handle remainder
+        if simd_chars < encoded_bytes.len() {
+            let remainder = &encoded[simd_chars..];
+            let bits_per_char = 5usize;
+            let mut bit_buffer = 0u32;
+            let mut bits_in_buffer = 0usize;
+
+            for ch in remainder.chars() {
+                if (ch as u32) >= 256 {
+                    return None;
+                }
+                let index = self.decode_lut[ch as usize];
+                if index == 0xFF {
+                    return None;
+                }
+                bit_buffer = (bit_buffer << bits_per_char) | (index as u32);
+                bits_in_buffer += bits_per_char;
+
+                while bits_in_buffer >= 8 {
+                    bits_in_buffer -= 8;
+                    result.push(((bit_buffer >> bits_in_buffer) & 0xFF) as u8);
+                }
+            }
+        }
+
+        Some(result)
+    }
+
+    /// SSSE3-targeted 6-bit decoding (base64: 4 chars -> 3 bytes)
+    /// Currently uses scalar LUT lookup; SIMD bit-packing is a future optimization
+    #[cfg(target_arch = "x86_64")]
+    #[target_feature(enable = "ssse3")]
+    unsafe fn decode_ssse3_6bit(&self, encoded: &str) -> Option<Vec<u8>> {
+        const INPUT_BLOCK: usize = 4;
+
+        let encoded_bytes = encoded.as_bytes();
+        let estimated_len = (encoded_bytes.len() * 3) / 4;
+        let mut result = Vec::with_capacity(estimated_len);
+
+        let num_blocks = encoded_bytes.len() / INPUT_BLOCK;
+        let simd_chars = num_blocks * INPUT_BLOCK;
+
+        for block in 0..num_blocks {
+            let offset = block * INPUT_BLOCK;
+
+            let mut indices = [0u8; 4];
+            for i in 0..4 {
+                let ch = encoded_bytes[offset + i];
+                let idx = self.decode_lut[ch as usize];
+                if idx == 0xFF {
+                    return None;
+                }
+                indices[i] = idx;
+            }
+
+            // Pack 4 6-bit indices into 3 bytes
+            result.push((indices[0] << 2) | (indices[1] >> 4));
+            result.push((indices[1] << 4) | (indices[2] >> 2));
+            result.push((indices[2] << 6) | indices[3]);
+        }
+
+        // Handle remainder
+        if simd_chars < encoded_bytes.len() {
+            let remainder = &encoded[simd_chars..];
+            let bits_per_char = 6usize;
+            let mut bit_buffer = 0u32;
+            let mut bits_in_buffer = 0usize;
+
+            for ch in remainder.chars() {
+                if (ch as u32) >= 256 {
+                    return None;
+                }
+                let index = self.decode_lut[ch as usize];
+                if index == 0xFF {
+                    return None;
+                }
+                bit_buffer = (bit_buffer << bits_per_char) | (index as u32);
+                bits_in_buffer += bits_per_char;
+
+                while bits_in_buffer >= 8 {
+                    bits_in_buffer -= 8;
+                    result.push(((bit_buffer >> bits_in_buffer) & 0xFF) as u8);
+                }
+            }
+        }
+
+        Some(result)
+    }
+
+    /// SSSE3-targeted 4-bit decoding (base16: 2 chars -> 1 byte)
+    /// Currently uses scalar LUT lookup; SIMD bit-packing is a future optimization
+    #[cfg(target_arch = "x86_64")]
+    #[target_feature(enable = "ssse3")]
+    unsafe fn decode_ssse3_4bit(&self, encoded: &str) -> Option<Vec<u8>> {
+        const INPUT_BLOCK: usize = 16;
+
+        let encoded_bytes = encoded.as_bytes();
+        let estimated_len = encoded_bytes.len() / 2;
+        let mut result = Vec::with_capacity(estimated_len);
+
+        let num_blocks = encoded_bytes.len() / INPUT_BLOCK;
+        let simd_chars = num_blocks * INPUT_BLOCK;
+
+        for block in 0..num_blocks {
+            let offset = block * INPUT_BLOCK;
+
+            for i in 0..8 {
+                let ch_hi = encoded_bytes[offset + i * 2];
+                let ch_lo = encoded_bytes[offset + i * 2 + 1];
+
+                let idx_hi = self.decode_lut[ch_hi as usize];
+                let idx_lo = self.decode_lut[ch_lo as usize];
+
+                if idx_hi == 0xFF || idx_lo == 0xFF {
+                    return None;
+                }
+
+                result.push((idx_hi << 4) | idx_lo);
+            }
+        }
+
+        // Handle remainder
+        if simd_chars < encoded_bytes.len() {
+            let remainder = &encoded[simd_chars..];
+            let bits_per_char = 4usize;
+            let mut bit_buffer = 0u32;
+            let mut bits_in_buffer = 0usize;
+
+            for ch in remainder.chars() {
+                if (ch as u32) >= 256 {
+                    return None;
+                }
+                let index = self.decode_lut[ch as usize];
+                if index == 0xFF {
+                    return None;
+                }
+                bit_buffer = (bit_buffer << bits_per_char) | (index as u32);
+                bits_in_buffer += bits_per_char;
+
+                while bits_in_buffer >= 8 {
+                    bits_in_buffer -= 8;
+                    result.push(((bit_buffer >> bits_in_buffer) & 0xFF) as u8);
+                }
+            }
+        }
+
+        Some(result)
+    }
+
+    /// NEON decoding implementation
+    #[cfg(target_arch = "aarch64")]
+    #[target_feature(enable = "neon")]
+    unsafe fn decode_neon(&self, encoded: &str) -> Option<Vec<u8>> {
+        match self.bits_per_symbol {
+            5 => unsafe { self.decode_neon_5bit(encoded) },
+            6 => unsafe { self.decode_neon_6bit(encoded) },
+            4 => unsafe { self.decode_neon_4bit(encoded) },
+            _ => self.decode_scalar(encoded),
+        }
+    }
+
+    /// NEON 5-bit decoding (base32: 8 chars -> 5 bytes)
+    #[cfg(target_arch = "aarch64")]
+    #[target_feature(enable = "neon")]
+    #[allow(unsafe_op_in_unsafe_fn)]
+    unsafe fn decode_neon_5bit(&self, encoded: &str) -> Option<Vec<u8>> {
+        const INPUT_BLOCK: usize = 8;
+
+        let encoded_bytes = encoded.as_bytes();
+        let estimated_len = (encoded_bytes.len() * 5) / 8;
+        let mut result = Vec::with_capacity(estimated_len);
+
+        let num_blocks = encoded_bytes.len() / INPUT_BLOCK;
+        let simd_chars = num_blocks * INPUT_BLOCK;
+
+        for block in 0..num_blocks {
+            let offset = block * INPUT_BLOCK;
+
+            // Load and translate via LUT
+            let mut indices = [0u8; 8];
+            for i in 0..8 {
+                let ch = encoded_bytes[offset + i];
+                let idx = self.decode_lut[ch as usize];
+                if idx == 0xFF {
+                    return None;
+                }
+                indices[i] = idx;
+            }
+
+            // Pack 8 5-bit indices into 5 bytes
+            result.push((indices[0] << 3) | (indices[1] >> 2));
+            result.push((indices[1] << 6) | (indices[2] << 1) | (indices[3] >> 4));
+            result.push((indices[3] << 4) | (indices[4] >> 1));
+            result.push((indices[4] << 7) | (indices[5] << 2) | (indices[6] >> 3));
+            result.push((indices[6] << 5) | indices[7]);
+        }
+
+        // Handle remainder
+        if simd_chars < encoded_bytes.len() {
+            let remainder = &encoded[simd_chars..];
+            let bits_per_char = 5usize;
+            let mut bit_buffer = 0u32;
+            let mut bits_in_buffer = 0usize;
+
+            for ch in remainder.chars() {
+                if (ch as u32) >= 256 {
+                    return None;
+                }
+                let index = self.decode_lut[ch as usize];
+                if index == 0xFF {
+                    return None;
+                }
+                bit_buffer = (bit_buffer << bits_per_char) | (index as u32);
+                bits_in_buffer += bits_per_char;
+
+                while bits_in_buffer >= 8 {
+                    bits_in_buffer -= 8;
+                    result.push(((bit_buffer >> bits_in_buffer) & 0xFF) as u8);
+                }
+            }
+        }
+
+        Some(result)
+    }
+
+    /// NEON 6-bit decoding (base64: 4 chars -> 3 bytes)
+    #[cfg(target_arch = "aarch64")]
+    #[target_feature(enable = "neon")]
+    #[allow(unsafe_op_in_unsafe_fn)]
+    unsafe fn decode_neon_6bit(&self, encoded: &str) -> Option<Vec<u8>> {
+        const INPUT_BLOCK: usize = 4;
+
+        let encoded_bytes = encoded.as_bytes();
+        let estimated_len = (encoded_bytes.len() * 3) / 4;
+        let mut result = Vec::with_capacity(estimated_len);
+
+        let num_blocks = encoded_bytes.len() / INPUT_BLOCK;
+        let simd_chars = num_blocks * INPUT_BLOCK;
+
+        for block in 0..num_blocks {
+            let offset = block * INPUT_BLOCK;
+
+            let mut indices = [0u8; 4];
+            for i in 0..4 {
+                let ch = encoded_bytes[offset + i];
+                let idx = self.decode_lut[ch as usize];
+                if idx == 0xFF {
+                    return None;
+                }
+                indices[i] = idx;
+            }
+
+            // Pack 4 6-bit indices into 3 bytes
+            result.push((indices[0] << 2) | (indices[1] >> 4));
+            result.push((indices[1] << 4) | (indices[2] >> 2));
+            result.push((indices[2] << 6) | indices[3]);
+        }
+
+        // Handle remainder
+        if simd_chars < encoded_bytes.len() {
+            let remainder = &encoded[simd_chars..];
+            let bits_per_char = 6usize;
+            let mut bit_buffer = 0u32;
+            let mut bits_in_buffer = 0usize;
+
+            for ch in remainder.chars() {
+                if (ch as u32) >= 256 {
+                    return None;
+                }
+                let index = self.decode_lut[ch as usize];
+                if index == 0xFF {
+                    return None;
+                }
+                bit_buffer = (bit_buffer << bits_per_char) | (index as u32);
+                bits_in_buffer += bits_per_char;
+
+                while bits_in_buffer >= 8 {
+                    bits_in_buffer -= 8;
+                    result.push(((bit_buffer >> bits_in_buffer) & 0xFF) as u8);
+                }
+            }
+        }
+
+        Some(result)
+    }
+
+    /// NEON 4-bit decoding (base16: 2 chars -> 1 byte)
+    #[cfg(target_arch = "aarch64")]
+    #[target_feature(enable = "neon")]
+    #[allow(unsafe_op_in_unsafe_fn)]
+    unsafe fn decode_neon_4bit(&self, encoded: &str) -> Option<Vec<u8>> {
+        const INPUT_BLOCK: usize = 16;
+
+        let encoded_bytes = encoded.as_bytes();
+        let estimated_len = encoded_bytes.len() / 2;
+        let mut result = Vec::with_capacity(estimated_len);
+
+        let num_blocks = encoded_bytes.len() / INPUT_BLOCK;
+        let simd_chars = num_blocks * INPUT_BLOCK;
+
+        for block in 0..num_blocks {
+            let offset = block * INPUT_BLOCK;
+
+            for i in 0..8 {
+                let ch_hi = encoded_bytes[offset + i * 2];
+                let ch_lo = encoded_bytes[offset + i * 2 + 1];
+
+                let idx_hi = self.decode_lut[ch_hi as usize];
+                let idx_lo = self.decode_lut[ch_lo as usize];
+
+                if idx_hi == 0xFF || idx_lo == 0xFF {
+                    return None;
+                }
+
+                result.push((idx_hi << 4) | idx_lo);
+            }
+        }
+
+        // Handle remainder
+        if simd_chars < encoded_bytes.len() {
+            let remainder = &encoded[simd_chars..];
+            let bits_per_char = 4usize;
+            let mut bit_buffer = 0u32;
+            let mut bits_in_buffer = 0usize;
+
+            for ch in remainder.chars() {
+                if (ch as u32) >= 256 {
+                    return None;
+                }
+                let index = self.decode_lut[ch as usize];
+                if index == 0xFF {
+                    return None;
+                }
+                bit_buffer = (bit_buffer << bits_per_char) | (index as u32);
+                bits_in_buffer += bits_per_char;
+
+                while bits_in_buffer >= 8 {
+                    bits_in_buffer -= 8;
+                    result.push(((bit_buffer >> bits_in_buffer) & 0xFF) as u8);
+                }
             }
         }
 

@@ -1011,10 +1011,10 @@ impl Base64LutCodec {
         }
 
         // Scalar remainder
-        if simd_bytes < input_no_padding.len() {
-            if !self.decode_scalar(&input_no_padding[simd_bytes..], result) {
-                return false;
-            }
+        if simd_bytes < input_no_padding.len()
+            && !self.decode_scalar(&input_no_padding[simd_bytes..], result)
+        {
+            return false;
         }
 
         true
@@ -1957,7 +1957,7 @@ mod tests {
     // ========== 6-16 Range Tests ==========
 
     /// Generate synthetic dictionary with N contiguous ranges
-    #[cfg(test)]
+    #[cfg(all(test, target_arch = "x86_64"))]
     fn generate_synthetic_dictionary(num_ranges: usize, total_size: usize) -> Vec<char> {
         assert!(num_ranges > 0 && num_ranges <= 16);
         assert!(total_size == 32 || total_size == 64);

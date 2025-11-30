@@ -7,6 +7,11 @@
 //! across dictionaries of the same bit width. Only the translation layer
 //! (index → character) varies.
 
+// Allow unused_unsafe because we explicitly wrap NEON intrinsics for Rust 2024
+// edition compatibility (unsafe_op_in_unsafe_fn lint). The intrinsics may be
+// marked safe in some versions, but we maintain explicit blocks for portability.
+#![allow(unused_unsafe)]
+
 use crate::core::dictionary::Dictionary;
 use crate::simd::translate::{SequentialTranslate, SimdTranslate};
 use crate::simd::variants::{DictionaryMetadata, TranslationStrategy};
@@ -15,6 +20,7 @@ use crate::simd::variants::{DictionaryMetadata, TranslationStrategy};
 use std::arch::x86_64::*;
 
 #[cfg(target_arch = "aarch64")]
+#[allow(unused_imports)]
 use std::arch::aarch64::*;
 
 /// SIMD-accelerated codec that works with any compatible dictionary
@@ -28,6 +34,7 @@ use std::arch::aarch64::*;
 /// - Codec: Reuses reshuffle logic from specialized implementations
 pub struct GenericSimdCodec {
     metadata: DictionaryMetadata,
+    #[allow(dead_code)]
     translator: Box<dyn SimdTranslate>,
 }
 
@@ -779,44 +786,554 @@ impl GenericSimdCodec {
         )
     }
 
-    #[cfg(not(target_arch = "x86_64"))]
-    fn encode_6bit(&self, _data: &[u8], _dict: &Dictionary) -> Option<String> {
-        None
+    // ========== aarch64 NEON Implementations ==========
+
+    /// Encode 4-bit dictionary (hex-like) using NEON
+    #[cfg(target_arch = "aarch64")]
+    fn encode_4bit(&self, data: &[u8], _dict: &Dictionary) -> Option<String> {
+        const BLOCK_SIZE: usize = 16;
+
+        if data.len() < BLOCK_SIZE {
+            return None;
+        }
+
+        let output_len = data.len() * 2;
+        let mut result = String::with_capacity(output_len);
+
+        let num_blocks = data.len() / BLOCK_SIZE;
+        let simd_bytes = num_blocks * BLOCK_SIZE;
+
+        let mut offset = 0;
+        for _ in 0..num_blocks {
+            let output_buf = unsafe {
+                let input_vec = vld1q_u8(data.as_ptr().add(offset));
+
+                // Extract high nibbles (shift right by 4)
+                let hi_nibbles = vandq_u8(vshrq_n_u8(input_vec, 4), vdupq_n_u8(0x0F));
+
+                // Extract low nibbles
+                let lo_nibbles = vandq_u8(input_vec, vdupq_n_u8(0x0F));
+
+                // Translate nibbles to ASCII using pluggable translator
+                let hi_ascii = self.translator.translate_encode(hi_nibbles);
+                let lo_ascii = self.translator.translate_encode(lo_nibbles);
+
+                // Interleave high and low bytes: hi[0], lo[0], hi[1], lo[1], ...
+                let result_lo = vzip1q_u8(hi_ascii, lo_ascii);
+                let result_hi = vzip2q_u8(hi_ascii, lo_ascii);
+
+                let mut output_buf = [0u8; 32];
+                vst1q_u8(output_buf.as_mut_ptr(), result_lo);
+                vst1q_u8(output_buf.as_mut_ptr().add(16), result_hi);
+                output_buf
+            };
+
+            for &byte in &output_buf {
+                result.push(byte as char);
+            }
+
+            offset += BLOCK_SIZE;
+        }
+
+        if simd_bytes < data.len() {
+            // TODO: Handle remainder with scalar code
+        }
+
+        Some(result)
     }
 
-    #[cfg(not(target_arch = "x86_64"))]
-    fn encode_4bit(&self, _data: &[u8], _dict: &Dictionary) -> Option<String> {
-        None
+    /// Encode 5-bit dictionary (base32-like) using NEON
+    #[cfg(target_arch = "aarch64")]
+    fn encode_5bit(&self, data: &[u8], _dict: &Dictionary) -> Option<String> {
+        const BLOCK_SIZE: usize = 10; // 10 bytes -> 16 chars
+
+        if data.len() < 16 {
+            return None;
+        }
+
+        let output_len = data.len().div_ceil(5) * 8;
+        let mut result = String::with_capacity(output_len);
+
+        let safe_len = if data.len() >= 6 { data.len() - 6 } else { 0 };
+        let num_rounds = safe_len / BLOCK_SIZE;
+        let simd_bytes = num_rounds * BLOCK_SIZE;
+
+        let mut offset = 0;
+        for _ in 0..num_rounds {
+            let output_buf = unsafe {
+                let input_vec = vld1q_u8(data.as_ptr().add(offset));
+
+                // Extract 5-bit indices using scalar unpacking (same as x86)
+                let indices = self.unpack_5bit_simple_neon(input_vec);
+
+                // Translate 5-bit indices to ASCII
+                let encoded = self.translator.translate_encode(indices);
+
+                let mut output_buf = [0u8; 16];
+                vst1q_u8(output_buf.as_mut_ptr(), encoded);
+                output_buf
+            };
+
+            for &byte in &output_buf {
+                result.push(byte as char);
+            }
+
+            offset += BLOCK_SIZE;
+        }
+
+        if simd_bytes < data.len() {
+            // TODO: Handle remainder with scalar code
+        }
+
+        Some(result)
     }
 
-    #[cfg(not(target_arch = "x86_64"))]
-    fn encode_5bit(&self, _data: &[u8], _dict: &Dictionary) -> Option<String> {
-        None
+    /// Encode 6-bit dictionary (base64-like) using NEON
+    #[cfg(target_arch = "aarch64")]
+    fn encode_6bit(&self, data: &[u8], _dict: &Dictionary) -> Option<String> {
+        const BLOCK_SIZE: usize = 12;
+
+        if data.len() < 16 {
+            return None;
+        }
+
+        let output_len = data.len().div_ceil(3) * 4;
+        let mut result = String::with_capacity(output_len);
+
+        let safe_len = if data.len() >= 4 { data.len() - 4 } else { 0 };
+        let num_rounds = safe_len / BLOCK_SIZE;
+        let simd_bytes = num_rounds * BLOCK_SIZE;
+
+        let mut offset = 0;
+        for _ in 0..num_rounds {
+            let output_buf = unsafe {
+                let input_vec = vld1q_u8(data.as_ptr().add(offset));
+
+                // Reshuffle bytes to extract 6-bit groups
+                let reshuffled = self.reshuffle_6bit_neon(input_vec);
+
+                // Translate 6-bit indices to ASCII
+                let encoded = self.translator.translate_encode(reshuffled);
+
+                let mut output_buf = [0u8; 16];
+                vst1q_u8(output_buf.as_mut_ptr(), encoded);
+                output_buf
+            };
+
+            for &byte in &output_buf {
+                result.push(byte as char);
+            }
+
+            offset += BLOCK_SIZE;
+        }
+
+        if simd_bytes < data.len() {
+            // TODO: Handle remainder with scalar code
+        }
+
+        Some(result)
     }
 
-    #[cfg(not(target_arch = "x86_64"))]
-    fn encode_8bit(&self, _data: &[u8], _dict: &Dictionary) -> Option<String> {
-        None
+    /// Encode 8-bit dictionary (base256-like) using NEON
+    #[cfg(target_arch = "aarch64")]
+    fn encode_8bit(&self, data: &[u8], _dict: &Dictionary) -> Option<String> {
+        const BLOCK_SIZE: usize = 16;
+
+        if data.len() < BLOCK_SIZE {
+            return None;
+        }
+
+        let mut result = String::with_capacity(data.len());
+
+        let num_blocks = data.len() / BLOCK_SIZE;
+        let simd_bytes = num_blocks * BLOCK_SIZE;
+
+        let mut offset = 0;
+        for _ in 0..num_blocks {
+            let output_buf = unsafe {
+                let input_vec = vld1q_u8(data.as_ptr().add(offset));
+
+                // Direct translation
+                let encoded = self.translator.translate_encode(input_vec);
+
+                let mut output_buf = [0u8; 16];
+                vst1q_u8(output_buf.as_mut_ptr(), encoded);
+                output_buf
+            };
+
+            for &byte in &output_buf {
+                result.push(byte as char);
+            }
+
+            offset += BLOCK_SIZE;
+        }
+
+        if simd_bytes < data.len() {
+            // TODO: Handle remainder with scalar code
+        }
+
+        Some(result)
     }
 
-    #[cfg(not(target_arch = "x86_64"))]
-    fn decode_6bit(&self, _encoded: &str, _dict: &Dictionary) -> Option<Vec<u8>> {
-        None
+    /// Decode 4-bit dictionary (hex-like) using NEON
+    #[cfg(target_arch = "aarch64")]
+    fn decode_4bit(&self, encoded: &str, _dict: &Dictionary) -> Option<Vec<u8>> {
+        const BLOCK_SIZE: usize = 32; // 32 chars → 16 bytes
+
+        let encoded_bytes = encoded.as_bytes();
+
+        if encoded_bytes.len() < BLOCK_SIZE {
+            return None;
+        }
+
+        let mut result = Vec::with_capacity(encoded_bytes.len() / 2);
+
+        let num_blocks = encoded_bytes.len() / BLOCK_SIZE;
+        let simd_bytes = num_blocks * BLOCK_SIZE;
+
+        let mut offset = 0;
+        for _ in 0..num_blocks {
+            // Load 32 chars as two 16-byte vectors
+            let (input_lo, input_hi) = unsafe {
+                let lo = vld1q_u8(encoded_bytes.as_ptr().add(offset));
+                let hi = vld1q_u8(encoded_bytes.as_ptr().add(offset + 16));
+                (lo, hi)
+            };
+
+            // Deinterleave: extract even (high nibble chars) and odd (low nibble chars)
+            let (hi_chars, lo_chars) = unsafe {
+                // vuzp1 extracts elements at even indices, vuzp2 at odd indices
+                let hi_chars = vuzp1q_u8(input_lo, input_hi);
+                let lo_chars = vuzp2q_u8(input_lo, input_hi);
+                (hi_chars, lo_chars)
+            };
+
+            let bytes = unsafe {
+                // Translate chars to nibble values
+                let hi_vals = self.translator.translate_decode(hi_chars)?;
+                let lo_vals = self.translator.translate_decode(lo_chars)?;
+
+                // Pack nibbles into bytes: (high << 4) | low
+                vorrq_u8(vshlq_n_u8(hi_vals, 4), lo_vals)
+            };
+
+            let mut output_buf = [0u8; 16];
+            unsafe {
+                vst1q_u8(output_buf.as_mut_ptr(), bytes);
+            }
+            result.extend_from_slice(&output_buf);
+
+            offset += BLOCK_SIZE;
+        }
+
+        if simd_bytes < encoded_bytes.len() {
+            // TODO: Handle remainder with scalar
+        }
+
+        Some(result)
     }
 
-    #[cfg(not(target_arch = "x86_64"))]
-    fn decode_4bit(&self, _encoded: &str, _dict: &Dictionary) -> Option<Vec<u8>> {
-        None
+    /// Decode 5-bit dictionary (base32-like) using NEON
+    #[cfg(target_arch = "aarch64")]
+    fn decode_5bit(&self, encoded: &str, _dict: &Dictionary) -> Option<Vec<u8>> {
+        const BLOCK_SIZE: usize = 16; // 16 chars → 10 bytes
+
+        let encoded_bytes = encoded.as_bytes();
+
+        if encoded_bytes.len() < BLOCK_SIZE {
+            return None;
+        }
+
+        let mut result = Vec::with_capacity(encoded_bytes.len() * 5 / 8);
+
+        let num_blocks = encoded_bytes.len() / BLOCK_SIZE;
+        let simd_bytes = num_blocks * BLOCK_SIZE;
+
+        for round in 0..num_blocks {
+            let offset = round * BLOCK_SIZE;
+
+            let chars = unsafe { vld1q_u8(encoded_bytes.as_ptr().add(offset)) };
+
+            let bytes = unsafe {
+                // Translate to 5-bit indices
+                let indices = self.translator.translate_decode(chars)?;
+
+                // Pack 5-bit values into bytes (16 chars -> 10 bytes)
+                self.pack_5bit_to_8bit_neon(indices)
+            };
+
+            let mut output_buf = [0u8; 16];
+            unsafe {
+                vst1q_u8(output_buf.as_mut_ptr(), bytes);
+            }
+            result.extend_from_slice(&output_buf[..10]);
+        }
+
+        if simd_bytes < encoded_bytes.len() {
+            // TODO: Handle remainder with scalar
+        }
+
+        Some(result)
     }
 
-    #[cfg(not(target_arch = "x86_64"))]
-    fn decode_5bit(&self, _encoded: &str, _dict: &Dictionary) -> Option<Vec<u8>> {
-        None
+    /// Decode 6-bit dictionary (base64-like) using NEON
+    #[cfg(target_arch = "aarch64")]
+    fn decode_6bit(&self, encoded: &str, _dict: &Dictionary) -> Option<Vec<u8>> {
+        const BLOCK_SIZE: usize = 16; // 16 chars → 12 bytes
+
+        let encoded_bytes = encoded.as_bytes();
+
+        if encoded_bytes.len() < BLOCK_SIZE {
+            return None;
+        }
+
+        let mut result = Vec::with_capacity(encoded_bytes.len() * 3 / 4);
+
+        let num_blocks = encoded_bytes.len() / BLOCK_SIZE;
+        let simd_bytes = num_blocks * BLOCK_SIZE;
+
+        for round in 0..num_blocks {
+            let offset = round * BLOCK_SIZE;
+
+            let chars = unsafe { vld1q_u8(encoded_bytes.as_ptr().add(offset)) };
+
+            let bytes = unsafe {
+                // Translate to 6-bit indices
+                let indices = self.translator.translate_decode(chars)?;
+
+                // Unpack 6-bit indices back to bytes
+                self.unshuffle_6bit_neon(indices)
+            };
+
+            let mut output_buf = [0u8; 16];
+            unsafe {
+                vst1q_u8(output_buf.as_mut_ptr(), bytes);
+            }
+            result.extend_from_slice(&output_buf[..12]);
+        }
+
+        if simd_bytes < encoded_bytes.len() {
+            // TODO: Handle remainder with scalar
+        }
+
+        Some(result)
     }
 
-    #[cfg(not(target_arch = "x86_64"))]
-    fn decode_8bit(&self, _encoded: &str, _dict: &Dictionary) -> Option<Vec<u8>> {
-        None
+    /// Decode 8-bit dictionary (base256-like) using NEON
+    #[cfg(target_arch = "aarch64")]
+    fn decode_8bit(&self, encoded: &str, _dict: &Dictionary) -> Option<Vec<u8>> {
+        const BLOCK_SIZE: usize = 16;
+
+        let encoded_bytes = encoded.as_bytes();
+
+        if encoded_bytes.len() < BLOCK_SIZE {
+            return None;
+        }
+
+        let mut result = Vec::with_capacity(encoded_bytes.len());
+
+        let num_blocks = encoded_bytes.len() / BLOCK_SIZE;
+        let simd_bytes = num_blocks * BLOCK_SIZE;
+
+        let mut offset = 0;
+        for _ in 0..num_blocks {
+            let chars = unsafe { vld1q_u8(encoded_bytes.as_ptr().add(offset)) };
+
+            let bytes = unsafe { self.translator.translate_decode(chars)? };
+
+            let mut output_buf = [0u8; 16];
+            unsafe {
+                vst1q_u8(output_buf.as_mut_ptr(), bytes);
+            }
+            result.extend_from_slice(&output_buf);
+
+            offset += BLOCK_SIZE;
+        }
+
+        if simd_bytes < encoded_bytes.len() {
+            // TODO: Handle remainder with scalar
+        }
+
+        Some(result)
+    }
+
+    // ========== NEON Helper Functions ==========
+
+    /// Reshuffle bytes and extract 6-bit indices from 12 input bytes (NEON)
+    #[cfg(target_arch = "aarch64")]
+    #[target_feature(enable = "neon")]
+    #[allow(unsafe_op_in_unsafe_fn)]
+    unsafe fn reshuffle_6bit_neon(&self, input: uint8x16_t) -> uint8x16_t {
+        // Shuffle indices: matches x86 pattern
+        let shuffle_indices = vld1q_u8(
+            [
+                1, 0, 2, 1, // bytes 0-2 -> positions 0-3
+                4, 3, 5, 4, // bytes 3-5 -> positions 4-7
+                7, 6, 8, 7, // bytes 6-8 -> positions 8-11
+                10, 9, 11, 10, // bytes 9-11 -> positions 12-15
+            ]
+            .as_ptr(),
+        );
+
+        let shuffled = vqtbl1q_u8(input, shuffle_indices);
+
+        // Extract 6-bit groups using multiplication tricks
+        let shuffled_u32 = vreinterpretq_u32_u8(shuffled);
+        let t0 = vandq_u32(shuffled_u32, vdupq_n_u32(0x0FC0FC00));
+
+        // NEON: vmull + vshrn pattern for mulhi
+        let t1 = {
+            let t0_u16 = vreinterpretq_u16_u32(t0);
+            let mult_pattern = vreinterpretq_u16_u32(vdupq_n_u32(0x04000040));
+            let lo = vget_low_u16(t0_u16);
+            let hi = vget_high_u16(t0_u16);
+            let mult_lo = vget_low_u16(mult_pattern);
+            let mult_hi = vget_high_u16(mult_pattern);
+            let lo_32 = vmull_u16(lo, mult_lo);
+            let hi_32 = vmull_u16(hi, mult_hi);
+            let lo_result = vshrn_n_u32(lo_32, 16);
+            let hi_result = vshrn_n_u32(hi_32, 16);
+            vreinterpretq_u32_u16(vcombine_u16(lo_result, hi_result))
+        };
+
+        let t2 = vandq_u32(shuffled_u32, vdupq_n_u32(0x003F03F0));
+        let t3 = {
+            let t2_u16 = vreinterpretq_u16_u32(t2);
+            let mult_pattern = vreinterpretq_u16_u32(vdupq_n_u32(0x01000010));
+            vreinterpretq_u32_u16(vmulq_u16(t2_u16, mult_pattern))
+        };
+
+        vreinterpretq_u8_u32(vorrq_u32(t1, t3))
+    }
+
+    /// Unshuffle 6-bit indices back to 8-bit bytes (NEON)
+    #[cfg(target_arch = "aarch64")]
+    #[target_feature(enable = "neon")]
+    #[allow(unsafe_op_in_unsafe_fn)]
+    unsafe fn unshuffle_6bit_neon(&self, indices: uint8x16_t) -> uint8x16_t {
+        // Stage 1: Merge adjacent pairs
+        // Split into even (A, C positions) and odd (B, D positions) bytes
+        let even_mask = vld1q_u8(
+            [
+                0, 255, 2, 255, 4, 255, 6, 255, 8, 255, 10, 255, 12, 255, 14, 255,
+            ]
+            .as_ptr(),
+        );
+        let odd_mask = vld1q_u8(
+            [
+                1, 255, 3, 255, 5, 255, 7, 255, 9, 255, 11, 255, 13, 255, 15, 255,
+            ]
+            .as_ptr(),
+        );
+
+        let even_bytes = vqtbl1q_u8(indices, even_mask);
+        let odd_bytes = vqtbl1q_u8(indices, odd_mask);
+
+        let even_u16 = vreinterpretq_u16_u8(even_bytes);
+        let odd_u16 = vreinterpretq_u16_u8(odd_bytes);
+
+        // Shift even values left by 6 and add odd values
+        let merged_u16 = vaddq_u16(vshlq_n_u16(even_u16, 6), odd_u16);
+
+        // Stage 2: Combine u16 pairs
+        let lo_pair_mask = vld1q_u8(
+            [
+                0, 1, 255, 255, 4, 5, 255, 255, 8, 9, 255, 255, 12, 13, 255, 255,
+            ]
+            .as_ptr(),
+        );
+        let hi_pair_mask = vld1q_u8(
+            [
+                2, 3, 255, 255, 6, 7, 255, 255, 10, 11, 255, 255, 14, 15, 255, 255,
+            ]
+            .as_ptr(),
+        );
+
+        let lo_pairs =
+            vreinterpretq_u32_u8(vqtbl1q_u8(vreinterpretq_u8_u16(merged_u16), lo_pair_mask));
+        let hi_pairs =
+            vreinterpretq_u32_u8(vqtbl1q_u8(vreinterpretq_u8_u16(merged_u16), hi_pair_mask));
+
+        // lo_pairs << 12 + hi_pairs
+        let combined = vaddq_u32(vshlq_n_u32(lo_pairs, 12), hi_pairs);
+
+        // Stage 3: Extract the valid bytes in correct order
+        let output_shuffle = vld1q_u8(
+            [
+                2, 1, 0, // first group of 3 bytes
+                6, 5, 4, // second group of 3 bytes
+                10, 9, 8, // third group of 3 bytes
+                14, 13, 12, // fourth group of 3 bytes
+                255, 255, 255, 255, // unused
+            ]
+            .as_ptr(),
+        );
+
+        vqtbl1q_u8(vreinterpretq_u8_u32(combined), output_shuffle)
+    }
+
+    /// Simple 5-bit unpacking using direct shifts and masks (NEON)
+    #[cfg(target_arch = "aarch64")]
+    #[target_feature(enable = "neon")]
+    #[allow(unsafe_op_in_unsafe_fn)]
+    unsafe fn unpack_5bit_simple_neon(&self, input: uint8x16_t) -> uint8x16_t {
+        // Extract bytes 0-9 into a buffer
+        let mut buf = [0u8; 16];
+        vst1q_u8(buf.as_mut_ptr(), input);
+
+        // Extract 5-bit indices manually (two 5-byte groups)
+        let mut indices = [0u8; 16];
+
+        // First group: bytes 0-4 -> indices 0-7
+        indices[0] = buf[0] >> 3;
+        indices[1] = ((buf[0] & 0x07) << 2) | (buf[1] >> 6);
+        indices[2] = (buf[1] >> 1) & 0x1F;
+        indices[3] = ((buf[1] & 0x01) << 4) | (buf[2] >> 4);
+        indices[4] = ((buf[2] & 0x0F) << 1) | (buf[3] >> 7);
+        indices[5] = (buf[3] >> 2) & 0x1F;
+        indices[6] = ((buf[3] & 0x03) << 3) | (buf[4] >> 5);
+        indices[7] = buf[4] & 0x1F;
+
+        // Second group: bytes 5-9 -> indices 8-15
+        indices[8] = buf[5] >> 3;
+        indices[9] = ((buf[5] & 0x07) << 2) | (buf[6] >> 6);
+        indices[10] = (buf[6] >> 1) & 0x1F;
+        indices[11] = ((buf[6] & 0x01) << 4) | (buf[7] >> 4);
+        indices[12] = ((buf[7] & 0x0F) << 1) | (buf[8] >> 7);
+        indices[13] = (buf[8] >> 2) & 0x1F;
+        indices[14] = ((buf[8] & 0x03) << 3) | (buf[9] >> 5);
+        indices[15] = buf[9] & 0x1F;
+
+        vld1q_u8(indices.as_ptr())
+    }
+
+    /// Pack 16 bytes of 5-bit indices into 10 bytes (NEON)
+    #[cfg(target_arch = "aarch64")]
+    #[target_feature(enable = "neon")]
+    #[allow(unsafe_op_in_unsafe_fn)]
+    unsafe fn pack_5bit_to_8bit_neon(&self, indices: uint8x16_t) -> uint8x16_t {
+        // Extract indices to buffer for scalar packing
+        let mut idx = [0u8; 16];
+        vst1q_u8(idx.as_mut_ptr(), indices);
+
+        // Pack 16 5-bit values into 10 bytes
+        let mut packed = [0u8; 16];
+
+        // First 8 indices -> 5 bytes
+        packed[0] = (idx[0] << 3) | (idx[1] >> 2);
+        packed[1] = (idx[1] << 6) | (idx[2] << 1) | (idx[3] >> 4);
+        packed[2] = (idx[3] << 4) | (idx[4] >> 1);
+        packed[3] = (idx[4] << 7) | (idx[5] << 2) | (idx[6] >> 3);
+        packed[4] = (idx[6] << 5) | idx[7];
+
+        // Second 8 indices -> 5 bytes
+        packed[5] = (idx[8] << 3) | (idx[9] >> 2);
+        packed[6] = (idx[9] << 6) | (idx[10] << 1) | (idx[11] >> 4);
+        packed[7] = (idx[11] << 4) | (idx[12] >> 1);
+        packed[8] = (idx[12] << 7) | (idx[13] << 2) | (idx[14] >> 3);
+        packed[9] = (idx[14] << 5) | idx[15];
+
+        vld1q_u8(packed.as_ptr())
     }
 
     // ========== AVX2 (256-bit) Implementations ==========

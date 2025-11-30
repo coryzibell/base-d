@@ -581,10 +581,8 @@ impl Base64LutCodec {
         }
 
         // Safe: scalar remainder
-        if simd_bytes < encoded.len() {
-            if !self.decode_scalar(&encoded[simd_bytes..], result) {
-                return false;
-            }
+        if simd_bytes < encoded.len() && !self.decode_scalar(&encoded[simd_bytes..], result) {
+            return false;
         }
 
         true
