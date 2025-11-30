@@ -824,7 +824,7 @@ impl GappedSequentialCodec {
             if is_x86_feature_detected!("ssse3") {
                 return unsafe { self.decode_ssse3(encoded) };
             }
-            return self.decode_scalar(encoded);
+            self.decode_scalar(encoded)
         }
 
         #[cfg(target_arch = "aarch64")]
