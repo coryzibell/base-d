@@ -22,7 +22,7 @@ use crate::EncodingMode;
 use crate::core::dictionary::Dictionary;
 use crate::encoders::algorithms::{DecodeError, byte_range, radix};
 
-#[cfg(feature = "simd")]
+#[cfg(all(feature = "simd", target_arch = "x86_64"))]
 use crate::simd;
 
 /// Available encoding paths for benchmarking.
@@ -294,7 +294,8 @@ fn decode_chunked_scalar(encoded: &str, dict: &Dictionary) -> Result<Vec<u8>, cr
 }
 
 /// LUT-based SIMD encoding (uses runtime LUT construction, not hardcoded tables).
-#[cfg(feature = "simd")]
+/// Only available on x86_64 where these codecs are implemented.
+#[cfg(all(feature = "simd", target_arch = "x86_64"))]
 fn encode_lut(data: &[u8], dict: &Dictionary) -> Option<String> {
     let base = dict.base();
 
@@ -328,13 +329,14 @@ fn encode_lut(data: &[u8], dict: &Dictionary) -> Option<String> {
     None
 }
 
-#[cfg(not(feature = "simd"))]
+#[cfg(not(all(feature = "simd", target_arch = "x86_64")))]
 fn encode_lut(_data: &[u8], _dict: &Dictionary) -> Option<String> {
     None
 }
 
 /// LUT-based SIMD decoding (uses runtime LUT construction, not hardcoded tables).
-#[cfg(feature = "simd")]
+/// Only available on x86_64 where these codecs are implemented.
+#[cfg(all(feature = "simd", target_arch = "x86_64"))]
 fn decode_lut(encoded: &str, dict: &Dictionary) -> Option<Vec<u8>> {
     let base = dict.base();
 
@@ -368,7 +370,7 @@ fn decode_lut(encoded: &str, dict: &Dictionary) -> Option<Vec<u8>> {
     None
 }
 
-#[cfg(not(feature = "simd"))]
+#[cfg(not(all(feature = "simd", target_arch = "x86_64")))]
 fn decode_lut(_encoded: &str, _dict: &Dictionary) -> Option<Vec<u8>> {
     None
 }
