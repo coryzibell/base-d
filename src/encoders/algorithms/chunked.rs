@@ -3,12 +3,12 @@ use num_integer::lcm;
 
 pub use super::errors::DecodeError;
 
-#[cfg(all(feature = "simd", target_arch = "x86_64"))]
+#[cfg(all(feature = "simd", any(target_arch = "x86_64", target_arch = "aarch64")))]
 use crate::simd;
 
 pub fn encode_chunked(data: &[u8], dictionary: &Dictionary) -> String {
     // Try unified SIMD auto-selection
-    #[cfg(all(feature = "simd", target_arch = "x86_64"))]
+    #[cfg(all(feature = "simd", any(target_arch = "x86_64", target_arch = "aarch64")))]
     {
         if let Some(result) = simd::encode_with_simd(data, dictionary) {
             return result;
@@ -101,28 +101,11 @@ pub fn decode_chunked(encoded: &str, dictionary: &Dictionary) -> Result<Vec<u8>,
         return Err(DecodeError::EmptyInput);
     }
 
-    // Try SIMD acceleration
-    #[cfg(all(feature = "simd", target_arch = "x86_64"))]
+    // Try unified SIMD auto-selection
+    #[cfg(all(feature = "simd", any(target_arch = "x86_64", target_arch = "aarch64")))]
     {
-        if simd::has_avx2() || simd::has_ssse3() {
-            match dictionary.base() {
-                64 => {
-                    if let Some(result) = simd::decode_base64_simd(encoded, dictionary) {
-                        return Ok(result);
-                    }
-                }
-                16 => {
-                    if let Some(result) = simd::decode_base16_simd(encoded, dictionary) {
-                        return Ok(result);
-                    }
-                }
-                256 => {
-                    if let Some(result) = simd::decode_base256_simd(encoded, dictionary) {
-                        return Ok(result);
-                    }
-                }
-                _ => {}
-            }
+        if let Some(result) = simd::decode_with_simd(encoded, dictionary) {
+            return Ok(result);
         }
     }
 
