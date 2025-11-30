@@ -6,6 +6,14 @@ import sys
 from pathlib import Path
 
 CRITERION_DIR = Path("target/criterion")
+PLATFORM_FILE = CRITERION_DIR / "platform.txt"
+
+def get_platform() -> str:
+    """Read platform info from file."""
+    try:
+        return PLATFORM_FILE.read_text().strip()
+    except FileNotFoundError:
+        return "Unknown"
 
 def get_throughput(mean_ns: float, size_bytes: int) -> tuple[float, str]:
     """Calculate throughput from mean time. Returns (mb_per_sec, formatted_str)."""
@@ -69,8 +77,9 @@ def print_full_table():
         all_results[group_dir.name] = summarize_dictionary(group_dir)
 
     # Print compact table
+    platform = get_platform()
     print("\n" + "=" * 90)
-    print("base-d Benchmark Summary (64KB input)")
+    print(f"base-d Benchmark Summary | Platform: {platform}")
     print("=" * 90)
     print(f"{'Operation/Dictionary':<25} {'Scalar':<12} {'LUT':<12} {'Specialized':<12} {'Best':<10}")
     print("-" * 90)
@@ -108,8 +117,9 @@ def print_detailed():
 
     groups = sorted(CRITERION_DIR.iterdir())
 
+    platform = get_platform()
     print("\n" + "=" * 80)
-    print("base-d Benchmark Results (Detailed)")
+    print(f"base-d Benchmark Results (Detailed) | Platform: {platform}")
     print("=" * 80)
 
     for group_dir in groups:
