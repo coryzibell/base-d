@@ -96,9 +96,11 @@ jobs:
           echo "bumped=true" >> $GITHUB_OUTPUT
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
-      - name: Install mx
+      - name: Install base-d and mx
         if: steps.bump.outputs.bumped == 'true'
-        run: cargo install mx-cli
+        run: |
+          cargo install base-d
+          cargo install --git https://github.com/coryzibell/mx.git
 
       - name: Commit version bump
         if: steps.bump.outputs.bumped == 'true'
