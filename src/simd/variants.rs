@@ -10,6 +10,7 @@ use crate::core::dictionary::Dictionary;
 /// Different base64 standards use different characters at positions 62 and 63:
 /// - Standard (RFC 4648): uses '+' and '/'
 /// - URL-safe (RFC 4648): uses '-' and '_'
+#[cfg(target_arch = "x86_64")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DictionaryVariant {
     /// Standard base64 dictionary: A-Za-z0-9+/
@@ -23,6 +24,7 @@ pub enum DictionaryVariant {
 /// Different base32 standards use different character sets:
 /// - RFC 4648 Standard: A-Z and 2-7
 /// - RFC 4648 Extended Hex: 0-9 and A-V
+#[cfg(target_arch = "x86_64")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Base32Variant {
     /// RFC 4648 standard: A-Z, 2-7 with padding
@@ -48,6 +50,7 @@ pub enum Base32Variant {
 /// - `Some(DictionaryVariant::Base64Standard)` if all positions match standard base64
 /// - `Some(DictionaryVariant::Base64Url)` if all positions match URL-safe base64
 /// - `None` if not base64 or doesn't match a known variant exactly
+#[cfg(target_arch = "x86_64")]
 pub fn identify_base64_variant(dict: &Dictionary) -> Option<DictionaryVariant> {
     // Only works for base64
     if dict.base() != 64 {
@@ -84,6 +87,7 @@ pub fn identify_base64_variant(dict: &Dictionary) -> Option<DictionaryVariant> {
 /// # Returns
 ///
 /// `true` if all positions match, `false` otherwise
+#[cfg(target_arch = "x86_64")]
 pub fn verify_base64_dictionary(dict: &Dictionary, variant: DictionaryVariant) -> bool {
     if dict.base() != 64 {
         return false;
@@ -121,7 +125,7 @@ pub fn verify_base64_dictionary(dict: &Dictionary, variant: DictionaryVariant) -
 /// - `Some(Base32Variant::Rfc4648)` if all positions match RFC 4648 standard
 /// - `Some(Base32Variant::Rfc4648Hex)` if all positions match RFC 4648 extended hex
 /// - `None` if not base32 or doesn't match a known variant exactly
-#[allow(dead_code)]
+#[cfg(target_arch = "x86_64")]
 pub fn identify_base32_variant(dict: &Dictionary) -> Option<Base32Variant> {
     // Only works for base32
     if dict.base() != 32 {
@@ -165,7 +169,7 @@ pub fn identify_base32_variant(dict: &Dictionary) -> Option<Base32Variant> {
 /// # Returns
 ///
 /// `true` if all positions match, `false` otherwise
-#[allow(dead_code)]
+#[cfg(target_arch = "x86_64")]
 pub fn verify_base32_dictionary(dict: &Dictionary, variant: Base32Variant) -> bool {
     if dict.base() != 32 {
         return false;
@@ -472,7 +476,7 @@ impl DictionaryMetadata {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_arch = "x86_64"))]
 #[allow(deprecated)]
 mod tests {
     use super::*;

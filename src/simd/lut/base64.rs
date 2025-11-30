@@ -14,10 +14,8 @@
 use crate::core::dictionary::Dictionary;
 use crate::simd::variants::{DictionaryMetadata, LutStrategy, TranslationStrategy};
 
-use super::common::{CharRange, RangeStrategy};
-
 #[cfg(target_arch = "x86_64")]
-use super::common::RangeInfo;
+use super::common::{CharRange, RangeInfo, RangeStrategy};
 
 /// SIMD codec for base64-scale arbitrary dictionaries (17-64 characters)
 ///
@@ -182,9 +180,9 @@ impl Base64LutCodec {
     #[target_feature(enable = "neon")]
     unsafe fn encode_neon_impl(&self, data: &[u8], result: &mut String) {
         if self.metadata.base == 32 {
-            self.encode_neon_base32(data, result);
+            unsafe { self.encode_neon_base32(data, result) };
         } else if self.metadata.base == 64 {
-            self.encode_neon_base64(data, result);
+            unsafe { self.encode_neon_base64(data, result) };
         }
     }
 
@@ -225,15 +223,15 @@ impl Base64LutCodec {
             // Unsafe: pointer arithmetic for data loading
             let input_vec = unsafe { vld1q_u8(data.as_ptr().add(offset)) };
 
-            // Reshuffle to extract 6-bit indices (same as specialized base64)
-            let reshuffled = self.reshuffle_neon_base64(input_vec);
+            // Reshuffle to extract 6-bit indices (unsafe - calls unsafe fn)
+            let reshuffled = unsafe { self.reshuffle_neon_base64(input_vec) };
 
-            // Translate using vqtbl4q_u8 (64-byte lookup)
+            // Translate using vqtbl4q_u8 (64-byte lookup) - safe, no memory op
             let chars = vqtbl4q_u8(lut_tables, reshuffled);
 
-            // Store 16 output characters
+            // Store 16 output characters (unsafe - memory op)
             let mut output_buf = [0u8; 16];
-            vst1q_u8(output_buf.as_mut_ptr(), chars);
+            unsafe { vst1q_u8(output_buf.as_mut_ptr(), chars) };
 
             // Append to result
             for &byte in &output_buf {
@@ -262,16 +260,20 @@ impl Base64LutCodec {
         // Shuffle mask: Reshuffle bytes to prepare for 6-bit extraction
         // For each group of 3 input bytes ABC (24 bits) -> 4 output indices (4 x 6 bits)
         // Matches x86_64 base64.rs pattern: [1,0,2,1, 4,3,5,4, 7,6,8,7, 10,9,11,10]
-        let shuffle_indices = vld1q_u8(
-            [
-                1, 0, 2, 1, // bytes 0-2 -> positions 0-3
-                4, 3, 5, 4, // bytes 3-5 -> positions 4-7
-                7, 6, 8, 7, // bytes 6-8 -> positions 8-11
-                10, 9, 11, 10, // bytes 9-11 -> positions 12-15
-            ]
-            .as_ptr(),
-        );
+        // Load is unsafe (memory op)
+        let shuffle_indices = unsafe {
+            vld1q_u8(
+                [
+                    1, 0, 2, 1, // bytes 0-2 -> positions 0-3
+                    4, 3, 5, 4, // bytes 3-5 -> positions 4-7
+                    7, 6, 8, 7, // bytes 6-8 -> positions 8-11
+                    10, 9, 11, 10, // bytes 9-11 -> positions 12-15
+                ]
+                .as_ptr(),
+            )
+        };
 
+        // All operations below are safe (no memory ops)
         let shuffled = vqtbl1q_u8(input, shuffle_indices);
         let shuffled_u32 = vreinterpretq_u32_u8(shuffled);
 
@@ -729,9 +731,9 @@ impl Base64LutCodec {
     #[target_feature(enable = "neon")]
     unsafe fn decode_neon_impl(&self, encoded: &[u8], result: &mut Vec<u8>) -> bool {
         if self.is_rfc4648_base32() {
-            self.decode_neon_base32_rfc4648(encoded, result)
+            unsafe { self.decode_neon_base32_rfc4648(encoded, result) }
         } else if self.is_standard_base64() {
-            self.decode_neon_base64_standard(encoded, result)
+            unsafe { self.decode_neon_base64_standard(encoded, result) }
         } else {
             // Arbitrary dictionary - use scalar LUT
             self.decode_scalar(encoded, result)
@@ -979,7 +981,8 @@ impl Base64LutCodec {
 
             // === VALIDATION & TRANSLATION ===
             let mut char_buf = [0u8; 16];
-            vst1q_u8(char_buf.as_mut_ptr(), input_vec);
+            // Store is unsafe (memory op)
+            unsafe { vst1q_u8(char_buf.as_mut_ptr(), input_vec) };
 
             let mut indices_buf = [0u8; 16];
 
@@ -994,13 +997,16 @@ impl Base64LutCodec {
                 indices_buf[j] = idx;
             }
 
-            let indices = vld1q_u8(indices_buf.as_ptr());
+            // Load is unsafe (memory op)
+            let indices = unsafe { vld1q_u8(indices_buf.as_ptr()) };
 
             // === UNPACKING ===
-            let decoded = self.reshuffle_decode_neon(indices);
+            // Unsafe: calls unsafe fn
+            let decoded = unsafe { self.reshuffle_decode_neon(indices) };
 
             let mut output_buf = [0u8; 16];
-            vst1q_u8(output_buf.as_mut_ptr(), decoded);
+            // Store is unsafe (memory op)
+            unsafe { vst1q_u8(output_buf.as_mut_ptr(), decoded) };
             result.extend_from_slice(&output_buf[0..12]);
         }
 
@@ -1081,16 +1087,19 @@ impl Base64LutCodec {
         let final_32bit = vorrq_u32(vshlq_n_u32(lo, 12), hi);
 
         // Stage 3: Extract valid bytes (3 bytes per 32-bit group)
-        let shuffle_mask = vld1q_u8(
-            [
-                2, 1, 0, // first group (reversed byte order)
-                6, 5, 4, // second group
-                10, 9, 8, // third group
-                14, 13, 12, // fourth group
-                255, 255, 255, 255,
-            ]
-            .as_ptr(),
-        );
+        // Unsafe: memory load
+        let shuffle_mask = unsafe {
+            vld1q_u8(
+                [
+                    2, 1, 0, // first group (reversed byte order)
+                    6, 5, 4, // second group
+                    10, 9, 8, // third group
+                    14, 13, 12, // fourth group
+                    255, 255, 255, 255,
+                ]
+                .as_ptr(),
+            )
+        };
 
         let result_bytes = vreinterpretq_u8_u32(final_32bit);
         vqtbl1q_u8(result_bytes, shuffle_mask)

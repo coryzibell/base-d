@@ -71,10 +71,9 @@ impl Base64LutCodec {
             indices[7] = bytes[4] & 0x1F; // bits 4-0
 
             // Unsafe: NEON intrinsics
-            let (idx_vec, chars) = unsafe {
+            let chars = unsafe {
                 let idx_vec = vld1q_u8(indices.as_ptr());
-                let chars = vqtbl4q_u8(lut_tables, idx_vec);
-                (idx_vec, chars)
+                vqtbl4q_u8(lut_tables, idx_vec)
             };
 
             // Unsafe: NEON store

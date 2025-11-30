@@ -4,24 +4,25 @@
 //! and decoding operations. Runtime CPU feature detection is used to
 //! automatically select the best implementation.
 
+#[cfg(target_arch = "x86_64")]
 use crate::core::config::EncodingMode;
+#[cfg(target_arch = "x86_64")]
 use crate::core::dictionary::Dictionary;
+#[cfg(target_arch = "x86_64")]
 use std::sync::OnceLock;
 
+#[cfg(target_arch = "x86_64")]
 pub mod lut;
 pub mod variants;
 
 #[cfg(target_arch = "x86_64")]
 pub mod generic;
 
-#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+#[cfg(target_arch = "x86_64")]
 pub mod translate;
 
 #[cfg(target_arch = "x86_64")]
 mod x86_64;
-
-#[cfg(target_arch = "aarch64")]
-mod aarch64;
 
 #[cfg(target_arch = "x86_64")]
 pub use x86_64::{
@@ -29,32 +30,20 @@ pub use x86_64::{
     encode_base16_simd, encode_base32_simd, encode_base64_simd, encode_base256_simd,
 };
 
-#[cfg(target_arch = "aarch64")]
-pub use aarch64::{
-    GenericSimdCodec, decode_base16_simd, decode_base32_simd, decode_base64_simd,
-    decode_base256_simd, encode_base16_simd, encode_base32_simd, encode_base64_simd,
-    encode_base256_simd,
-};
-
 #[cfg(target_arch = "x86_64")]
 pub use generic::GenericSimdCodec;
 
+#[cfg(target_arch = "x86_64")]
 pub use lut::{Base64LutCodec, GappedSequentialCodec, SmallLutCodec};
 
 // CPU feature detection cache
-static HAS_AVX2: OnceLock<bool> = OnceLock::new();
-
 #[cfg(target_arch = "x86_64")]
 static HAS_SSSE3: OnceLock<bool> = OnceLock::new();
-
-#[cfg(target_arch = "x86_64")]
-#[allow(dead_code)]
-static HAS_AVX512_VBMI: OnceLock<bool> = OnceLock::new();
 
 /// Check if AVX2 is available (cached after first call)
 #[cfg(target_arch = "x86_64")]
 pub fn has_avx2() -> bool {
-    *HAS_AVX2.get_or_init(|| is_x86_feature_detected!("avx2"))
+    crate::simd::x86_64::has_avx2()
 }
 
 /// Check if SSSE3 is available (cached after first call)
@@ -63,13 +52,6 @@ pub fn has_ssse3() -> bool {
     *HAS_SSSE3.get_or_init(|| is_x86_feature_detected!("ssse3"))
 }
 
-/// Check if AVX-512 VBMI is available (cached after first call)
-#[cfg(target_arch = "x86_64")]
-#[allow(dead_code)]
-pub fn has_avx512_vbmi() -> bool {
-    *HAS_AVX512_VBMI.get_or_init(|| is_x86_feature_detected!("avx512vbmi"))
-}
-
 #[cfg(all(not(target_arch = "x86_64"), not(target_arch = "aarch64")))]
 pub fn has_avx2() -> bool {
     false
@@ -77,18 +59,6 @@ pub fn has_avx2() -> bool {
 
 #[cfg(all(not(target_arch = "x86_64"), not(target_arch = "aarch64")))]
 pub fn has_ssse3() -> bool {
-    false
-}
-
-/// Check if NEON is available (aarch64 only)
-#[cfg(target_arch = "aarch64")]
-pub fn has_neon() -> bool {
-    true // NEON is mandatory on aarch64
-}
-
-#[cfg(not(target_arch = "aarch64"))]
-#[allow(dead_code)]
-pub fn has_neon() -> bool {
     false
 }
 
@@ -127,11 +97,8 @@ pub fn encode_with_simd(data: &[u8], dict: &Dictionary) -> Option<String> {
     }
 
     // 3. Try specialized base16 for known hex variants
-    if base == 16 {
-        // Check if this matches uppercase or lowercase hex
-        if is_standard_hex(dict) {
-            return encode_base16_simd(data, dict);
-        }
+    if base == 16 && is_standard_hex(dict) {
+        return encode_base16_simd(data, dict);
     }
 
     // 4. Try specialized base256 for ByteRange mode
@@ -167,77 +134,6 @@ pub fn encode_with_simd(data: &[u8], dict: &Dictionary) -> Option<String> {
     }
 
     // 9. No SIMD optimization available
-    None
-}
-
-/// SIMD encoding for aarch64 platforms
-#[cfg(target_arch = "aarch64")]
-pub fn encode_with_simd(data: &[u8], dict: &Dictionary) -> Option<String> {
-    // NEON is always available on aarch64
-    if !has_neon() {
-        return None;
-    }
-
-    let base = dict.base();
-
-    // 1. Try specialized base64 for known variants
-    if base == 64 {
-        if let Some(_variant) = variants::identify_base64_variant(dict) {
-            return encode_base64_simd(data, dict);
-        }
-    }
-
-    // 2. Try specialized base32 for known variants
-    if base == 32 {
-        if let Some(_variant) = variants::identify_base32_variant(dict) {
-            return encode_base32_simd(data, dict);
-        }
-    }
-
-    // 3. Try specialized base16 for known hex variants
-    if base == 16 {
-        if is_standard_hex(dict) {
-            return encode_base16_simd(data, dict);
-        }
-    }
-
-    // 4. Try specialized base256 for ByteRange mode
-    if base == 256 && *dict.mode() == EncodingMode::ByteRange {
-        return encode_base256_simd(data, dict);
-    }
-
-    // 5. Try GenericSimdCodec for sequential power-of-2 dictionaries
-    if let Some(codec) = GenericSimdCodec::from_dictionary(dict) {
-        return codec.encode(data, dict);
-    }
-
-    // 6. Try GappedSequentialCodec for near-sequential dictionaries with gaps
-    // (e.g., geohash, Crockford base32)
-    if let Some(codec) = GappedSequentialCodec::from_dictionary(dict) {
-        return codec.encode(data, dict);
-    }
-
-    // 7. Try SmallLutCodec for small arbitrary dictionaries (≤16 chars)
-    if base <= 16 && base.is_power_of_two() {
-        if let Some(codec) = SmallLutCodec::from_dictionary(dict) {
-            return codec.encode(data, dict);
-        }
-    }
-
-    // 8. Try Base64LutCodec for large arbitrary dictionaries (17-64 chars)
-    if (17..=64).contains(&base) && base.is_power_of_two() {
-        if let Some(codec) = Base64LutCodec::from_dictionary(dict) {
-            return codec.encode(data, dict);
-        }
-    }
-
-    // 9. No SIMD optimization available
-    None
-}
-
-/// Fallback for other platforms
-#[cfg(all(not(target_arch = "x86_64"), not(target_arch = "aarch64")))]
-pub fn encode_with_simd(_data: &[u8], _dict: &Dictionary) -> Option<String> {
     None
 }
 
@@ -273,11 +169,8 @@ pub fn decode_with_simd(encoded: &str, dict: &Dictionary) -> Option<Vec<u8>> {
     }
 
     // 3. Try specialized base16 for known hex variants
-    if base == 16 {
-        // Check if this matches uppercase or lowercase hex
-        if is_standard_hex(dict) {
-            return decode_base16_simd(encoded, dict);
-        }
+    if base == 16 && is_standard_hex(dict) {
+        return decode_base16_simd(encoded, dict);
     }
 
     // 4. Try specialized base256 for ByteRange mode
@@ -315,79 +208,8 @@ pub fn decode_with_simd(encoded: &str, dict: &Dictionary) -> Option<Vec<u8>> {
     None
 }
 
-/// SIMD decoding for aarch64 platforms
-#[cfg(target_arch = "aarch64")]
-#[allow(dead_code)]
-pub fn decode_with_simd(encoded: &str, dict: &Dictionary) -> Option<Vec<u8>> {
-    // NEON is always available on aarch64
-    if !has_neon() {
-        return None;
-    }
-
-    let base = dict.base();
-
-    // 1. Try specialized base64 for known variants
-    if base == 64 {
-        if variants::identify_base64_variant(dict).is_some() {
-            return decode_base64_simd(encoded, dict);
-        }
-    }
-
-    // 2. Try specialized base32 for known variants
-    if base == 32 {
-        if variants::identify_base32_variant(dict).is_some() {
-            return decode_base32_simd(encoded, dict);
-        }
-    }
-
-    // 3. Try specialized base16 for known hex variants
-    if base == 16 {
-        if is_standard_hex(dict) {
-            return decode_base16_simd(encoded, dict);
-        }
-    }
-
-    // 4. Try specialized base256 for ByteRange mode
-    if base == 256 && *dict.mode() == EncodingMode::ByteRange {
-        return decode_base256_simd(encoded, dict);
-    }
-
-    // 5. Try GenericSimdCodec for sequential power-of-2 dictionaries
-    if let Some(codec) = GenericSimdCodec::from_dictionary(dict) {
-        return codec.decode(encoded, dict);
-    }
-
-    // 6. Try GappedSequentialCodec for near-sequential dictionaries with gaps
-    if let Some(codec) = GappedSequentialCodec::from_dictionary(dict) {
-        return codec.decode(encoded, dict);
-    }
-
-    // 7. Try SmallLutCodec for small arbitrary dictionaries (≤16 chars)
-    if base <= 16 && base.is_power_of_two() {
-        if let Some(codec) = SmallLutCodec::from_dictionary(dict) {
-            return codec.decode(encoded, dict);
-        }
-    }
-
-    // 8. Try Base64LutCodec for large arbitrary dictionaries (17-64 chars)
-    if (17..=64).contains(&base) && base.is_power_of_two() {
-        if let Some(codec) = Base64LutCodec::from_dictionary(dict) {
-            return codec.decode(encoded, dict);
-        }
-    }
-
-    // 9. No SIMD optimization available
-    None
-}
-
-/// Fallback for other platforms
-#[cfg(all(not(target_arch = "x86_64"), not(target_arch = "aarch64")))]
-#[allow(dead_code)]
-pub fn decode_with_simd(_encoded: &str, _dict: &Dictionary) -> Option<Vec<u8>> {
-    None
-}
-
 /// Check if dictionary is standard hex (0-9A-F or 0-9a-f)
+#[cfg(target_arch = "x86_64")]
 fn is_standard_hex(dict: &Dictionary) -> bool {
     if dict.base() != 16 {
         return false;

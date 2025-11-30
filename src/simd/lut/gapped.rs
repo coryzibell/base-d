@@ -156,15 +156,16 @@ impl GappedSequentialCodec {
         }
 
         #[cfg(target_arch = "aarch64")]
-        {
-            unsafe {
-                self.encode_neon(data, &mut result);
-            }
-            return Some(result);
+        unsafe {
+            self.encode_neon(data, &mut result);
         }
 
-        // Scalar fallback
-        self.encode_scalar(data, &mut result);
+        #[cfg(not(target_arch = "aarch64"))]
+        {
+            // Scalar fallback (only for non-SIMD paths on x86 or other architectures)
+            self.encode_scalar(data, &mut result);
+        }
+
         Some(result)
     }
 
