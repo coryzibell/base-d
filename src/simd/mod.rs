@@ -24,8 +24,17 @@ pub mod translate;
 #[cfg(target_arch = "x86_64")]
 mod x86_64;
 
+#[cfg(target_arch = "aarch64")]
+mod aarch64;
+
 #[cfg(target_arch = "x86_64")]
 pub use x86_64::{
+    decode_base16_simd, decode_base32_simd, decode_base64_simd, decode_base256_simd,
+    encode_base16_simd, encode_base32_simd, encode_base64_simd, encode_base256_simd,
+};
+
+#[cfg(target_arch = "aarch64")]
+pub use aarch64::{
     decode_base16_simd, decode_base32_simd, decode_base64_simd, decode_base256_simd,
     encode_base16_simd, encode_base32_simd, encode_base64_simd, encode_base256_simd,
 };
@@ -50,6 +59,25 @@ pub fn has_avx2() -> bool {
 #[cfg(target_arch = "x86_64")]
 pub fn has_ssse3() -> bool {
     *HAS_SSSE3.get_or_init(|| is_x86_feature_detected!("ssse3"))
+}
+
+#[cfg(target_arch = "aarch64")]
+#[allow(dead_code)]
+pub fn has_avx2() -> bool {
+    false // AVX2 is x86-only
+}
+
+#[cfg(target_arch = "aarch64")]
+#[allow(dead_code)]
+pub fn has_ssse3() -> bool {
+    false // SSSE3 is x86-only
+}
+
+/// Check if NEON is available (always true on aarch64)
+#[cfg(target_arch = "aarch64")]
+#[allow(dead_code)]
+pub fn has_neon() -> bool {
+    true
 }
 
 #[cfg(all(not(target_arch = "x86_64"), not(target_arch = "aarch64")))]
@@ -238,6 +266,103 @@ fn is_standard_hex(dict: &Dictionary) -> bool {
         }
     }
     matches_lower
+}
+
+// ============================================================================
+// aarch64 NEON implementations
+// ============================================================================
+
+#[cfg(target_arch = "aarch64")]
+use crate::core::dictionary::Dictionary;
+
+/// Unified SIMD encoding entry point for aarch64 (NEON)
+///
+/// Selection order:
+/// 1. Known base64 variants (standard/url) → specialized base64 NEON
+/// 2. Known base32 variants → specialized base32 NEON
+/// 3. Known hex variants (base16) → specialized base16 NEON
+/// 4. Base256 → specialized base256 NEON
+/// 5. None → caller falls back to scalar
+#[cfg(target_arch = "aarch64")]
+pub fn encode_with_simd(data: &[u8], dict: &Dictionary) -> Option<String> {
+    let base = dict.base();
+
+    // 1. Try specialized base64 for known variants
+    if base == 64 && variants::identify_base64_variant(dict).is_some() {
+        return encode_base64_simd(data, dict);
+    }
+
+    // 2. Try specialized base32 for known variants
+    if base == 32 && variants::identify_base32_variant(dict).is_some() {
+        return encode_base32_simd(data, dict);
+    }
+
+    // 3. Try specialized base16 for known hex variants
+    if base == 16 && is_standard_hex_aarch64(dict) {
+        return encode_base16_simd(data, dict);
+    }
+
+    // 4. Try specialized base256
+    if base == 256 {
+        return encode_base256_simd(data, dict);
+    }
+
+    // No SIMD optimization available for this dictionary
+    None
+}
+
+/// Unified SIMD decoding entry point for aarch64 (NEON)
+#[cfg(target_arch = "aarch64")]
+#[allow(dead_code)]
+pub fn decode_with_simd(encoded: &str, dict: &Dictionary) -> Option<Vec<u8>> {
+    let base = dict.base();
+
+    // 1. Try specialized base64 for known variants
+    if base == 64 && variants::identify_base64_variant(dict).is_some() {
+        return decode_base64_simd(encoded, dict);
+    }
+
+    // 2. Try specialized base32 for known variants
+    if base == 32 && variants::identify_base32_variant(dict).is_some() {
+        return decode_base32_simd(encoded, dict);
+    }
+
+    // 3. Try specialized base16 for known hex variants
+    if base == 16 && is_standard_hex_aarch64(dict) {
+        return decode_base16_simd(encoded, dict);
+    }
+
+    // 4. Try specialized base256
+    if base == 256 {
+        return decode_base256_simd(encoded, dict);
+    }
+
+    // No SIMD optimization available
+    None
+}
+
+/// Check if dictionary is standard hex (0-9A-F or 0-9a-f) - aarch64 version
+#[cfg(target_arch = "aarch64")]
+fn is_standard_hex_aarch64(dict: &Dictionary) -> bool {
+    if dict.base() != 16 {
+        return false;
+    }
+
+    // Check uppercase variant: 0-9A-F
+    let uppercase = "0123456789ABCDEF";
+    for (i, expected) in uppercase.chars().enumerate() {
+        if dict.encode_digit(i) != Some(expected) {
+            // Try lowercase
+            let lowercase = "0123456789abcdef";
+            for (j, exp_lower) in lowercase.chars().enumerate() {
+                if dict.encode_digit(j) != Some(exp_lower) {
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
+    true
 }
 
 #[cfg(test)]

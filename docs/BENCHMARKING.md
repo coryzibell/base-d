@@ -1,152 +1,97 @@
-# Benchmarking Suite
+# Benchmarking
 
-## Output Format
+base-d uses [Criterion](https://github.com/bheisler/criterion.rs) for statistical benchmarking.
 
-### Full Suite Report
-
-```
-base-d benchmark suite
-Platform: x86_64 (AVX2, SSSE3)
-Input: 1 MB random data
-Date: 2025-11-30
-
-┌─────────────────────┬────────┬─────────────┬─────────────┬─────────────┬─────────────┐
-│ Dictionary          │ Base   │ Scalar      │ LUT         │ Specialized │ Streaming   │
-├─────────────────────┼────────┼─────────────┼─────────────┼─────────────┼─────────────┤
-│ base64              │ 64     │ 45.2 MB/s   │ 312 MB/s    │ 1.52 GB/s   │ 1.48 GB/s   │
-│ base64url           │ 64     │ 44.8 MB/s   │ 308 MB/s    │ 1.51 GB/s   │ 1.47 GB/s   │
-│ base32              │ 32     │ 38.1 MB/s   │ 245 MB/s    │ 892 MB/s    │ 875 MB/s    │
-│ base32hex           │ 32     │ 37.9 MB/s   │ 242 MB/s    │ 888 MB/s    │ 871 MB/s    │
-│ base16              │ 16     │ 52.3 MB/s   │ 425 MB/s    │ 1.85 GB/s   │ 1.81 GB/s   │
-│ hex                 │ 16     │ 51.8 MB/s   │ 418 MB/s    │ 1.82 GB/s   │ 1.78 GB/s   │
-│ bioctal             │ 16     │ 50.2 MB/s   │ 412 MB/s    │ -           │ -           │
-│ base256_matrix      │ 256    │ 28.5 MB/s   │ 185 MB/s    │ 725 MB/s    │ 712 MB/s    │
-│ base58              │ 58     │ 12.4 MB/s   │ -           │ -           │ -           │
-│ base85              │ 85     │ 18.2 MB/s   │ -           │ -           │ -           │
-│ cards               │ 52     │ 15.1 MB/s   │ -           │ -           │ -           │
-│ hieroglyphs         │ 100    │ 8.3 MB/s    │ -           │ -           │ -           │
-│ emoji_faces         │ 80     │ 9.1 MB/s    │ -           │ -           │ -           │
-└─────────────────────┴────────┴─────────────┴─────────────┴─────────────┴─────────────┘
-
-Legend:
-  - = Not supported for this dictionary/platform
-  Throughput measured as input bytes processed per second
-```
-
-### Single Dictionary Report
-
-```
-base-d benchmark: base64
-Platform: x86_64 (AVX2, SSSE3)
-
-Encode (1 MB random data, 100 iterations):
-┌─────────────┬────────────┬────────────┬────────────┬────────────┐
-│ Path        │ Mean       │ Std Dev    │ Throughput │ vs Scalar  │
-├─────────────┼────────────┼────────────┼────────────┼────────────┤
-│ Scalar      │ 22.14 ms   │ ±0.31 ms   │ 45.2 MB/s  │ 1.00x      │
-│ LUT         │ 3.21 ms    │ ±0.08 ms   │ 312 MB/s   │ 6.90x      │
-│ Specialized │ 0.66 ms    │ ±0.02 ms   │ 1.52 GB/s  │ 33.5x      │
-│ Streaming   │ 0.68 ms    │ ±0.03 ms   │ 1.48 GB/s  │ 32.6x      │
-└─────────────┴────────────┴────────────┴────────────┴────────────┘
-
-Decode (1 MB encoded data, 100 iterations):
-┌─────────────┬────────────┬────────────┬────────────┬────────────┐
-│ Path        │ Mean       │ Std Dev    │ Throughput │ vs Scalar  │
-├─────────────┼────────────┼────────────┼────────────┼────────────┤
-│ Scalar      │ 25.82 ms   │ ±0.42 ms   │ 38.7 MB/s  │ 1.00x      │
-│ LUT         │ 3.85 ms    │ ±0.11 ms   │ 260 MB/s   │ 6.71x      │
-│ Specialized │ 0.78 ms    │ ±0.03 ms   │ 1.28 GB/s  │ 33.1x      │
-│ Streaming   │ 0.81 ms    │ ±0.04 ms   │ 1.23 GB/s  │ 31.9x      │
-└─────────────┴────────────┴────────────┴────────────┴────────────┘
-```
-
-### Size Scaling Report
-
-```
-base-d benchmark: base64 (size scaling)
-Platform: x86_64 (AVX2)
-Path: Specialized
-
-┌────────────┬────────────┬────────────┬────────────┐
-│ Input Size │ Encode     │ Decode     │ Throughput │
-├────────────┼────────────┼────────────┼────────────┤
-│ 16 B       │ 42 ns      │ 51 ns      │ 380 MB/s   │
-│ 256 B      │ 118 ns     │ 142 ns     │ 2.17 GB/s  │
-│ 1 KB       │ 312 ns     │ 385 ns     │ 3.20 GB/s  │
-│ 16 KB      │ 4.2 µs     │ 5.1 µs     │ 3.81 GB/s  │
-│ 1 MB       │ 0.66 ms    │ 0.78 ms    │ 1.52 GB/s  │
-│ 100 MB     │ 68.2 ms    │ 81.5 ms    │ 1.47 GB/s  │
-└────────────┴────────────┴────────────┴────────────┘
-```
-
-## CLI Interface
+## Quick Start
 
 ```bash
-# Full suite with random data
-base-d bench
+# Run full benchmark suite
+cargo bench --bench encoding
 
-# Full suite with specific size
-base-d bench --size 1mb
+# Run specific dictionary
+cargo bench --bench encoding -- "base64"
 
-# Single dictionary
-base-d bench --dict base64
+# Run encode only
+cargo bench --bench encoding -- "encode/"
 
-# Custom input file
-base-d bench --input data.bin
-
-# Specific paths only
-base-d bench --dict base64 --paths scalar,specialized
-
-# JSON output for CI
-base-d bench --json > benchmark.json
-
-# Quick mode (fewer iterations)
-base-d bench --quick
-
-# Size scaling test
-base-d bench --dict base64 --scaling
+# Run decode only
+cargo bench --bench encoding -- "decode/"
 ```
 
-## Implementation
+## Understanding Output
 
-### Path Detection
+The benchmark header shows platform info:
 
-For each dictionary, detect available paths:
-
-```rust
-struct BenchmarkPaths {
-    scalar: bool,      // Always true
-    lut: bool,         // Power-of-2 base, ASCII chars
-    specialized: bool, // Known RFC dictionary + platform support
-    streaming: bool,   // Chunked mode dictionaries
-}
-
-fn detect_paths(dict: &Dictionary, platform: Platform) -> BenchmarkPaths {
-    // ...
-}
+```
+╔══════════════════════════════════════════════════════════╗
+║ base-d benchmark suite                                   ║
+║ Platform: x86_64 (AVX2, SSSE3)                           ║
+╚══════════════════════════════════════════════════════════╝
 ```
 
-### Platform Detection
+Each benchmark shows throughput in MiB/s or GiB/s:
 
-```rust
-enum Platform {
-    X86_64 { avx2: bool, ssse3: bool, avx512: bool },
-    Aarch64 { neon: bool },
-    Other,
-}
+```
+encode/base64/Specialized/65536
+                        time:   [125.42 µs 125.84 µs 126.37 µs]
+                        thrpt:  [494.59 MiB/s 496.65 MiB/s 498.31 MiB/s]
 ```
 
-### Benchmark Runner
+## Encoding Paths
+
+The benchmarks test three SIMD paths:
+
+| Path | Description | Availability |
+|------|-------------|--------------|
+| **Scalar** | Pure Rust, no SIMD | Always |
+| **LUT** | Runtime lookup tables | Power-of-2 bases with SIMD support |
+| **Specialized** | Hardcoded RFC tables | base64, base32, base16 on x86_64/aarch64 |
+
+## Sample Results
+
+### x86_64 (AVX2) - 64KB Input
+
+| Dictionary | Scalar | LUT | Specialized |
+|------------|--------|-----|-------------|
+| decode_base64 | 151 MB/s | 288 MB/s | **7.36 GB/s** |
+| decode_base32 | 129 MB/s | 267 MB/s | **4.81 GB/s** |
+| decode_base16 | 107 MB/s | 234 MB/s | **4.14 GB/s** |
+| encode_base64 | 270 MB/s | 290 MB/s | **495 MB/s** |
+| decode_bioctal | 109 MB/s | **230 MB/s** | - |
+
+### Key Findings
+
+- **Specialized decode is dominant**: 50x speedup for base64
+- **LUT provides good fallback**: 2x speedup for arbitrary alphabets
+- **Radix encodings are slow**: base58/base85 use division math (~0.2 MB/s)
+
+## HTML Reports
+
+Criterion generates detailed HTML reports:
+
+```bash
+# After running benchmarks
+open target/criterion/report/index.html
+```
+
+## Dev Tools
+
+A Python script in `scripts/bench_summary.py` provides quick terminal summaries:
+
+```bash
+python3 scripts/bench_summary.py           # Compact table
+python3 scripts/bench_summary.py --detailed # Per-dictionary breakdown
+```
+
+This is for development convenience only and not part of the distributed crate.
+
+## Platform Detection
+
+The benchmark module exposes platform info:
 
 ```rust
-struct BenchmarkResult {
-    dictionary: String,
-    path: String,
-    operation: Operation, // Encode | Decode
-    input_size: usize,
-    iterations: usize,
-    mean_ns: u64,
-    std_dev_ns: u64,
-    throughput_mbps: f64,
-}
+use base_d::bench::PlatformInfo;
+
+let info = PlatformInfo::detect();
+println!("{}", info.display());  // "x86_64 (AVX2, SSSE3)" or "aarch64 (NEON)"
 ```

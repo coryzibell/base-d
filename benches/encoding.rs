@@ -181,13 +181,19 @@ fn bench_emoji_faces(c: &mut Criterion) {
     bench_decode_dictionary(c, "emoji_faces");
 }
 
-/// Print platform info at the start
+/// Print platform info at the start and save to file for summary script
 fn print_platform_info(_c: &mut Criterion) {
     let info = PlatformInfo::detect();
+    let platform_str = info.display();
+
     eprintln!("\n╔══════════════════════════════════════════════════════════╗");
     eprintln!("║ base-d benchmark suite                                   ║");
-    eprintln!("║ Platform: {:48} ║", info.display());
+    eprintln!("║ Platform: {:48} ║", platform_str);
     eprintln!("╚══════════════════════════════════════════════════════════╝\n");
+
+    // Save platform info to file for summary script
+    let _ = std::fs::create_dir_all("target/criterion");
+    let _ = std::fs::write("target/criterion/platform.txt", &platform_str);
 }
 
 criterion_group!(
