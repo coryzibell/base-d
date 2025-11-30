@@ -598,3 +598,45 @@ fn test_base58_leading_zeros() {
     let decoded = decode(&encoded, &dictionary).unwrap();
     assert_eq!(decoded, input, "Base58 leading zeros round-trip failed");
 }
+
+/// Test geohash encoding - regression test for SIMD range-reduction bug
+///
+/// Geohash uses a non-contiguous 32-char alphabet that doesn't fit in the
+/// 16-byte pshufb LUT, so it must fall back to scalar encoding.
+#[test]
+fn test_base32_geohash() {
+    let dictionary = get_dictionary("base32_geohash");
+
+    // Geohash alphabet: 0123456789bcdefghjkmnpqrstuvwxyz (missing a,i,l,o)
+    let test_cases = [
+        (b"Hello".as_slice(), "91kqsv3g"),
+        (b"World".as_slice(), "bxrr4v34"),
+        (b"\x00".as_slice(), "00"),
+        (b"\xFF".as_slice(), "zw"),
+    ];
+
+    for (input, expected) in test_cases {
+        let encoded = encode(input, &dictionary);
+        assert_eq!(
+            encoded, expected,
+            "Geohash encoding mismatch for {:?}: got {}, expected {}",
+            input, encoded, expected
+        );
+
+        // Verify all output chars are valid geohash characters
+        let valid_chars = "0123456789bcdefghjkmnpqrstuvwxyz";
+        for c in encoded.chars() {
+            assert!(
+                valid_chars.contains(c),
+                "Invalid geohash character '{}' in output",
+                c
+            );
+        }
+
+        // Verify round-trip
+        if !input.is_empty() {
+            let decoded = decode(&encoded, &dictionary).unwrap();
+            assert_eq!(decoded, input, "Geohash round-trip failed for {:?}", input);
+        }
+    }
+}

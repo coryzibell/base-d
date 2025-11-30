@@ -41,16 +41,16 @@ pub(super) struct RangeInfo {
 
 #[cfg(target_arch = "x86_64")]
 impl RangeInfo {
-    /// Build range-reduction metadata for 1-2 contiguous ranges
+    /// Build range-reduction metadata for 1-5 contiguous ranges
     ///
-    /// Note: 3+ range support is disabled due to bugs in the SSSE3 range-reduction
-    /// algorithm (produces invalid characters for some dictionaries like geohash).
-    /// Fall back to scalar for these cases.
+    /// Note: 6+ range support is not implemented (would need multi-threshold
+    /// compression which doesn't fit in 16-byte LUT). Falls back to scalar.
     pub(super) fn build_multi_range(ranges: &[CharRange]) -> Option<Self> {
         let num_ranges = ranges.len();
 
-        // Only support 1-2 ranges (3+ range multi-threshold has bugs)
-        if num_ranges == 0 || num_ranges > 2 {
+        // Reject if >5 ranges (6+ range multi-threshold not implemented)
+        // Also reject if 0 ranges
+        if num_ranges == 0 || num_ranges > 5 {
             return None;
         }
 
@@ -58,7 +58,8 @@ impl RangeInfo {
         match num_ranges {
             1 => Self::build_single_range(ranges),
             2 => Self::build_two_ranges(ranges),
-            _ => None, // 3+ ranges fall back to scalar
+            3..=5 => Self::build_small_multirange(ranges),
+            _ => None,
         }
     }
 
@@ -119,8 +120,9 @@ impl RangeInfo {
     }
 
     /// Build for 3-5 ranges (base64-style)
-    /// NOTE: Currently disabled due to bugs - produces invalid characters for some dictionaries
-    #[allow(dead_code)]
+    ///
+    /// Uses pshufb for index-to-offset lookup, which only supports 16 entries.
+    /// This limits which dictionaries can use this path.
     fn build_small_multirange(ranges: &[CharRange]) -> Option<Self> {
         // Strategy: Use boundary of second-largest range as threshold
         // This maps the two largest ranges to 0, distinguish via comparison
@@ -133,9 +135,19 @@ impl RangeInfo {
         let (largest_idx, largest_range) = sorted_ranges[0];
         let (second_largest_idx, second_largest_range) = sorted_ranges[1];
 
-        // Threshold: end of the larger of the two largest ranges
+        // Threshold: end of second-largest range
         // For base64: ranges[1] ('a'-'z', indices 26-51) is second-largest
         let subs_threshold = second_largest_range.end_idx;
+
+        // Validate: after subtracting threshold, all indices must fit in 16-entry LUT
+        // max_compressed_idx = last_dict_idx - threshold
+        let last_dict_idx = ranges.last()?.end_idx;
+        let max_compressed_idx = last_dict_idx.saturating_sub(subs_threshold);
+        if max_compressed_idx >= 16 {
+            // Dictionary doesn't fit in 16-byte pshufb LUT
+            // Example: geohash has threshold=9, last_idx=31, compressed=22 > 16
+            return None;
+        }
 
         // After subtraction, both large ranges map to 0 or near-0
         // Comparison value: distinguish the two large ranges

@@ -1747,11 +1747,11 @@ mod tests {
         assert!(codec.is_some(), "Should create codec for arbitrary base64");
         let codec = codec.unwrap();
 
-        // 4 ranges: 3+ range SSSE3 disabled due to bugs, falls back to scalar
-        // range_info will be None for 3+ ranges
+        // 4 ranges that fit in 16-byte LUT should have range_info
+        // (This dictionary has ranges that compress well)
         assert!(
-            codec.range_info.is_none(),
-            "3+ ranges should use scalar fallback (SSSE3 range-reduction disabled)"
+            codec.range_info.is_some(),
+            "4-range dictionary that fits in LUT should use SSSE3"
         );
 
         // Test encoding (uses scalar path)
@@ -2186,13 +2186,19 @@ mod tests {
             RangeStrategy::Small
         );
 
-        // Test 3-range dictionary - should NOT have range_info (3+ ranges use scalar)
+        // Test 3-range dictionary - may have range_info if it fits in LUT
         let dictionary_3 = generate_synthetic_dictionary(3, 32);
         let dict_3 = Dictionary::new(dictionary_3).unwrap();
         let codec_3 = Base64LutCodec::from_dictionary(&dict_3).unwrap();
+        // Whether range_info exists depends on whether the compressed indices fit in 16 entries
+        // The synthetic dictionary should fit, so expect Some
         assert!(
-            codec_3.range_info.is_none(),
-            "3+ ranges should use scalar fallback (SSSE3 range-reduction disabled)"
+            codec_3.range_info.is_some(),
+            "3-range dictionary that fits in LUT should use SSSE3"
+        );
+        assert_eq!(
+            codec_3.range_info.as_ref().unwrap().strategy,
+            RangeStrategy::SmallMulti
         );
 
         // 6+ ranges should not have range_info
