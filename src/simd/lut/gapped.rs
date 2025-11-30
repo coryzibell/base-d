@@ -874,24 +874,21 @@ impl GappedSequentialCodec {
     /// SSSE3 decoding implementation
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "ssse3")]
-    #[allow(unsafe_op_in_unsafe_fn)]
     unsafe fn decode_ssse3(&self, encoded: &str) -> Option<Vec<u8>> {
         match self.bits_per_symbol {
-            5 => self.decode_ssse3_5bit(encoded),
-            6 => self.decode_ssse3_6bit(encoded),
-            4 => self.decode_ssse3_4bit(encoded),
+            5 => unsafe { self.decode_ssse3_5bit(encoded) },
+            6 => unsafe { self.decode_ssse3_6bit(encoded) },
+            4 => unsafe { self.decode_ssse3_4bit(encoded) },
             _ => self.decode_scalar(encoded),
         }
     }
 
-    /// SSSE3 5-bit decoding (base32: 8 chars -> 5 bytes)
+    /// SSSE3-targeted 5-bit decoding (base32: 8 chars -> 5 bytes)
+    /// Currently uses scalar LUT lookup; SIMD bit-packing is a future optimization
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "ssse3")]
     unsafe fn decode_ssse3_5bit(&self, encoded: &str) -> Option<Vec<u8>> {
-        use std::arch::x86_64::*;
-
         const INPUT_BLOCK: usize = 8;
-        const OUTPUT_BLOCK: usize = 5;
 
         let encoded_bytes = encoded.as_bytes();
         let estimated_len = (encoded_bytes.len() * 5) / 8;
@@ -900,30 +897,14 @@ impl GappedSequentialCodec {
         let num_blocks = encoded_bytes.len() / INPUT_BLOCK;
         let simd_chars = num_blocks * INPUT_BLOCK;
 
-        // Build 16-way decode LUTs (split by high nibble)
-        let mut lut_tables = [[0u8; 16]; 16];
-        for (ch, &idx) in self.decode_lut.iter().enumerate() {
-            if idx != 0xFF {
-                let hi = ch >> 4;
-                let lo = ch & 0x0F;
-                lut_tables[hi][lo] = idx;
-            }
-        }
-
         for block in 0..num_blocks {
             let offset = block * INPUT_BLOCK;
 
-            // Load 8 characters into low half of register
+            // Load 8 characters into array for processing
             let mut chars = [0u8; 16];
             chars[..8].copy_from_slice(&encoded_bytes[offset..offset + INPUT_BLOCK]);
-            let char_vec = _mm_loadu_si128(chars.as_ptr() as *const __m128i);
 
-            // Extract nibbles for LUT lookup
-            let lo_nibbles = _mm_and_si128(char_vec, _mm_set1_epi8(0x0F));
-            let hi_nibbles = _mm_and_si128(_mm_srli_epi16(char_vec, 4), _mm_set1_epi8(0x0F));
-
-            // We need to do conditional lookups based on high nibble
-            // For simplicity, extract and process scalar-style for now
+            // Decode using LUT lookup
             let mut indices = [0u8; 8];
             for i in 0..8 {
                 let ch = chars[i];
@@ -970,12 +951,12 @@ impl GappedSequentialCodec {
         Some(result)
     }
 
-    /// SSSE3 6-bit decoding (base64: 4 chars -> 3 bytes)
+    /// SSSE3-targeted 6-bit decoding (base64: 4 chars -> 3 bytes)
+    /// Currently uses scalar LUT lookup; SIMD bit-packing is a future optimization
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "ssse3")]
     unsafe fn decode_ssse3_6bit(&self, encoded: &str) -> Option<Vec<u8>> {
         const INPUT_BLOCK: usize = 4;
-        const OUTPUT_BLOCK: usize = 3;
 
         let encoded_bytes = encoded.as_bytes();
         let estimated_len = (encoded_bytes.len() * 3) / 4;
@@ -1028,18 +1009,15 @@ impl GappedSequentialCodec {
             }
         }
 
-        // Suppress unused variable warnings
-        let _ = OUTPUT_BLOCK;
-
         Some(result)
     }
 
-    /// SSSE3 4-bit decoding (base16: 2 chars -> 1 byte)
+    /// SSSE3-targeted 4-bit decoding (base16: 2 chars -> 1 byte)
+    /// Currently uses scalar LUT lookup; SIMD bit-packing is a future optimization
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "ssse3")]
     unsafe fn decode_ssse3_4bit(&self, encoded: &str) -> Option<Vec<u8>> {
         const INPUT_BLOCK: usize = 16;
-        const OUTPUT_BLOCK: usize = 8;
 
         let encoded_bytes = encoded.as_bytes();
         let estimated_len = encoded_bytes.len() / 2;
@@ -1091,21 +1069,17 @@ impl GappedSequentialCodec {
             }
         }
 
-        // Suppress unused variable warnings
-        let _ = OUTPUT_BLOCK;
-
         Some(result)
     }
 
     /// NEON decoding implementation
     #[cfg(target_arch = "aarch64")]
     #[target_feature(enable = "neon")]
-    #[allow(unsafe_op_in_unsafe_fn)]
     unsafe fn decode_neon(&self, encoded: &str) -> Option<Vec<u8>> {
         match self.bits_per_symbol {
-            5 => self.decode_neon_5bit(encoded),
-            6 => self.decode_neon_6bit(encoded),
-            4 => self.decode_neon_4bit(encoded),
+            5 => unsafe { self.decode_neon_5bit(encoded) },
+            6 => unsafe { self.decode_neon_6bit(encoded) },
+            4 => unsafe { self.decode_neon_4bit(encoded) },
             _ => self.decode_scalar(encoded),
         }
     }
