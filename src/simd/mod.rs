@@ -39,7 +39,7 @@ pub use aarch64::{
 #[cfg(target_arch = "x86_64")]
 pub use generic::GenericSimdCodec;
 
-pub use lut::{Base64LutCodec, SmallLutCodec};
+pub use lut::{Base64LutCodec, GappedSequentialCodec, SmallLutCodec};
 
 // CPU feature detection cache
 static HAS_AVX2: OnceLock<bool> = OnceLock::new();
@@ -144,7 +144,13 @@ pub fn encode_with_simd(data: &[u8], dict: &Dictionary) -> Option<String> {
         return codec.encode(data, dict);
     }
 
-    // 6. Try SmallLutCodec for small arbitrary dictionaries (≤16 chars)
+    // 6. Try GappedSequentialCodec for near-sequential dictionaries with gaps
+    // (e.g., geohash, Crockford base32)
+    if let Some(codec) = GappedSequentialCodec::from_dictionary(dict) {
+        return codec.encode(data, dict);
+    }
+
+    // 7. Try SmallLutCodec for small arbitrary dictionaries (≤16 chars)
     if base <= 16
         && base.is_power_of_two()
         && let Some(codec) = SmallLutCodec::from_dictionary(dict)
@@ -152,7 +158,7 @@ pub fn encode_with_simd(data: &[u8], dict: &Dictionary) -> Option<String> {
         return codec.encode(data, dict);
     }
 
-    // 7. Try Base64LutCodec for large arbitrary dictionaries (17-64 chars)
+    // 8. Try Base64LutCodec for large arbitrary dictionaries (17-64 chars)
     if (17..=64).contains(&base)
         && base.is_power_of_two()
         && let Some(codec) = Base64LutCodec::from_dictionary(dict)
@@ -160,7 +166,7 @@ pub fn encode_with_simd(data: &[u8], dict: &Dictionary) -> Option<String> {
         return codec.encode(data, dict);
     }
 
-    // 8. No SIMD optimization available
+    // 9. No SIMD optimization available
     None
 }
 
@@ -205,21 +211,27 @@ pub fn encode_with_simd(data: &[u8], dict: &Dictionary) -> Option<String> {
         return codec.encode(data, dict);
     }
 
-    // 6. Try SmallLutCodec for small arbitrary dictionaries (≤16 chars)
+    // 6. Try GappedSequentialCodec for near-sequential dictionaries with gaps
+    // (e.g., geohash, Crockford base32)
+    if let Some(codec) = GappedSequentialCodec::from_dictionary(dict) {
+        return codec.encode(data, dict);
+    }
+
+    // 7. Try SmallLutCodec for small arbitrary dictionaries (≤16 chars)
     if base <= 16 && base.is_power_of_two() {
         if let Some(codec) = SmallLutCodec::from_dictionary(dict) {
             return codec.encode(data, dict);
         }
     }
 
-    // 7. Try Base64LutCodec for large arbitrary dictionaries (17-64 chars)
+    // 8. Try Base64LutCodec for large arbitrary dictionaries (17-64 chars)
     if (17..=64).contains(&base) && base.is_power_of_two() {
         if let Some(codec) = Base64LutCodec::from_dictionary(dict) {
             return codec.encode(data, dict);
         }
     }
 
-    // 8. No SIMD optimization available
+    // 9. No SIMD optimization available
     None
 }
 
@@ -278,7 +290,12 @@ pub fn decode_with_simd(encoded: &str, dict: &Dictionary) -> Option<Vec<u8>> {
         return codec.decode(encoded, dict);
     }
 
-    // 6. Try SmallLutCodec for small arbitrary dictionaries (≤16 chars)
+    // 6. Try GappedSequentialCodec for near-sequential dictionaries with gaps
+    if let Some(codec) = GappedSequentialCodec::from_dictionary(dict) {
+        return codec.decode(encoded, dict);
+    }
+
+    // 7. Try SmallLutCodec for small arbitrary dictionaries (≤16 chars)
     if base <= 16
         && base.is_power_of_two()
         && let Some(codec) = SmallLutCodec::from_dictionary(dict)
@@ -286,7 +303,7 @@ pub fn decode_with_simd(encoded: &str, dict: &Dictionary) -> Option<Vec<u8>> {
         return codec.decode(encoded, dict);
     }
 
-    // 7. Try Base64LutCodec for large arbitrary dictionaries (17-64 chars)
+    // 8. Try Base64LutCodec for large arbitrary dictionaries (17-64 chars)
     if (17..=64).contains(&base)
         && base.is_power_of_two()
         && let Some(codec) = Base64LutCodec::from_dictionary(dict)
@@ -294,7 +311,7 @@ pub fn decode_with_simd(encoded: &str, dict: &Dictionary) -> Option<Vec<u8>> {
         return codec.decode(encoded, dict);
     }
 
-    // 8. No SIMD optimization available
+    // 9. No SIMD optimization available
     None
 }
 
@@ -340,21 +357,26 @@ pub fn decode_with_simd(encoded: &str, dict: &Dictionary) -> Option<Vec<u8>> {
         return codec.decode(encoded, dict);
     }
 
-    // 6. Try SmallLutCodec for small arbitrary dictionaries (≤16 chars)
+    // 6. Try GappedSequentialCodec for near-sequential dictionaries with gaps
+    if let Some(codec) = GappedSequentialCodec::from_dictionary(dict) {
+        return codec.decode(encoded, dict);
+    }
+
+    // 7. Try SmallLutCodec for small arbitrary dictionaries (≤16 chars)
     if base <= 16 && base.is_power_of_two() {
         if let Some(codec) = SmallLutCodec::from_dictionary(dict) {
             return codec.decode(encoded, dict);
         }
     }
 
-    // 7. Try Base64LutCodec for large arbitrary dictionaries (17-64 chars)
+    // 8. Try Base64LutCodec for large arbitrary dictionaries (17-64 chars)
     if (17..=64).contains(&base) && base.is_power_of_two() {
         if let Some(codec) = Base64LutCodec::from_dictionary(dict) {
             return codec.decode(encoded, dict);
         }
     }
 
-    // 8. No SIMD optimization available
+    // 9. No SIMD optimization available
     None
 }
 
