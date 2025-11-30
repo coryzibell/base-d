@@ -308,7 +308,13 @@ pub fn encode_with_simd(data: &[u8], dict: &Dictionary) -> Option<String> {
         return encode_base256_simd(data, dict);
     }
 
-    // 5. Try LUT-based codecs for arbitrary dictionaries
+    // 5. Try GappedSequentialCodec for near-sequential dictionaries with gaps
+    // (e.g., geohash, Crockford base32)
+    if let Some(codec) = GappedSequentialCodec::from_dictionary(dict) {
+        return codec.encode(data, dict);
+    }
+
+    // 6. Try LUT-based codecs for arbitrary dictionaries
     // SmallLutCodec for base <= 16
     if base <= 16
         && base.is_power_of_two()
@@ -354,7 +360,12 @@ pub fn decode_with_simd(encoded: &str, dict: &Dictionary) -> Option<Vec<u8>> {
         return decode_base256_simd(encoded, dict);
     }
 
-    // 5. Try LUT-based codecs for arbitrary dictionaries
+    // 5. Try GappedSequentialCodec for near-sequential dictionaries with gaps
+    if let Some(codec) = GappedSequentialCodec::from_dictionary(dict) {
+        return codec.decode(encoded, dict);
+    }
+
+    // 6. Try LUT-based codecs for arbitrary dictionaries
     // SmallLutCodec for base <= 16
     if base <= 16
         && base.is_power_of_two()
