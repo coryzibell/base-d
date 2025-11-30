@@ -148,6 +148,8 @@ mod features;
 #[cfg(feature = "simd")]
 mod simd;
 
+pub mod bench;
+
 pub use core::config::{
     CompressionConfig, DictionaryConfig, DictionaryRegistry, EncodingMode, Settings,
 };
