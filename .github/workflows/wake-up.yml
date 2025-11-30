@@ -100,7 +100,7 @@ jobs:
         if: steps.bump.outputs.bumped == 'true'
         run: |
           cargo install base-d
-          cargo install --git https://github.com/coryzibell/mx.git
+          cargo install mx
 
       - name: Commit version bump
         if: steps.bump.outputs.bumped == 'true'
