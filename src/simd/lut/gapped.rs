@@ -12,9 +12,6 @@
 //!
 //! This requires O(gaps) SIMD comparisons, which is efficient for ≤8 gaps.
 
-// Allow unsafe operations in unsafe fn without explicit blocks (Rust 2024 compat)
-#![allow(unsafe_op_in_unsafe_fn)]
-
 use crate::core::dictionary::Dictionary;
 
 /// Maximum number of gaps supported (more gaps = more SIMD instructions)
@@ -220,11 +217,13 @@ impl GappedSequentialCodec {
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "ssse3")]
     unsafe fn encode_ssse3(&self, data: &[u8], result: &mut String) {
-        match self.bits_per_symbol {
-            5 => self.encode_ssse3_5bit(data, result),
-            6 => self.encode_ssse3_6bit(data, result),
-            4 => self.encode_ssse3_4bit(data, result),
-            _ => self.encode_scalar(data, result),
+        unsafe {
+            match self.bits_per_symbol {
+                5 => self.encode_ssse3_5bit(data, result),
+                6 => self.encode_ssse3_6bit(data, result),
+                4 => self.encode_ssse3_4bit(data, result),
+                _ => self.encode_scalar(data, result),
+            }
         }
     }
 
@@ -232,84 +231,86 @@ impl GappedSequentialCodec {
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "ssse3")]
     unsafe fn encode_ssse3_5bit(&self, data: &[u8], result: &mut String) {
-        use std::arch::x86_64::*;
+        unsafe {
+            use std::arch::x86_64::*;
 
-        const BLOCK_SIZE: usize = 5; // 5 bytes -> 8 chars
+            const BLOCK_SIZE: usize = 5; // 5 bytes -> 8 chars
 
-        if data.len() < BLOCK_SIZE {
-            self.encode_scalar(data, result);
-            return;
-        }
-
-        // Precompute threshold vectors
-        let threshold_vecs: Vec<__m128i> = self
-            .gap_info
-            .thresholds
-            .iter()
-            .map(|&t| _mm_set1_epi8((t.wrapping_sub(1)) as i8)) // cmpgt needs t-1
-            .collect();
-
-        let adjustment_vecs: Vec<__m128i> = self
-            .gap_info
-            .adjustments
-            .iter()
-            .map(|&a| _mm_set1_epi8(a as i8))
-            .collect();
-
-        let base_offset_vec = _mm_set1_epi8(self.gap_info.base_offset as i8);
-
-        let num_blocks = data.len() / BLOCK_SIZE;
-        let simd_bytes = num_blocks * BLOCK_SIZE;
-
-        let mut offset = 0;
-        for _ in 0..num_blocks {
-            // Load 5 bytes and extract 8 x 5-bit indices
-            let b0 = *data.get_unchecked(offset);
-            let b1 = *data.get_unchecked(offset + 1);
-            let b2 = *data.get_unchecked(offset + 2);
-            let b3 = *data.get_unchecked(offset + 3);
-            let b4 = *data.get_unchecked(offset + 4);
-
-            let mut indices = [0u8; 16];
-            indices[0] = (b0 >> 3) & 0x1F;
-            indices[1] = ((b0 << 2) | (b1 >> 6)) & 0x1F;
-            indices[2] = (b1 >> 1) & 0x1F;
-            indices[3] = ((b1 << 4) | (b2 >> 4)) & 0x1F;
-            indices[4] = ((b2 << 1) | (b3 >> 7)) & 0x1F;
-            indices[5] = (b3 >> 2) & 0x1F;
-            indices[6] = ((b3 << 3) | (b4 >> 5)) & 0x1F;
-            indices[7] = b4 & 0x1F;
-
-            // Load indices into SIMD register
-            let idx_vec = _mm_loadu_si128(indices.as_ptr() as *const __m128i);
-
-            // Start with base offset + index
-            let mut char_vec = _mm_add_epi8(base_offset_vec, idx_vec);
-
-            // Add adjustment for each threshold
-            for (thresh_vec, adj_vec) in threshold_vecs.iter().zip(&adjustment_vecs) {
-                // cmpgt returns 0xFF where idx > threshold-1, i.e., idx >= threshold
-                let mask = _mm_cmpgt_epi8(idx_vec, *thresh_vec);
-                // AND with adjustment to get conditional add
-                let adj = _mm_and_si128(mask, *adj_vec);
-                char_vec = _mm_add_epi8(char_vec, adj);
+            if data.len() < BLOCK_SIZE {
+                self.encode_scalar(data, result);
+                return;
             }
 
-            // Store result (only first 8 bytes are valid)
-            let mut output = [0u8; 16];
-            _mm_storeu_si128(output.as_mut_ptr() as *mut __m128i, char_vec);
+            // Precompute threshold vectors
+            let threshold_vecs: Vec<__m128i> = self
+                .gap_info
+                .thresholds
+                .iter()
+                .map(|&t| _mm_set1_epi8((t.wrapping_sub(1)) as i8)) // cmpgt needs t-1
+                .collect();
 
-            // Push to result
-            for &ch in &output[..8] {
-                result.push(ch as char);
+            let adjustment_vecs: Vec<__m128i> = self
+                .gap_info
+                .adjustments
+                .iter()
+                .map(|&a| _mm_set1_epi8(a as i8))
+                .collect();
+
+            let base_offset_vec = _mm_set1_epi8(self.gap_info.base_offset as i8);
+
+            let num_blocks = data.len() / BLOCK_SIZE;
+            let simd_bytes = num_blocks * BLOCK_SIZE;
+
+            let mut offset = 0;
+            for _ in 0..num_blocks {
+                // Load 5 bytes and extract 8 x 5-bit indices
+                let b0 = *data.get_unchecked(offset);
+                let b1 = *data.get_unchecked(offset + 1);
+                let b2 = *data.get_unchecked(offset + 2);
+                let b3 = *data.get_unchecked(offset + 3);
+                let b4 = *data.get_unchecked(offset + 4);
+
+                let mut indices = [0u8; 16];
+                indices[0] = (b0 >> 3) & 0x1F;
+                indices[1] = ((b0 << 2) | (b1 >> 6)) & 0x1F;
+                indices[2] = (b1 >> 1) & 0x1F;
+                indices[3] = ((b1 << 4) | (b2 >> 4)) & 0x1F;
+                indices[4] = ((b2 << 1) | (b3 >> 7)) & 0x1F;
+                indices[5] = (b3 >> 2) & 0x1F;
+                indices[6] = ((b3 << 3) | (b4 >> 5)) & 0x1F;
+                indices[7] = b4 & 0x1F;
+
+                // Load indices into SIMD register
+                let idx_vec = _mm_loadu_si128(indices.as_ptr() as *const __m128i);
+
+                // Start with base offset + index
+                let mut char_vec = _mm_add_epi8(base_offset_vec, idx_vec);
+
+                // Add adjustment for each threshold
+                for (thresh_vec, adj_vec) in threshold_vecs.iter().zip(&adjustment_vecs) {
+                    // cmpgt returns 0xFF where idx > threshold-1, i.e., idx >= threshold
+                    let mask = _mm_cmpgt_epi8(idx_vec, *thresh_vec);
+                    // AND with adjustment to get conditional add
+                    let adj = _mm_and_si128(mask, *adj_vec);
+                    char_vec = _mm_add_epi8(char_vec, adj);
+                }
+
+                // Store result (only first 8 bytes are valid)
+                let mut output = [0u8; 16];
+                _mm_storeu_si128(output.as_mut_ptr() as *mut __m128i, char_vec);
+
+                // Push to result
+                for &ch in &output[..8] {
+                    result.push(ch as char);
+                }
+
+                offset += BLOCK_SIZE;
             }
 
-            offset += BLOCK_SIZE;
-        }
-
-        // Handle remainder
-        if simd_bytes < data.len() {
-            self.encode_scalar(&data[simd_bytes..], result);
+            // Handle remainder
+            if simd_bytes < data.len() {
+                self.encode_scalar(&data[simd_bytes..], result);
+            }
         }
     }
 
@@ -317,67 +318,69 @@ impl GappedSequentialCodec {
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "ssse3")]
     unsafe fn encode_ssse3_6bit(&self, data: &[u8], result: &mut String) {
-        use std::arch::x86_64::*;
+        unsafe {
+            use std::arch::x86_64::*;
 
-        const BLOCK_SIZE: usize = 3; // 3 bytes -> 4 chars
+            const BLOCK_SIZE: usize = 3; // 3 bytes -> 4 chars
 
-        if data.len() < BLOCK_SIZE {
-            self.encode_scalar(data, result);
-            return;
-        }
-
-        let threshold_vecs: Vec<__m128i> = self
-            .gap_info
-            .thresholds
-            .iter()
-            .map(|&t| _mm_set1_epi8((t.wrapping_sub(1)) as i8))
-            .collect();
-
-        let adjustment_vecs: Vec<__m128i> = self
-            .gap_info
-            .adjustments
-            .iter()
-            .map(|&a| _mm_set1_epi8(a as i8))
-            .collect();
-
-        let base_offset_vec = _mm_set1_epi8(self.gap_info.base_offset as i8);
-
-        let num_blocks = data.len() / BLOCK_SIZE;
-        let simd_bytes = num_blocks * BLOCK_SIZE;
-
-        let mut offset = 0;
-        for _ in 0..num_blocks {
-            let b0 = *data.get_unchecked(offset);
-            let b1 = *data.get_unchecked(offset + 1);
-            let b2 = *data.get_unchecked(offset + 2);
-
-            let mut indices = [0u8; 16];
-            indices[0] = (b0 >> 2) & 0x3F;
-            indices[1] = ((b0 << 4) | (b1 >> 4)) & 0x3F;
-            indices[2] = ((b1 << 2) | (b2 >> 6)) & 0x3F;
-            indices[3] = b2 & 0x3F;
-
-            let idx_vec = _mm_loadu_si128(indices.as_ptr() as *const __m128i);
-            let mut char_vec = _mm_add_epi8(base_offset_vec, idx_vec);
-
-            for (thresh_vec, adj_vec) in threshold_vecs.iter().zip(&adjustment_vecs) {
-                let mask = _mm_cmpgt_epi8(idx_vec, *thresh_vec);
-                let adj = _mm_and_si128(mask, *adj_vec);
-                char_vec = _mm_add_epi8(char_vec, adj);
+            if data.len() < BLOCK_SIZE {
+                self.encode_scalar(data, result);
+                return;
             }
 
-            let mut output = [0u8; 16];
-            _mm_storeu_si128(output.as_mut_ptr() as *mut __m128i, char_vec);
+            let threshold_vecs: Vec<__m128i> = self
+                .gap_info
+                .thresholds
+                .iter()
+                .map(|&t| _mm_set1_epi8((t.wrapping_sub(1)) as i8))
+                .collect();
 
-            for &ch in &output[..4] {
-                result.push(ch as char);
+            let adjustment_vecs: Vec<__m128i> = self
+                .gap_info
+                .adjustments
+                .iter()
+                .map(|&a| _mm_set1_epi8(a as i8))
+                .collect();
+
+            let base_offset_vec = _mm_set1_epi8(self.gap_info.base_offset as i8);
+
+            let num_blocks = data.len() / BLOCK_SIZE;
+            let simd_bytes = num_blocks * BLOCK_SIZE;
+
+            let mut offset = 0;
+            for _ in 0..num_blocks {
+                let b0 = *data.get_unchecked(offset);
+                let b1 = *data.get_unchecked(offset + 1);
+                let b2 = *data.get_unchecked(offset + 2);
+
+                let mut indices = [0u8; 16];
+                indices[0] = (b0 >> 2) & 0x3F;
+                indices[1] = ((b0 << 4) | (b1 >> 4)) & 0x3F;
+                indices[2] = ((b1 << 2) | (b2 >> 6)) & 0x3F;
+                indices[3] = b2 & 0x3F;
+
+                let idx_vec = _mm_loadu_si128(indices.as_ptr() as *const __m128i);
+                let mut char_vec = _mm_add_epi8(base_offset_vec, idx_vec);
+
+                for (thresh_vec, adj_vec) in threshold_vecs.iter().zip(&adjustment_vecs) {
+                    let mask = _mm_cmpgt_epi8(idx_vec, *thresh_vec);
+                    let adj = _mm_and_si128(mask, *adj_vec);
+                    char_vec = _mm_add_epi8(char_vec, adj);
+                }
+
+                let mut output = [0u8; 16];
+                _mm_storeu_si128(output.as_mut_ptr() as *mut __m128i, char_vec);
+
+                for &ch in &output[..4] {
+                    result.push(ch as char);
+                }
+
+                offset += BLOCK_SIZE;
             }
 
-            offset += BLOCK_SIZE;
-        }
-
-        if simd_bytes < data.len() {
-            self.encode_scalar(&data[simd_bytes..], result);
+            if simd_bytes < data.len() {
+                self.encode_scalar(&data[simd_bytes..], result);
+            }
         }
     }
 
@@ -385,65 +388,67 @@ impl GappedSequentialCodec {
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "ssse3")]
     unsafe fn encode_ssse3_4bit(&self, data: &[u8], result: &mut String) {
-        use std::arch::x86_64::*;
+        unsafe {
+            use std::arch::x86_64::*;
 
-        const BLOCK_SIZE: usize = 8; // 8 bytes -> 16 chars
+            const BLOCK_SIZE: usize = 8; // 8 bytes -> 16 chars
 
-        if data.len() < BLOCK_SIZE {
-            self.encode_scalar(data, result);
-            return;
-        }
-
-        let threshold_vecs: Vec<__m128i> = self
-            .gap_info
-            .thresholds
-            .iter()
-            .map(|&t| _mm_set1_epi8((t.wrapping_sub(1)) as i8))
-            .collect();
-
-        let adjustment_vecs: Vec<__m128i> = self
-            .gap_info
-            .adjustments
-            .iter()
-            .map(|&a| _mm_set1_epi8(a as i8))
-            .collect();
-
-        let base_offset_vec = _mm_set1_epi8(self.gap_info.base_offset as i8);
-
-        let num_blocks = data.len() / BLOCK_SIZE;
-        let simd_bytes = num_blocks * BLOCK_SIZE;
-
-        let mut offset = 0;
-        for _ in 0..num_blocks {
-            // Extract 16 x 4-bit indices from 8 bytes
-            let mut indices = [0u8; 16];
-            for i in 0..8 {
-                let byte = *data.get_unchecked(offset + i);
-                indices[i * 2] = (byte >> 4) & 0x0F;
-                indices[i * 2 + 1] = byte & 0x0F;
+            if data.len() < BLOCK_SIZE {
+                self.encode_scalar(data, result);
+                return;
             }
 
-            let idx_vec = _mm_loadu_si128(indices.as_ptr() as *const __m128i);
-            let mut char_vec = _mm_add_epi8(base_offset_vec, idx_vec);
+            let threshold_vecs: Vec<__m128i> = self
+                .gap_info
+                .thresholds
+                .iter()
+                .map(|&t| _mm_set1_epi8((t.wrapping_sub(1)) as i8))
+                .collect();
 
-            for (thresh_vec, adj_vec) in threshold_vecs.iter().zip(&adjustment_vecs) {
-                let mask = _mm_cmpgt_epi8(idx_vec, *thresh_vec);
-                let adj = _mm_and_si128(mask, *adj_vec);
-                char_vec = _mm_add_epi8(char_vec, adj);
+            let adjustment_vecs: Vec<__m128i> = self
+                .gap_info
+                .adjustments
+                .iter()
+                .map(|&a| _mm_set1_epi8(a as i8))
+                .collect();
+
+            let base_offset_vec = _mm_set1_epi8(self.gap_info.base_offset as i8);
+
+            let num_blocks = data.len() / BLOCK_SIZE;
+            let simd_bytes = num_blocks * BLOCK_SIZE;
+
+            let mut offset = 0;
+            for _ in 0..num_blocks {
+                // Extract 16 x 4-bit indices from 8 bytes
+                let mut indices = [0u8; 16];
+                for i in 0..8 {
+                    let byte = *data.get_unchecked(offset + i);
+                    indices[i * 2] = (byte >> 4) & 0x0F;
+                    indices[i * 2 + 1] = byte & 0x0F;
+                }
+
+                let idx_vec = _mm_loadu_si128(indices.as_ptr() as *const __m128i);
+                let mut char_vec = _mm_add_epi8(base_offset_vec, idx_vec);
+
+                for (thresh_vec, adj_vec) in threshold_vecs.iter().zip(&adjustment_vecs) {
+                    let mask = _mm_cmpgt_epi8(idx_vec, *thresh_vec);
+                    let adj = _mm_and_si128(mask, *adj_vec);
+                    char_vec = _mm_add_epi8(char_vec, adj);
+                }
+
+                let mut output = [0u8; 16];
+                _mm_storeu_si128(output.as_mut_ptr() as *mut __m128i, char_vec);
+
+                for &ch in &output[..16] {
+                    result.push(ch as char);
+                }
+
+                offset += BLOCK_SIZE;
             }
 
-            let mut output = [0u8; 16];
-            _mm_storeu_si128(output.as_mut_ptr() as *mut __m128i, char_vec);
-
-            for &ch in &output[..16] {
-                result.push(ch as char);
+            if simd_bytes < data.len() {
+                self.encode_scalar(&data[simd_bytes..], result);
             }
-
-            offset += BLOCK_SIZE;
-        }
-
-        if simd_bytes < data.len() {
-            self.encode_scalar(&data[simd_bytes..], result);
         }
     }
 
@@ -451,11 +456,13 @@ impl GappedSequentialCodec {
     #[cfg(target_arch = "aarch64")]
     #[target_feature(enable = "neon")]
     unsafe fn encode_neon(&self, data: &[u8], result: &mut String) {
-        match self.bits_per_symbol {
-            5 => self.encode_neon_5bit(data, result),
-            6 => self.encode_neon_6bit(data, result),
-            4 => self.encode_neon_4bit(data, result),
-            _ => self.encode_scalar(data, result),
+        unsafe {
+            match self.bits_per_symbol {
+                5 => self.encode_neon_5bit(data, result),
+                6 => self.encode_neon_6bit(data, result),
+                4 => self.encode_neon_4bit(data, result),
+                _ => self.encode_scalar(data, result),
+            }
         }
     }
 
@@ -463,74 +470,76 @@ impl GappedSequentialCodec {
     #[cfg(target_arch = "aarch64")]
     #[target_feature(enable = "neon")]
     unsafe fn encode_neon_5bit(&self, data: &[u8], result: &mut String) {
-        use std::arch::aarch64::*;
+        unsafe {
+            use std::arch::aarch64::*;
 
-        const BLOCK_SIZE: usize = 5;
+            const BLOCK_SIZE: usize = 5;
 
-        if data.len() < BLOCK_SIZE {
-            self.encode_scalar(data, result);
-            return;
-        }
-
-        let threshold_vecs: Vec<uint8x16_t> = self
-            .gap_info
-            .thresholds
-            .iter()
-            .map(|&t| vdupq_n_u8(t))
-            .collect();
-
-        let adjustment_vecs: Vec<uint8x16_t> = self
-            .gap_info
-            .adjustments
-            .iter()
-            .map(|&a| vdupq_n_u8(a))
-            .collect();
-
-        let base_offset_vec = vdupq_n_u8(self.gap_info.base_offset);
-
-        let num_blocks = data.len() / BLOCK_SIZE;
-        let simd_bytes = num_blocks * BLOCK_SIZE;
-
-        let mut offset = 0;
-        for _ in 0..num_blocks {
-            let b0 = *data.get_unchecked(offset);
-            let b1 = *data.get_unchecked(offset + 1);
-            let b2 = *data.get_unchecked(offset + 2);
-            let b3 = *data.get_unchecked(offset + 3);
-            let b4 = *data.get_unchecked(offset + 4);
-
-            let mut indices = [0u8; 16];
-            indices[0] = (b0 >> 3) & 0x1F;
-            indices[1] = ((b0 << 2) | (b1 >> 6)) & 0x1F;
-            indices[2] = (b1 >> 1) & 0x1F;
-            indices[3] = ((b1 << 4) | (b2 >> 4)) & 0x1F;
-            indices[4] = ((b2 << 1) | (b3 >> 7)) & 0x1F;
-            indices[5] = (b3 >> 2) & 0x1F;
-            indices[6] = ((b3 << 3) | (b4 >> 5)) & 0x1F;
-            indices[7] = b4 & 0x1F;
-
-            let idx_vec = vld1q_u8(indices.as_ptr());
-            let mut char_vec = vaddq_u8(base_offset_vec, idx_vec);
-
-            for (thresh_vec, adj_vec) in threshold_vecs.iter().zip(&adjustment_vecs) {
-                // vcgeq returns 0xFF where idx >= threshold
-                let mask = vcgeq_u8(idx_vec, *thresh_vec);
-                let adj = vandq_u8(mask, *adj_vec);
-                char_vec = vaddq_u8(char_vec, adj);
+            if data.len() < BLOCK_SIZE {
+                self.encode_scalar(data, result);
+                return;
             }
 
-            let mut output = [0u8; 16];
-            vst1q_u8(output.as_mut_ptr(), char_vec);
+            let threshold_vecs: Vec<uint8x16_t> = self
+                .gap_info
+                .thresholds
+                .iter()
+                .map(|&t| vdupq_n_u8(t))
+                .collect();
 
-            for &ch in &output[..8] {
-                result.push(ch as char);
+            let adjustment_vecs: Vec<uint8x16_t> = self
+                .gap_info
+                .adjustments
+                .iter()
+                .map(|&a| vdupq_n_u8(a))
+                .collect();
+
+            let base_offset_vec = vdupq_n_u8(self.gap_info.base_offset);
+
+            let num_blocks = data.len() / BLOCK_SIZE;
+            let simd_bytes = num_blocks * BLOCK_SIZE;
+
+            let mut offset = 0;
+            for _ in 0..num_blocks {
+                let b0 = *data.get_unchecked(offset);
+                let b1 = *data.get_unchecked(offset + 1);
+                let b2 = *data.get_unchecked(offset + 2);
+                let b3 = *data.get_unchecked(offset + 3);
+                let b4 = *data.get_unchecked(offset + 4);
+
+                let mut indices = [0u8; 16];
+                indices[0] = (b0 >> 3) & 0x1F;
+                indices[1] = ((b0 << 2) | (b1 >> 6)) & 0x1F;
+                indices[2] = (b1 >> 1) & 0x1F;
+                indices[3] = ((b1 << 4) | (b2 >> 4)) & 0x1F;
+                indices[4] = ((b2 << 1) | (b3 >> 7)) & 0x1F;
+                indices[5] = (b3 >> 2) & 0x1F;
+                indices[6] = ((b3 << 3) | (b4 >> 5)) & 0x1F;
+                indices[7] = b4 & 0x1F;
+
+                let idx_vec = vld1q_u8(indices.as_ptr());
+                let mut char_vec = vaddq_u8(base_offset_vec, idx_vec);
+
+                for (thresh_vec, adj_vec) in threshold_vecs.iter().zip(&adjustment_vecs) {
+                    // vcgeq returns 0xFF where idx >= threshold
+                    let mask = vcgeq_u8(idx_vec, *thresh_vec);
+                    let adj = vandq_u8(mask, *adj_vec);
+                    char_vec = vaddq_u8(char_vec, adj);
+                }
+
+                let mut output = [0u8; 16];
+                vst1q_u8(output.as_mut_ptr(), char_vec);
+
+                for &ch in &output[..8] {
+                    result.push(ch as char);
+                }
+
+                offset += BLOCK_SIZE;
             }
 
-            offset += BLOCK_SIZE;
-        }
-
-        if simd_bytes < data.len() {
-            self.encode_scalar(&data[simd_bytes..], result);
+            if simd_bytes < data.len() {
+                self.encode_scalar(&data[simd_bytes..], result);
+            }
         }
     }
 
@@ -538,67 +547,69 @@ impl GappedSequentialCodec {
     #[cfg(target_arch = "aarch64")]
     #[target_feature(enable = "neon")]
     unsafe fn encode_neon_6bit(&self, data: &[u8], result: &mut String) {
-        use std::arch::aarch64::*;
+        unsafe {
+            use std::arch::aarch64::*;
 
-        const BLOCK_SIZE: usize = 3;
+            const BLOCK_SIZE: usize = 3;
 
-        if data.len() < BLOCK_SIZE {
-            self.encode_scalar(data, result);
-            return;
-        }
-
-        let threshold_vecs: Vec<uint8x16_t> = self
-            .gap_info
-            .thresholds
-            .iter()
-            .map(|&t| vdupq_n_u8(t))
-            .collect();
-
-        let adjustment_vecs: Vec<uint8x16_t> = self
-            .gap_info
-            .adjustments
-            .iter()
-            .map(|&a| vdupq_n_u8(a))
-            .collect();
-
-        let base_offset_vec = vdupq_n_u8(self.gap_info.base_offset);
-
-        let num_blocks = data.len() / BLOCK_SIZE;
-        let simd_bytes = num_blocks * BLOCK_SIZE;
-
-        let mut offset = 0;
-        for _ in 0..num_blocks {
-            let b0 = *data.get_unchecked(offset);
-            let b1 = *data.get_unchecked(offset + 1);
-            let b2 = *data.get_unchecked(offset + 2);
-
-            let mut indices = [0u8; 16];
-            indices[0] = (b0 >> 2) & 0x3F;
-            indices[1] = ((b0 << 4) | (b1 >> 4)) & 0x3F;
-            indices[2] = ((b1 << 2) | (b2 >> 6)) & 0x3F;
-            indices[3] = b2 & 0x3F;
-
-            let idx_vec = vld1q_u8(indices.as_ptr());
-            let mut char_vec = vaddq_u8(base_offset_vec, idx_vec);
-
-            for (thresh_vec, adj_vec) in threshold_vecs.iter().zip(&adjustment_vecs) {
-                let mask = vcgeq_u8(idx_vec, *thresh_vec);
-                let adj = vandq_u8(mask, *adj_vec);
-                char_vec = vaddq_u8(char_vec, adj);
+            if data.len() < BLOCK_SIZE {
+                self.encode_scalar(data, result);
+                return;
             }
 
-            let mut output = [0u8; 16];
-            vst1q_u8(output.as_mut_ptr(), char_vec);
+            let threshold_vecs: Vec<uint8x16_t> = self
+                .gap_info
+                .thresholds
+                .iter()
+                .map(|&t| vdupq_n_u8(t))
+                .collect();
 
-            for &ch in &output[..4] {
-                result.push(ch as char);
+            let adjustment_vecs: Vec<uint8x16_t> = self
+                .gap_info
+                .adjustments
+                .iter()
+                .map(|&a| vdupq_n_u8(a))
+                .collect();
+
+            let base_offset_vec = vdupq_n_u8(self.gap_info.base_offset);
+
+            let num_blocks = data.len() / BLOCK_SIZE;
+            let simd_bytes = num_blocks * BLOCK_SIZE;
+
+            let mut offset = 0;
+            for _ in 0..num_blocks {
+                let b0 = *data.get_unchecked(offset);
+                let b1 = *data.get_unchecked(offset + 1);
+                let b2 = *data.get_unchecked(offset + 2);
+
+                let mut indices = [0u8; 16];
+                indices[0] = (b0 >> 2) & 0x3F;
+                indices[1] = ((b0 << 4) | (b1 >> 4)) & 0x3F;
+                indices[2] = ((b1 << 2) | (b2 >> 6)) & 0x3F;
+                indices[3] = b2 & 0x3F;
+
+                let idx_vec = vld1q_u8(indices.as_ptr());
+                let mut char_vec = vaddq_u8(base_offset_vec, idx_vec);
+
+                for (thresh_vec, adj_vec) in threshold_vecs.iter().zip(&adjustment_vecs) {
+                    let mask = vcgeq_u8(idx_vec, *thresh_vec);
+                    let adj = vandq_u8(mask, *adj_vec);
+                    char_vec = vaddq_u8(char_vec, adj);
+                }
+
+                let mut output = [0u8; 16];
+                vst1q_u8(output.as_mut_ptr(), char_vec);
+
+                for &ch in &output[..4] {
+                    result.push(ch as char);
+                }
+
+                offset += BLOCK_SIZE;
             }
 
-            offset += BLOCK_SIZE;
-        }
-
-        if simd_bytes < data.len() {
-            self.encode_scalar(&data[simd_bytes..], result);
+            if simd_bytes < data.len() {
+                self.encode_scalar(&data[simd_bytes..], result);
+            }
         }
     }
 
@@ -606,64 +617,66 @@ impl GappedSequentialCodec {
     #[cfg(target_arch = "aarch64")]
     #[target_feature(enable = "neon")]
     unsafe fn encode_neon_4bit(&self, data: &[u8], result: &mut String) {
-        use std::arch::aarch64::*;
+        unsafe {
+            use std::arch::aarch64::*;
 
-        const BLOCK_SIZE: usize = 8;
+            const BLOCK_SIZE: usize = 8;
 
-        if data.len() < BLOCK_SIZE {
-            self.encode_scalar(data, result);
-            return;
-        }
-
-        let threshold_vecs: Vec<uint8x16_t> = self
-            .gap_info
-            .thresholds
-            .iter()
-            .map(|&t| vdupq_n_u8(t))
-            .collect();
-
-        let adjustment_vecs: Vec<uint8x16_t> = self
-            .gap_info
-            .adjustments
-            .iter()
-            .map(|&a| vdupq_n_u8(a))
-            .collect();
-
-        let base_offset_vec = vdupq_n_u8(self.gap_info.base_offset);
-
-        let num_blocks = data.len() / BLOCK_SIZE;
-        let simd_bytes = num_blocks * BLOCK_SIZE;
-
-        let mut offset = 0;
-        for _ in 0..num_blocks {
-            let mut indices = [0u8; 16];
-            for i in 0..8 {
-                let byte = *data.get_unchecked(offset + i);
-                indices[i * 2] = (byte >> 4) & 0x0F;
-                indices[i * 2 + 1] = byte & 0x0F;
+            if data.len() < BLOCK_SIZE {
+                self.encode_scalar(data, result);
+                return;
             }
 
-            let idx_vec = vld1q_u8(indices.as_ptr());
-            let mut char_vec = vaddq_u8(base_offset_vec, idx_vec);
+            let threshold_vecs: Vec<uint8x16_t> = self
+                .gap_info
+                .thresholds
+                .iter()
+                .map(|&t| vdupq_n_u8(t))
+                .collect();
 
-            for (thresh_vec, adj_vec) in threshold_vecs.iter().zip(&adjustment_vecs) {
-                let mask = vcgeq_u8(idx_vec, *thresh_vec);
-                let adj = vandq_u8(mask, *adj_vec);
-                char_vec = vaddq_u8(char_vec, adj);
+            let adjustment_vecs: Vec<uint8x16_t> = self
+                .gap_info
+                .adjustments
+                .iter()
+                .map(|&a| vdupq_n_u8(a))
+                .collect();
+
+            let base_offset_vec = vdupq_n_u8(self.gap_info.base_offset);
+
+            let num_blocks = data.len() / BLOCK_SIZE;
+            let simd_bytes = num_blocks * BLOCK_SIZE;
+
+            let mut offset = 0;
+            for _ in 0..num_blocks {
+                let mut indices = [0u8; 16];
+                for i in 0..8 {
+                    let byte = *data.get_unchecked(offset + i);
+                    indices[i * 2] = (byte >> 4) & 0x0F;
+                    indices[i * 2 + 1] = byte & 0x0F;
+                }
+
+                let idx_vec = vld1q_u8(indices.as_ptr());
+                let mut char_vec = vaddq_u8(base_offset_vec, idx_vec);
+
+                for (thresh_vec, adj_vec) in threshold_vecs.iter().zip(&adjustment_vecs) {
+                    let mask = vcgeq_u8(idx_vec, *thresh_vec);
+                    let adj = vandq_u8(mask, *adj_vec);
+                    char_vec = vaddq_u8(char_vec, adj);
+                }
+
+                let mut output = [0u8; 16];
+                vst1q_u8(output.as_mut_ptr(), char_vec);
+
+                for &ch in &output[..16] {
+                    result.push(ch as char);
+                }
+
+                offset += BLOCK_SIZE;
             }
 
-            let mut output = [0u8; 16];
-            vst1q_u8(output.as_mut_ptr(), char_vec);
-
-            for &ch in &output[..16] {
-                result.push(ch as char);
+            if simd_bytes < data.len() {
+                self.encode_scalar(&data[simd_bytes..], result);
             }
-
-            offset += BLOCK_SIZE;
-        }
-
-        if simd_bytes < data.len() {
-            self.encode_scalar(&data[simd_bytes..], result);
         }
     }
 
