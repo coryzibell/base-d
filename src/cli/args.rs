@@ -2,7 +2,7 @@ use clap::{Args, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
 /// Arguments for encoding data
-#[derive(Args)]
+#[derive(Args, Debug)]
 pub struct EncodeArgs {
     /// Dictionary to use for encoding
     pub dictionary: String,
@@ -32,7 +32,7 @@ pub struct EncodeArgs {
 }
 
 /// Arguments for decoding data
-#[derive(Args)]
+#[derive(Args, Debug)]
 pub struct DecodeArgs {
     /// Dictionary to decode from
     pub dictionary: String,
@@ -58,7 +58,7 @@ pub struct DecodeArgs {
 }
 
 /// Arguments for auto-detecting dictionary
-#[derive(Args)]
+#[derive(Args, Debug)]
 pub struct DetectArgs {
     /// Input file (reads from stdin if not provided)
     pub file: Option<PathBuf>,
@@ -73,7 +73,7 @@ pub struct DetectArgs {
 }
 
 /// Arguments for hashing data
-#[derive(Args)]
+#[derive(Args, Debug)]
 pub struct HashArgs {
     /// Hash algorithm to use
     pub algorithm: String,
@@ -95,7 +95,7 @@ pub struct HashArgs {
 }
 
 /// Arguments for Matrix mode
-#[derive(Args)]
+#[derive(Args, Debug)]
 pub struct NeoArgs {
     /// Dictionary to use (default: base256_matrix)
     #[arg(long, value_name = "DICT")]
@@ -123,7 +123,7 @@ pub struct NeoArgs {
 }
 
 /// Config subcommand actions
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 pub enum ConfigAction {
     /// List available options
     List {
@@ -144,7 +144,7 @@ pub enum ConfigAction {
 }
 
 /// Categories for config list command
-#[derive(Clone, ValueEnum)]
+#[derive(Clone, ValueEnum, Debug)]
 pub enum ConfigCategory {
     Dictionaries,
     Algorithms,
