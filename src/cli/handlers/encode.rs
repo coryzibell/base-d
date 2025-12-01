@@ -34,8 +34,8 @@ pub fn handle(
             resolved_compress,
             args.level,
             resolved_hash,
-            None, // hash_seed - not supported in new CLI structure yet
-            false, // hash_secret_stdin - not supported in new CLI structure yet
+            args.xxhash_seed,
+            args.xxhash_secret_stdin,
         );
     }
 
@@ -87,7 +87,7 @@ pub fn handle(
     // Step 1: Compute hash if requested (hash of input before compression/encoding)
     let hash_result = if let Some(hash_name) = &args.hash {
         let hash_algo = base_d::HashAlgorithm::from_str(hash_name)?;
-        let xxhash_config = load_xxhash_config(None, false, config, Some(&hash_algo))?;
+        let xxhash_config = load_xxhash_config(args.xxhash_seed, args.xxhash_secret_stdin, config, Some(&hash_algo))?;
         Some(base_d::hash_with_config(&data, hash_algo, &xxhash_config))
     } else {
         None

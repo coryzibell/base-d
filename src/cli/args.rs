@@ -22,6 +22,14 @@ pub struct EncodeArgs {
     #[arg(long, value_name = "ALG")]
     pub hash: Option<String>,
 
+    /// Seed for xxHash algorithms
+    #[arg(long)]
+    pub xxhash_seed: Option<u64>,
+
+    /// Read XXH3 secret from stdin
+    #[arg(long)]
+    pub xxhash_secret_stdin: bool,
+
     /// Output file (writes to stdout if not provided)
     #[arg(short = 'o', long)]
     pub output: Option<PathBuf>,
@@ -47,6 +55,14 @@ pub struct DecodeArgs {
     /// Compute hash of decoded data
     #[arg(long, value_name = "ALG")]
     pub hash: Option<String>,
+
+    /// Seed for xxHash algorithms
+    #[arg(long)]
+    pub xxhash_seed: Option<u64>,
+
+    /// Read XXH3 secret from stdin
+    #[arg(long)]
+    pub xxhash_secret_stdin: bool,
 
     /// Output file (writes to stdout if not provided)
     #[arg(short = 'o', long)]
