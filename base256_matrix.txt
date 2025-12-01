@@ -1,0 +1,8 @@
+[dictionaries.base256_matrix]
+chars = "ぁあぃいぅうぇえぉおかがきぎくぐけげこごさざしじすずせぜそぞただちぢっつづてでとどなにぬねのはばぱひびぴふぶぷへべぺほぼぽまみむめもゃやゅゆょよらりるれろゎわゐゑをん゠ァアィイゥウェエォオカガキギクグケゲコゴサザシジスズセゼソゾタダチヂッツヅテデトドナニヌネノハバパヒビピフブプヘベペホボポマミムメモャヤュユョヨラリルレロヮワヰヱヲンヴヵヶヷヸヹヺ・ーヽヾヿ─━│┃┄┅┆┇┈┉┊┋┌┍┎┏┐┑┒┓└┕┖┗┘┙┚┛├┝┞┟■□▢▣▤▥▦▧▨▩▪▫▬▭▮▯▀▁▂▃▄▅▆▇█▉▊▋▌▍▎▏▐░▒▓▔▕▖▗▘▙▚▛▜"
+mode = "chunked"  # Can also use 'base_conversion' - both produce identical output!
+# Matrix-style 256-character dictionary
+# Uses: Hiragana, Katakana, Box Drawing, Geometric Shapes, Block Elements
+# Special property: 8 bits % log2(256) = 8 % 8 = 0
+# This means chunked and mathematical modes produce IDENTICAL output!
+# Like hexadecimal, but with Matrix-style characters!

@@ -68,72 +68,72 @@ cd base-d
 cargo build --release
 
 # List all available dictionaries
-base-d --list
+base-d config list
 
 # Encode with playing cards (default)
-echo "Secret message" | base-d
+echo "Secret message" | base-d encode
 
 # RFC 4648 base32
-echo "Data" | base-d -e base32
+echo "Data" | base-d encode base32
 
 # Bitcoin base58
-echo "Address" | base-d -e base58
+echo "Address" | base-d encode base58
 
 # Egyptian hieroglyphics
-echo "Ancient" | base-d -e hieroglyphs
+echo "Ancient" | base-d encode hieroglyphs
 
 # Emoji faces
-echo "Happy" | base-d -e emoji_faces
+echo "Happy" | base-d encode emoji_faces
 
 # Matrix-style base256
-echo "Wake up, Neo" | base-d -e base256_matrix
+echo "Wake up, Neo" | base-d encode base256_matrix
 
 # Enter the Matrix (live streaming random Matrix code)
-base-d --neo
+base-d neo
 
 # Auto-detect dictionary and decode
-echo "SGVsbG8sIFdvcmxkIQ==" | base-d --detect
+echo "SGVsbG8sIFdvcmxkIQ==" | base-d detect
 
 # Show top candidates with confidence scores
-base-d --detect --show-candidates 5 input.txt
+base-d detect --show-candidates 5 input.txt
 
 # Transcode between dictionaries (decode from one, encode to another)
-echo "SGVsbG8=" | base-d -d base64 -e hex
-echo "48656c6c6f" | base-d -d hex -e emoji_faces
+echo "SGVsbG8=" | base-d decode base64 --encode hex
+echo "48656c6c6f" | base-d decode hex --encode emoji_faces
 
 # Compress and encode (supported: gzip, zstd, brotli, lz4, snappy, lzma)
-echo "Data to compress" | base-d --compress gzip -e base64
-echo "Large file" | base-d --compress zstd --level 9 -e base85
-echo "Fast compression" | base-d --compress snappy -e base64
+echo "Data to compress" | base-d encode base64 --compress gzip
+echo "Large file" | base-d encode base85 --compress zstd --level 9
+echo "Fast compression" | base-d encode base64 --compress snappy
 
 # Compress with default encoding (base64)
-echo "Quick compress" | base-d --compress gzip
+echo "Quick compress" | base-d encode --compress gzip
 
 # Decompress and decode
-echo "H4sIAAAAAAAA/..." | base-d -d base64 --decompress gzip
+echo "H4sIAAAAAAAA/..." | base-d decode base64 --decompress gzip
 
 # Output raw compressed binary
-echo "Data" | base-d --compress zstd --raw > output.zst
+echo "Data" | base-d encode --compress zstd --raw > output.zst
 
 # Process files
-base-d -e base64 input.txt > encoded.txt
-base-d -d base64 encoded.txt > output.txt
+base-d encode base64 input.txt > encoded.txt
+base-d decode base64 encoded.txt > output.txt
 
 # Compress large files efficiently
-base-d --compress brotli --level 11 -e base64 large_file.bin > compressed.txt
+base-d encode base64 --compress brotli --level 11 large_file.bin > compressed.txt
 
 # Hash files (supported: md5, sha256, sha512, blake3, crc32, xxhash64, xxhash3, and more)
-echo "hello world" | base-d --hash sha256
-echo "hello world" | base-d --hash blake3 -e base64
-echo "hello world" | base-d --hash crc32
-echo "hello world" | base-d --hash xxhash3
-base-d --hash sha256 document.pdf
+echo "hello world" | base-d hash sha256
+echo "hello world" | base-d hash blake3 --encode base64
+echo "hello world" | base-d hash crc32
+echo "hello world" | base-d hash xxhash3
+base-d hash sha256 document.pdf
 
 # Hash with custom seed
-echo "hello world" | base-d --hash xxhash64 --hash-seed 42
+echo "hello world" | base-d hash xxhash64 --seed 42
 
 # Hash with secret (XXH3 only)
-cat secret.bin | base-d --hash xxhash3 --hash-secret-stdin data.bin
+cat secret.bin | base-d hash xxhash3 --secret-stdin data.bin
 ```
 
 ## Installation
@@ -249,34 +249,34 @@ Encode and decode data using any dictionary defined in `dictionaries.toml`:
 
 ```bash
 # List available dictionaries
-base-d --list
+base-d config list
 
 # Encode from stdin (default dictionary is "cards")
-echo "Hello, World!" | base-d
+echo "Hello, World!" | base-d encode
 
 # Encode a file
-base-d input.txt
+base-d encode input.txt
 
 # Encode with specific dictionary
-echo "Data" | base-d -e dna
+echo "Data" | base-d encode dna
 
 # Decode from specific dictionary
-echo "SGVsbG8gV29ybGQNCg==" | base-d -d base64
+echo "SGVsbG8gV29ybGQNCg==" | base-d decode base64
 
 # Decode playing cards
-echo "🃎🃅🃝🃉🂡🂣🂸🃉🃉🃇🃉🃓🂵🂣🂨🂻🃆🃍" | base-d -d cards
+echo "🃎🃅🃝🃉🂡🂣🂸🃉🃉🃇🃉🃓🂵🂣🂨🂻🃆🃍" | base-d decode cards
 
 # Transcode between dictionaries (no intermediate piping needed!)
-echo "SGVsbG8=" | base-d -d base64 -e hex
+echo "SGVsbG8=" | base-d decode base64 --encode hex
 # Output: 48656c6c6f
 
 # Convert between any two dictionaries
-echo "ACGTACGT" | base-d -d dna -e emoji_faces
-echo "🃁🃂🃃🃄" | base-d -d cards -e base64
+echo "ACGTACGT" | base-d decode dna --encode emoji_faces
+echo "🃁🃂🃃🃄" | base-d decode cards --encode base64
 
 # Stream mode for large files (memory efficient)
-base-d --stream -e base64 large_file.bin > encoded.txt
-base-d --stream -d base64 encoded.txt > decoded.bin
+base-d encode base64 --stream large_file.bin > encoded.txt
+base-d decode base64 --stream encoded.txt > decoded.bin
 ```
 
 ### Custom Dictionaries

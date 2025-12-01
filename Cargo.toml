@@ -1,6 +1,10 @@
 [package]
 name = "base-d"
-version = "2.0.13"
+
+version = "3.1.0"
+
+version = "3.1.0"
+
 edition = "2024"
 authors = ["Cory Zibell <cory@zibell.cloud>"]
 description = "Universal base encoder: Encode binary data to 33+ dictionaries including RFC standards, hieroglyphs, emoji, and more"
