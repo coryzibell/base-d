@@ -1,6 +1,11 @@
 mod commands;
 mod config;
 
+// New modular CLI structure (scaffolding for refactor)
+pub mod args;
+pub mod global;
+pub mod handlers;
+
 use base_d::{DictionaryRegistry, decode, encode};
 use clap::{Parser, Subcommand};
 use std::fs;
@@ -135,6 +140,35 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
+}
+
+// New Commands enum for refactored CLI (not yet active)
+// Will replace the above Commands enum in Phase 3
+#[allow(dead_code)]
+#[derive(Subcommand)]
+enum NewCommands {
+    /// Encode data using a dictionary
+    #[command(visible_alias = "e")]
+    Encode(args::EncodeArgs),
+
+    /// Decode data from a dictionary
+    #[command(visible_alias = "d")]
+    Decode(args::DecodeArgs),
+
+    /// Auto-detect dictionary and decode
+    Detect(args::DetectArgs),
+
+    /// Compute hash of data
+    Hash(args::HashArgs),
+
+    /// Query configuration and available options
+    Config {
+        #[command(subcommand)]
+        action: args::ConfigAction,
+    },
+
+    /// Matrix mode: streaming visual effect
+    Neo(args::NeoArgs),
 }
 
 /// Determine if color output should be disabled
