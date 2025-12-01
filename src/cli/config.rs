@@ -36,7 +36,7 @@ pub fn create_dictionary(
         // Try to find a close match
         let available: Vec<String> = config.dictionaries.keys().cloned().collect();
         let suggestion = base_d::find_closest_dictionary(name, &available);
-        base_d::DictionaryNotFoundError::new(name, suggestion)
+        base_d::DictionaryNotFoundError::with_suggestion(name, suggestion)
     })?;
 
     let effective_mode = dictionary_config.effective_mode();

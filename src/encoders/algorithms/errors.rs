@@ -177,10 +177,24 @@ pub struct DictionaryNotFoundError {
 }
 
 impl DictionaryNotFoundError {
-    pub fn new(name: impl Into<String>, suggestion: Option<String>) -> Self {
+    pub fn new(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            suggestion: None,
+        }
+    }
+
+    pub fn with_suggestion(name: impl Into<String>, suggestion: Option<String>) -> Self {
         Self {
             name: name.into(),
             suggestion,
+        }
+    }
+
+    pub fn with_cause(name: impl Into<String>, cause: impl std::fmt::Display) -> Self {
+        Self {
+            name: name.into(),
+            suggestion: Some(format!("build failed: {}", cause)),
         }
     }
 }
@@ -376,7 +390,7 @@ mod tests {
             std::env::set_var("NO_COLOR", "1");
         }
 
-        let err = DictionaryNotFoundError::new("bas64", Some("base64".to_string()));
+        let err = DictionaryNotFoundError::with_suggestion("bas64", Some("base64".to_string()));
         let display = format!("{}", err);
 
         assert!(display.contains("dictionary 'bas64' not found"));

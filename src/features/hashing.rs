@@ -71,6 +71,43 @@ pub enum HashAlgorithm {
 }
 
 impl HashAlgorithm {
+    /// Returns all available hash algorithms.
+    pub fn all() -> Vec<HashAlgorithm> {
+        vec![
+            HashAlgorithm::Md5,
+            HashAlgorithm::Sha224,
+            HashAlgorithm::Sha256,
+            HashAlgorithm::Sha384,
+            HashAlgorithm::Sha512,
+            HashAlgorithm::Sha3_224,
+            HashAlgorithm::Sha3_256,
+            HashAlgorithm::Sha3_384,
+            HashAlgorithm::Sha3_512,
+            HashAlgorithm::Keccak224,
+            HashAlgorithm::Keccak256,
+            HashAlgorithm::Keccak384,
+            HashAlgorithm::Keccak512,
+            HashAlgorithm::Blake2b,
+            HashAlgorithm::Blake2s,
+            HashAlgorithm::Blake3,
+            HashAlgorithm::Crc32,
+            HashAlgorithm::Crc32c,
+            HashAlgorithm::Crc16,
+            HashAlgorithm::Crc64,
+            HashAlgorithm::XxHash32,
+            HashAlgorithm::XxHash64,
+            HashAlgorithm::XxHash3_64,
+            HashAlgorithm::XxHash3_128,
+        ]
+    }
+
+    /// Select a random hash algorithm.
+    pub fn random() -> HashAlgorithm {
+        use rand::prelude::IndexedRandom;
+        let all = Self::all();
+        *all.choose(&mut rand::rng()).unwrap()
+    }
+
     /// Parse hash algorithm from string.
     #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Result<Self, String> {

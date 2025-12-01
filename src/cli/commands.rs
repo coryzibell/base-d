@@ -1,4 +1,4 @@
-use base_d::{Dictionary, DictionaryRegistry, decode, encode};
+use base_d::{DictionaryRegistry, decode, encode};
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
@@ -216,19 +216,7 @@ pub fn matrix_mode(
 
     loop {
         // Load current dictionary
-        let dictionary_config = config
-            .get_dictionary(&current_dictionary_name)
-            .ok_or(format!("{} dictionary not found", current_dictionary_name))?;
-
-        let chars: Vec<char> = dictionary_config
-            .effective_chars()
-            .map_err(|e| format!("Invalid dictionary config: {}", e))?
-            .chars()
-            .collect();
-        let dictionary = Dictionary::builder()
-            .chars(chars)
-            .mode(dictionary_config.effective_mode())
-            .build()?;
+        let dictionary = create_dictionary(config, &current_dictionary_name)?;
 
         // Check if we need to switch (time-based)
         let should_switch = match &switch_mode {
