@@ -1,13 +1,14 @@
+// Keep utility modules for handlers
 mod commands;
 mod config;
 
-use base_d::{DictionaryRegistry, decode, encode};
-use clap::{Parser, Subcommand};
-use std::fs;
-use std::io::{self, Read, Write};
-use std::path::PathBuf;
+// New modular CLI structure
+pub mod args;
+pub mod global;
+pub mod handlers;
 
-use config::{create_dictionary, get_compression_level, load_xxhash_config};
+use base_d::DictionaryRegistry;
+use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(name = "base-d")]
@@ -15,160 +16,36 @@ use config::{create_dictionary, get_compression_level, load_xxhash_config};
 #[command(about = "Universal multi-dictionary encoder supporting RFC standards, emoji, ancient scripts, and numerous custom dictionaries", long_about = None)]
 struct Cli {
     #[command(subcommand)]
-    command: Option<Commands>,
+    command: Commands,
 
-    /// Encode using this dictionary
-    #[arg(short = 'e', long)]
-    encode: Option<String>,
-
-    /// Decode from this dictionary
-    #[arg(short = 'd', long)]
-    decode: Option<String>,
-
-    /// Compress data before encoding (gzip, zstd, brotli, lz4)
-    /// If no algorithm specified, picks randomly
-    #[arg(short = 'c', long, value_name = "ALGORITHM")]
-    compress: Option<Option<String>>,
-
-    /// Decompress data after decoding (gzip, zstd, brotli, lz4, snappy, lzma)
-    #[arg(long)]
-    decompress: Option<String>,
-
-    /// Compression level (algorithm-specific, typically 1-9)
-    #[arg(long)]
-    level: Option<u32>,
-
-    /// Compute hash of input data (md5, sha256, sha512, blake3, etc.)
-    /// If no algorithm specified, picks randomly
-    #[arg(long, value_name = "ALGORITHM")]
-    hash: Option<Option<String>>,
-
-    /// Seed for xxHash algorithms (u64, default: 0)
-    #[arg(long)]
-    hash_seed: Option<u64>,
-
-    /// Read XXH3 secret from stdin (must be >= 136 bytes)
-    #[arg(long)]
-    hash_secret_stdin: bool,
-
-    /// Output raw binary data (no encoding after compression)
-    #[arg(short = 'r', long)]
-    raw: bool,
-
-    /// Auto-detect dictionary from input and decode
-    #[arg(long)]
-    detect: bool,
-
-    /// Show top N candidate dictionaries when using --detect
-    #[arg(long, value_name = "N")]
-    show_candidates: Option<usize>,
-
-    /// File to process (if not provided, reads from stdin)
-    #[arg(value_name = "FILE")]
-    file: Option<PathBuf>,
-
-    /// Use streaming mode for large files (memory efficient)
-    #[arg(short, long)]
-    stream: bool,
-
-    /// Enter the Matrix: Stream random data as Matrix-style falling code
-    /// Optionally specify a dictionary (default: base256_matrix)
-    /// Can be combined with --dejavu to pick a random dictionary for Matrix mode
-    #[arg(long, value_name = "DICTIONARY")]
-    neo: Option<Option<String>>,
-
-    /// Random dictionary encoding: Pick a random dictionary and encode with it
-    /// When combined with --neo, uses random dictionary for Matrix mode
-    #[arg(long, conflicts_with = "encode")]
-    dejavu: bool,
-
-    /// Cycle through all dictionaries in Matrix mode (requires --neo --dejavu)
-    #[arg(long, requires = "dejavu")]
-    cycle: bool,
-
-    /// Random dictionary switching in Matrix mode (requires --neo --dejavu)
-    #[arg(long, requires = "dejavu")]
-    random: bool,
-
-    /// Interval for switching: duration (e.g., "5s", "500ms") or "line"
-    #[arg(long, value_name = "INTERVAL")]
-    interval: Option<String>,
-
-    /// Maximum input size in bytes (default: 100MB, 0 = unlimited)
-    #[arg(long, value_name = "BYTES", default_value = "104857600")]
-    pub max_size: usize,
-
-    /// Process files exceeding --max-size limit (requires --file, not stdin)
-    #[arg(long)]
-    pub force: bool,
-
-    /// Disable colored output (respects NO_COLOR env var)
-    #[arg(long)]
-    pub no_color: bool,
-
-    /// Suppress informational notices (random selection warnings, etc.)
-    #[arg(short = 'q', long)]
-    pub quiet: bool,
-
-    /// Remove speed limit in Matrix mode ("He's doing his Superman thing")
-    #[arg(long)]
-    pub superman: bool,
+    #[command(flatten)]
+    global: global::GlobalArgs,
 }
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Query available algorithms and dictionaries
+    /// Encode data using a dictionary
+    #[command(visible_alias = "e")]
+    Encode(args::EncodeArgs),
+
+    /// Decode data from a dictionary
+    #[command(visible_alias = "d")]
+    Decode(args::DecodeArgs),
+
+    /// Auto-detect dictionary and decode
+    Detect(args::DetectArgs),
+
+    /// Compute hash of data
+    Hash(args::HashArgs),
+
+    /// Query configuration and available options
     Config {
-        /// List available compression algorithms
-        #[arg(long)]
-        compression: bool,
-
-        /// List available dictionaries
-        #[arg(long)]
-        dictionaries: bool,
-
-        /// List available hash algorithms
-        #[arg(long)]
-        hash: bool,
-
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(subcommand)]
+        action: args::ConfigAction,
     },
-}
 
-/// Determine if color output should be disabled
-fn should_disable_color(cli_flag: bool) -> bool {
-    cli_flag
-        || std::env::var("NO_COLOR")
-            .map(|v| !v.is_empty())
-            .unwrap_or(false)
-}
-
-/// Check if output contains problematic control characters (0x00-0x1F except \t, \n, \r)
-fn contains_control_chars(s: &str) -> bool {
-    s.bytes()
-        .any(|b| b < 0x20 && b != b'\t' && b != b'\n' && b != b'\r')
-}
-
-/// Output encoded string, failing if it contains control characters
-fn output_encoded(encoded: &str, dict_name: &str) -> Result<(), Box<dyn std::error::Error>> {
-    if contains_control_chars(encoded) {
-        // Log debug info to stderr
-        eprintln!("ERROR: Encoded output contains control characters");
-        eprintln!("  Dictionary: {}", dict_name);
-        eprintln!(
-            "  Output bytes: {:?}",
-            encoded.as_bytes().iter().take(50).collect::<Vec<_>>()
-        );
-        return Err(format!(
-            "Encoded output contains control characters (dictionary: {})",
-            dict_name
-        )
-        .into());
-    }
-    println!("{}", encoded);
-    Ok(())
+    /// Matrix mode: streaming visual effect
+    Neo(args::NeoArgs),
 }
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -177,326 +54,13 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     // Load dictionaries configuration with user overrides
     let config = DictionaryRegistry::load_with_overrides()?;
 
-    // Handle config subcommand
-    if let Some(Commands::Config {
-        compression,
-        dictionaries,
-        hash,
-        json,
-    }) = &cli.command
-    {
-        return handle_config(&config, *compression, *dictionaries, *hash, *json);
+    // Dispatch to appropriate handler
+    match cli.command {
+        Commands::Encode(args) => handlers::encode::handle(args, &cli.global, &config),
+        Commands::Decode(args) => handlers::decode::handle(args, &cli.global, &config),
+        Commands::Detect(args) => handlers::detect::handle(args, &cli.global, &config),
+        Commands::Hash(args) => handlers::hash::handle(args, &cli.global, &config),
+        Commands::Config { action } => handlers::config::handle(action, &cli.global, &config),
+        Commands::Neo(args) => handlers::neo::handle(args, &cli.global, &config),
     }
-
-    // Handle --neo mode (Matrix effect)
-    if let Some(dictionary_opt) = &cli.neo {
-        // Validate conflicting flags
-        if cli.cycle && cli.random {
-            return Err("Cannot use both --cycle and --random together".into());
-        }
-        if cli.interval.is_some() && !cli.cycle && !cli.random {
-            return Err("--interval requires either --cycle or --random".into());
-        }
-
-        // Determine switch mode
-        let switch_mode = if cli.cycle {
-            let interval = commands::parse_interval(cli.interval.as_deref().unwrap_or("5s"))?;
-            commands::SwitchMode::Cycle(interval)
-        } else if cli.random {
-            let interval = commands::parse_interval(cli.interval.as_deref().unwrap_or("3s"))?;
-            commands::SwitchMode::Random(interval)
-        } else {
-            // Static mode (allows keyboard controls)
-            commands::SwitchMode::Static
-        };
-
-        // Determine initial dictionary
-        // If --dejavu is set and no explicit dictionary, pick random
-        let initial_dictionary = if cli.dejavu && dictionary_opt.is_none() {
-            // Silently select - the puzzle is figuring out which dictionary was used
-            commands::select_random_dictionary(&config, false)?
-        } else {
-            dictionary_opt
-                .as_deref()
-                .unwrap_or("base256_matrix")
-                .to_string()
-        };
-
-        let no_color = should_disable_color(cli.no_color);
-        return commands::matrix_mode(
-            &config,
-            &initial_dictionary,
-            switch_mode,
-            no_color,
-            cli.quiet,
-            cli.superman,
-        );
-    }
-
-    // Handle --detect mode (auto-detect dictionary)
-    if cli.detect {
-        return commands::detect_mode(
-            &config,
-            cli.file.as_ref(),
-            cli.show_candidates,
-            cli.decompress.as_ref(),
-            cli.max_size,
-        );
-    }
-
-    // Parse compression algorithm - if flag present but no value, pick random
-    let compress_algo = match &cli.compress {
-        Some(Some(algo)) => Some(base_d::CompressionAlgorithm::from_str(algo)?),
-        Some(None) => Some(base_d::CompressionAlgorithm::from_str(
-            commands::select_random_compress(cli.quiet),
-        )?),
-        None => None,
-    };
-
-    let decompress_algo = cli
-        .decompress
-        .as_ref()
-        .map(|s| base_d::CompressionAlgorithm::from_str(s))
-        .transpose()?;
-
-    // Validate flags
-    if cli.raw && cli.encode.is_some() {
-        return Err("Cannot use --raw with --encode (output would not be raw)".into());
-    }
-
-    // Handle streaming mode separately (now with compression/hashing support)
-    if cli.stream {
-        // Resolve optional hash/compress to concrete values for streaming
-        let resolved_hash = match &cli.hash {
-            Some(Some(name)) => Some(name.clone()),
-            Some(None) => Some(commands::select_random_hash(cli.quiet).to_string()),
-            None => None,
-        };
-        let resolved_compress = match &cli.compress {
-            Some(Some(name)) => Some(name.clone()),
-            Some(None) => Some(commands::select_random_compress(cli.quiet).to_string()),
-            None => None,
-        };
-
-        if let Some(decode_name) = &cli.decode {
-            return commands::streaming_decode(
-                &config,
-                decode_name,
-                cli.file.as_ref(),
-                cli.decompress,
-                resolved_hash,
-                cli.hash_seed,
-                cli.hash_secret_stdin,
-                cli.encode,
-            );
-        } else if let Some(encode_name) = &cli.encode {
-            return commands::streaming_encode(
-                &config,
-                encode_name,
-                cli.file.as_ref(),
-                resolved_compress,
-                cli.level,
-                resolved_hash,
-                cli.hash_seed,
-                cli.hash_secret_stdin,
-            );
-        } else {
-            return Err("Streaming mode requires either --encode or --decode".into());
-        }
-    }
-
-    // Read input data
-    let input_data = if let Some(file_path) = &cli.file {
-        // Check file size BEFORE reading
-        let metadata = fs::metadata(file_path)?;
-        let file_size = metadata.len() as usize;
-
-        if cli.max_size > 0 && file_size > cli.max_size {
-            if cli.force {
-                eprintln!(
-                    "Warning: Processing large file ({} bytes, limit: {} bytes)",
-                    file_size, cli.max_size
-                );
-            } else {
-                return Err(format!(
-                    "File size ({} bytes) exceeds limit ({} bytes). Use --force to process anyway.",
-                    file_size, cli.max_size
-                )
-                .into());
-            }
-        }
-
-        if cli.decode.is_some() {
-            fs::read_to_string(file_path)?.into_bytes()
-        } else {
-            fs::read(file_path)?
-        }
-    } else {
-        let mut buffer = Vec::new();
-        io::stdin().read_to_end(&mut buffer)?;
-
-        // Check stdin size AFTER reading (can't pre-check stdin)
-        if cli.max_size > 0 && buffer.len() > cli.max_size {
-            return Err(format!(
-                "Input size ({} bytes) exceeds maximum ({} bytes). Use --file with --force for large inputs.",
-                buffer.len(),
-                cli.max_size
-            ).into());
-        }
-
-        buffer
-    };
-
-    // Process data through pipeline
-    let mut data = input_data;
-
-    // Step 1: Decode if requested
-    if let Some(decode_name) = &cli.decode {
-        let decode_dictionary = create_dictionary(&config, decode_name)?;
-        let text = String::from_utf8(data)
-            .map_err(|_| "Input data is not valid UTF-8 text for decoding")?;
-        data = decode(text.trim(), &decode_dictionary)?;
-    }
-
-    // Step 2: Decompress if requested
-    if let Some(algo) = decompress_algo {
-        data = base_d::decompress(&data, algo)?;
-    }
-
-    // Step 3: Hash if requested - if flag present but no value, pick random
-    if let Some(hash_opt) = &cli.hash {
-        let hash_name = match hash_opt {
-            Some(name) => name.clone(),
-            None => commands::select_random_hash(cli.quiet).to_string(),
-        };
-        let hash_algo = base_d::HashAlgorithm::from_str(&hash_name)?;
-        let xxhash_config = load_xxhash_config(
-            cli.hash_seed,
-            cli.hash_secret_stdin,
-            &config,
-            Some(&hash_algo),
-        )?;
-        let hash_output = base_d::hash_with_config(&data, hash_algo, &xxhash_config);
-
-        // Encode the hash - explicit dict, dejavu, or default (random if no default)
-        let dict_name = if let Some(encode_name) = &cli.encode {
-            encode_name.clone()
-        } else if cli.dejavu {
-            commands::select_random_dictionary(&config, false)?
-        } else if let Some(default) = &config.settings.default_dictionary {
-            default.clone()
-        } else {
-            // No default configured - use random
-            commands::select_random_dictionary(&config, false)?
-        };
-        let encode_dictionary = create_dictionary(&config, &dict_name)?;
-        let encoded = encode(&hash_output, &encode_dictionary);
-        output_encoded(&encoded, &dict_name)?;
-        return Ok(());
-    }
-
-    // Step 4: Compress if requested
-    if let Some(algo) = compress_algo {
-        let level = get_compression_level(&config, cli.level, algo);
-        data = base_d::compress(&data, algo, level)?;
-    }
-
-    // Step 5: Encode if requested, or output raw/default
-    if cli.raw {
-        // Raw binary output
-        io::stdout().write_all(&data)?;
-    } else if cli.dejavu {
-        // Random dictionary encoding
-        let random_dict = commands::select_random_dictionary(&config, true)?;
-        let encode_dictionary = create_dictionary(&config, &random_dict)?;
-        let encoded = encode(&data, &encode_dictionary);
-        output_encoded(&encoded, &random_dict)?;
-    } else if let Some(encode_name) = &cli.encode {
-        // Explicit encoding
-        let encode_dictionary = create_dictionary(&config, encode_name)?;
-        let encoded = encode(&data, &encode_dictionary);
-        output_encoded(&encoded, encode_name)?;
-    } else if compress_algo.is_some() {
-        // Compressed but no explicit encoding - use default or random
-        let dict_name = if let Some(default) = &config.settings.default_dictionary {
-            default.clone()
-        } else {
-            commands::select_random_dictionary(&config, false)?
-        };
-        let encode_dictionary = create_dictionary(&config, &dict_name)?;
-        let encoded = encode(&data, &encode_dictionary);
-        output_encoded(&encoded, &dict_name)?;
-    } else {
-        // No compression, no encoding - output as-is (or use default encoding)
-        if cli.decode.is_none() {
-            // Encoding mode without explicit dictionary - use default or random
-            let dict_name = if let Some(default) = &config.settings.default_dictionary {
-                default.clone()
-            } else {
-                commands::select_random_dictionary(&config, false)?
-            };
-            let encode_dictionary = create_dictionary(&config, &dict_name)?;
-            let encoded = encode(&data, &encode_dictionary);
-            output_encoded(&encoded, &dict_name)?;
-        } else {
-            // Decode-only mode
-            io::stdout().write_all(&data)?;
-        }
-    }
-
-    Ok(())
-}
-
-/// Handle the config subcommand
-fn handle_config(
-    config: &DictionaryRegistry,
-    compression: bool,
-    dictionaries: bool,
-    hash: bool,
-    json: bool,
-) -> Result<(), Box<dyn std::error::Error>> {
-    // Collect requested data
-    let compress_list: Vec<&str> = commands::COMPRESS_ALGORITHMS.to_vec();
-    let hash_list: Vec<&str> = commands::HASH_ALGORITHMS.to_vec();
-    let dict_list: Vec<String> = {
-        let mut names: Vec<String> = config.dictionaries.keys().cloned().collect();
-        names.sort();
-        names
-    };
-
-    // JSON output
-    if json {
-        let output = serde_json::json!({
-            "compression": compress_list,
-            "hash": hash_list,
-            "dictionaries": dict_list,
-        });
-        println!("{}", serde_json::to_string_pretty(&output)?);
-        return Ok(());
-    }
-
-    // Individual flag output (comma-separated for easy parsing)
-    if compression {
-        println!("{}", compress_list.join(","));
-        return Ok(());
-    }
-
-    if hash {
-        println!("{}", hash_list.join(","));
-        return Ok(());
-    }
-
-    if dictionaries {
-        println!("{}", dict_list.join(","));
-        return Ok(());
-    }
-
-    // No specific flag - show all in human-readable format
-    println!("Compression algorithms: {}", compress_list.join(", "));
-    println!("Hash algorithms: {}", hash_list.join(", "));
-    println!("Dictionaries: {} available", dict_list.len());
-    println!("\nUse --compression, --hash, or --dictionaries for machine-readable output");
-    println!("Use --json for structured output");
-
-    Ok(())
 }

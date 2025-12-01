@@ -99,12 +99,12 @@ pub fn get_compression_level(
 
 /// Load xxHash configuration from CLI args and config file.
 pub fn load_xxhash_config(
-    cli_hash_seed: Option<u64>,
-    cli_hash_secret_stdin: bool,
+    cli_xxhash_seed: Option<u64>,
+    cli_xxhash_secret_stdin: bool,
     config: &DictionaryRegistry,
     hash_algo: Option<&base_d::HashAlgorithm>,
 ) -> Result<base_d::XxHashConfig, Box<dyn std::error::Error>> {
-    let seed = cli_hash_seed
+    let seed = cli_xxhash_seed
         .or_else(|| {
             let default_seed = config.settings.xxhash.default_seed;
             if default_seed != 0 {
@@ -115,7 +115,7 @@ pub fn load_xxhash_config(
         })
         .unwrap_or(0);
 
-    let secret = if cli_hash_secret_stdin {
+    let secret = if cli_xxhash_secret_stdin {
         let mut buf = Vec::new();
         io::stdin().read_to_end(&mut buf)?;
         Some(buf)

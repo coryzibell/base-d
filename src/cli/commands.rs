@@ -82,12 +82,14 @@ pub fn select_random_dictionary(
 }
 
 /// Available hash algorithms for random selection
+#[allow(dead_code)]
 pub const HASH_ALGORITHMS: &[&str] = &["md5", "sha256", "sha512", "blake3", "xxh64", "xxh3"];
 
 /// Available compression algorithms for random selection
 pub const COMPRESS_ALGORITHMS: &[&str] = &["gzip", "zstd", "brotli", "lz4"];
 
 /// Select a random hash algorithm
+#[allow(dead_code)]
 pub fn select_random_hash(quiet: bool) -> &'static str {
     use rand::prelude::IndexedRandom;
     let selected = HASH_ALGORITHMS.choose(&mut rand::rng()).unwrap();
@@ -485,8 +487,8 @@ pub fn streaming_decode(
     file: Option<&PathBuf>,
     decompress: Option<String>,
     hash: Option<String>,
-    hash_seed: Option<u64>,
-    hash_secret_stdin: bool,
+    xxhash_seed: Option<u64>,
+    xxhash_secret_stdin: bool,
     encode: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use base_d::StreamingDecoder;
@@ -507,7 +509,7 @@ pub fn streaming_decode(
 
         // Add xxHash config
         let xxhash_config =
-            load_xxhash_config(hash_seed, hash_secret_stdin, config, Some(&hash_algo))?;
+            load_xxhash_config(xxhash_seed, xxhash_secret_stdin, config, Some(&hash_algo))?;
         decoder = decoder.with_xxhash_config(xxhash_config);
     }
 
@@ -545,8 +547,8 @@ pub fn streaming_encode(
     compress: Option<String>,
     level: Option<u32>,
     hash: Option<String>,
-    hash_seed: Option<u64>,
-    hash_secret_stdin: bool,
+    xxhash_seed: Option<u64>,
+    xxhash_secret_stdin: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use base_d::StreamingEncoder;
 
@@ -567,7 +569,7 @@ pub fn streaming_encode(
 
         // Add xxHash config
         let xxhash_config =
-            load_xxhash_config(hash_seed, hash_secret_stdin, config, Some(&hash_algo))?;
+            load_xxhash_config(xxhash_seed, xxhash_secret_stdin, config, Some(&hash_algo))?;
         encoder = encoder.with_xxhash_config(xxhash_config);
     }
 

@@ -37,7 +37,7 @@ fn test_version() {
 #[test]
 fn test_config_dictionaries() {
     base_d()
-        .args(["config", "--dictionaries"])
+        .args(["config", "list", "dictionaries"])
         .assert()
         .success()
         .stdout(predicate::str::contains("base64"));
@@ -46,7 +46,7 @@ fn test_config_dictionaries() {
 #[test]
 fn test_config_compression() {
     base_d()
-        .args(["config", "--compression"])
+        .args(["config", "list", "algorithms"])
         .assert()
         .success()
         .stdout(predicate::str::contains("gzip"))
@@ -56,7 +56,7 @@ fn test_config_compression() {
 #[test]
 fn test_config_hash() {
     base_d()
-        .args(["config", "--hash"])
+        .args(["config", "list", "hashes"])
         .assert()
         .success()
         .stdout(predicate::str::contains("sha256"))
@@ -70,7 +70,7 @@ fn test_config_hash() {
 #[test]
 fn test_encode_base64() {
     base_d()
-        .args(["--encode", "base64"])
+        .args(["encode", "base64"])
         .write_stdin("hello world")
         .assert()
         .success()
@@ -80,7 +80,7 @@ fn test_encode_base64() {
 #[test]
 fn test_decode_base64() {
     base_d()
-        .args(["--decode", "base64"])
+        .args(["decode", "base64"])
         .write_stdin("aGVsbG8gd29ybGQ=")
         .assert()
         .success()
@@ -91,7 +91,7 @@ fn test_decode_base64() {
 fn test_roundtrip_base64() {
     // Encode
     let encoded = base_d()
-        .args(["--encode", "base64"])
+        .args(["encode", "base64"])
         .write_stdin("test data 123")
         .assert()
         .success()
@@ -101,7 +101,7 @@ fn test_roundtrip_base64() {
 
     // Decode
     base_d()
-        .args(["--decode", "base64"])
+        .args(["decode", "base64"])
         .write_stdin(encoded)
         .assert()
         .success()
@@ -111,7 +111,7 @@ fn test_roundtrip_base64() {
 #[test]
 fn test_roundtrip_base32() {
     let encoded = base_d()
-        .args(["--encode", "base32"])
+        .args(["encode", "base32"])
         .write_stdin("hello")
         .assert()
         .success()
@@ -120,7 +120,7 @@ fn test_roundtrip_base32() {
         .clone();
 
     base_d()
-        .args(["--decode", "base32"])
+        .args(["decode", "base32"])
         .write_stdin(encoded)
         .assert()
         .success()
@@ -130,14 +130,14 @@ fn test_roundtrip_base32() {
 #[test]
 fn test_roundtrip_hex() {
     base_d()
-        .args(["--encode", "base16"])
+        .args(["encode", "base16"])
         .write_stdin("ABC")
         .assert()
         .success()
         .stdout("414243\n");
 
     base_d()
-        .args(["--decode", "base16"])
+        .args(["decode", "base16"])
         .write_stdin("414243")
         .assert()
         .success()
@@ -151,7 +151,7 @@ fn test_roundtrip_hex() {
 #[test]
 fn test_compress_gzip_roundtrip() {
     let compressed = base_d()
-        .args(["--compress", "gzip", "--encode", "base64"])
+        .args(["encode", "base64", "--compress", "gzip"])
         .write_stdin("compress me please")
         .assert()
         .success()
@@ -160,7 +160,7 @@ fn test_compress_gzip_roundtrip() {
         .clone();
 
     base_d()
-        .args(["--decode", "base64", "--decompress", "gzip"])
+        .args(["decode", "base64", "--decompress", "gzip"])
         .write_stdin(compressed)
         .assert()
         .success()
@@ -170,7 +170,7 @@ fn test_compress_gzip_roundtrip() {
 #[test]
 fn test_compress_zstd_roundtrip() {
     let compressed = base_d()
-        .args(["--compress", "zstd", "--encode", "base64"])
+        .args(["encode", "base64", "--compress", "zstd"])
         .write_stdin("zstd compression test")
         .assert()
         .success()
@@ -179,7 +179,7 @@ fn test_compress_zstd_roundtrip() {
         .clone();
 
     base_d()
-        .args(["--decode", "base64", "--decompress", "zstd"])
+        .args(["decode", "base64", "--decompress", "zstd"])
         .write_stdin(compressed)
         .assert()
         .success()
@@ -194,7 +194,7 @@ fn test_compress_zstd_roundtrip() {
 fn test_hash_sha256() {
     // Hash output is encoded with dejavu (random dictionary)
     base_d()
-        .args(["--hash", "sha256"])
+        .args(["hash", "sha256"])
         .write_stdin("hello")
         .assert()
         .success()
@@ -205,7 +205,7 @@ fn test_hash_sha256() {
 fn test_hash_md5() {
     // Hash output is encoded with dejavu (random dictionary)
     base_d()
-        .args(["--hash", "md5"])
+        .args(["hash", "md5"])
         .write_stdin("hello")
         .assert()
         .success()
@@ -215,7 +215,7 @@ fn test_hash_md5() {
 #[test]
 fn test_hash_blake3() {
     base_d()
-        .args(["--hash", "blake3"])
+        .args(["hash", "blake3"])
         .write_stdin("hello")
         .assert()
         .success()
@@ -229,27 +229,16 @@ fn test_hash_blake3() {
 #[test]
 fn test_invalid_dictionary() {
     base_d()
-        .args(["--encode", "nonexistent_dict"])
+        .args(["encode", "nonexistent_dict"])
         .write_stdin("test")
         .assert()
         .failure();
 }
 
 #[test]
-fn test_encode_then_decode() {
-    // base-d allows --encode and --decode together (encode first, then decode)
-    base_d()
-        .args(["--encode", "base64", "--decode", "base64"])
-        .write_stdin("test")
-        .assert()
-        .success()
-        .stdout("test\n");
-}
-
-#[test]
 fn test_file_not_found() {
     base_d()
-        .args(["--encode", "base64", "/nonexistent/path/file.txt"])
+        .args(["encode", "base64", "/nonexistent/path/file.txt"])
         .assert()
         .failure();
 }
@@ -257,7 +246,7 @@ fn test_file_not_found() {
 #[test]
 fn test_invalid_base64_decode() {
     base_d()
-        .args(["--decode", "base64"])
+        .args(["decode", "base64"])
         .write_stdin("not valid base64!!!")
         .assert()
         .failure();
@@ -291,7 +280,7 @@ fn test_no_color_env() {
 fn test_max_size_flag() {
     // Small input should work with default limit
     base_d()
-        .args(["--encode", "base64"])
+        .args(["encode", "base64"])
         .write_stdin("small input")
         .assert()
         .success();
@@ -301,7 +290,7 @@ fn test_max_size_flag() {
 fn test_max_size_zero_unlimited() {
     // --max-size 0 should allow unlimited
     base_d()
-        .args(["--max-size", "0", "--encode", "base64"])
+        .args(["--max-size", "0", "encode", "base64"])
         .write_stdin("test")
         .assert()
         .success();
@@ -313,9 +302,9 @@ fn test_max_size_zero_unlimited() {
 
 #[test]
 fn test_detect_base64() {
-    // --detect decodes the input and outputs the result
+    // detect decodes the input and outputs the result
     base_d()
-        .args(["--detect"])
+        .args(["detect"])
         .write_stdin("aGVsbG8gd29ybGQ=")
         .assert()
         .success()
@@ -325,7 +314,7 @@ fn test_detect_base64() {
 #[test]
 fn test_detect_with_candidates() {
     base_d()
-        .args(["--detect", "--show-candidates", "3"])
+        .args(["detect", "--show-candidates", "3"])
         .write_stdin("aGVsbG8=")
         .assert()
         .success();
