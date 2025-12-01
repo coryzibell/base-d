@@ -55,12 +55,7 @@ pub fn handle(
     };
 
     // Load xxHash config (handles seed and secret)
-    let xxhash_config = load_xxhash_config(
-        args.seed,
-        args.secret_stdin,
-        config,
-        Some(&hash_algo),
-    )?;
+    let xxhash_config = load_xxhash_config(args.seed, args.secret_stdin, config, Some(&hash_algo))?;
 
     // Compute hash
     let hash_output = base_d::hash_with_config(&input_data, hash_algo, &xxhash_config);

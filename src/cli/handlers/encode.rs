@@ -22,10 +22,7 @@ pub fn handle(
             None => None,
         };
 
-        let resolved_hash = match &args.hash {
-            Some(name) => Some(name.clone()),
-            None => None,
-        };
+        let resolved_hash = args.hash.clone();
 
         return streaming_encode(
             config,
@@ -87,7 +84,12 @@ pub fn handle(
     // Step 1: Compute hash if requested (hash of input before compression/encoding)
     let hash_result = if let Some(hash_name) = &args.hash {
         let hash_algo = base_d::HashAlgorithm::from_str(hash_name)?;
-        let xxhash_config = load_xxhash_config(args.xxhash_seed, args.xxhash_secret_stdin, config, Some(&hash_algo))?;
+        let xxhash_config = load_xxhash_config(
+            args.xxhash_seed,
+            args.xxhash_secret_stdin,
+            config,
+            Some(&hash_algo),
+        )?;
         Some(base_d::hash_with_config(&data, hash_algo, &xxhash_config))
     } else {
         None

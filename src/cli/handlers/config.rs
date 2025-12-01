@@ -1,4 +1,7 @@
-use crate::cli::{args::{ConfigAction, ConfigCategory}, global::GlobalArgs};
+use crate::cli::{
+    args::{ConfigAction, ConfigCategory},
+    global::GlobalArgs,
+};
 use base_d::DictionaryRegistry;
 
 /// Available hash algorithms for listing
@@ -64,7 +67,9 @@ fn handle_list(
             println!("Compression algorithms: {}", compress_list.join(", "));
             println!("Hash algorithms: {}", hash_list.join(", "));
             println!("Dictionaries: {} available", dict_list.len());
-            println!("\nUse 'config list dictionaries|algorithms|hashes' for machine-readable output");
+            println!(
+                "\nUse 'config list dictionaries|algorithms|hashes' for machine-readable output"
+            );
             println!("Use --json for structured output");
         }
     }
@@ -88,8 +93,10 @@ fn handle_show(
     if !dict_config.chars.is_empty() {
         println!("  Type: Explicit character set");
         println!("  Size: {} characters", dict_config.chars.chars().count());
-        println!("  Preview: {}...",
-            dict_config.chars.chars().take(20).collect::<String>());
+        println!(
+            "  Preview: {}...",
+            dict_config.chars.chars().take(20).collect::<String>()
+        );
     } else if let (Some(start), Some(length)) = (&dict_config.start, dict_config.length) {
         println!("  Type: Range-based");
         println!("  Start: {}", start);
@@ -113,7 +120,10 @@ fn handle_show(
     }
 
     // Show common flag
-    println!("  Common: {}", if dict_config.common { "yes" } else { "no" });
+    println!(
+        "  Common: {}",
+        if dict_config.common { "yes" } else { "no" }
+    );
 
     Ok(())
 }

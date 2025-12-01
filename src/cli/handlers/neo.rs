@@ -1,6 +1,6 @@
 use crate::cli::{
     args::NeoArgs,
-    commands::{matrix_mode, parse_interval, select_random_dictionary, SwitchMode},
+    commands::{SwitchMode, matrix_mode, parse_interval, select_random_dictionary},
     global::GlobalArgs,
 };
 use base_d::DictionaryRegistry;

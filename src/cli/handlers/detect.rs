@@ -1,5 +1,5 @@
-use crate::cli::{args::DetectArgs, global::GlobalArgs};
 use crate::cli::commands::detect_mode;
+use crate::cli::{args::DetectArgs, global::GlobalArgs};
 use base_d::DictionaryRegistry;
 
 pub fn handle(
