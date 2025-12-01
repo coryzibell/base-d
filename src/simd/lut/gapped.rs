@@ -294,25 +294,20 @@ impl GappedSequentialCodec {
             indices[6] = ((b3 << 3) | (b4 >> 5)) & 0x1F;
             indices[7] = b4 & 0x1F;
 
-            // Unsafe: SIMD operations
-            let char_vec = unsafe {
-                // Load indices into SIMD register
-                let idx_vec = _mm_loadu_si128(indices.as_ptr() as *const __m128i);
+            // Unsafe: SIMD load operation (pointer dereference)
+            let idx_vec = unsafe { _mm_loadu_si128(indices.as_ptr() as *const __m128i) };
 
-                // Start with base offset + index
-                let mut char_vec = _mm_add_epi8(base_offset_vec, idx_vec);
+            // SIMD arithmetic operations (safe in target_feature context)
+            let mut char_vec = _mm_add_epi8(base_offset_vec, idx_vec);
 
-                // Add adjustment for each threshold
-                for (thresh_vec, adj_vec) in threshold_vecs.iter().zip(&adjustment_vecs) {
-                    // cmpgt returns 0xFF where idx > threshold-1, i.e., idx >= threshold
-                    let mask = _mm_cmpgt_epi8(idx_vec, *thresh_vec);
-                    // AND with adjustment to get conditional add
-                    let adj = _mm_and_si128(mask, *adj_vec);
-                    char_vec = _mm_add_epi8(char_vec, adj);
-                }
-
-                char_vec
-            };
+            // Add adjustment for each threshold
+            for (thresh_vec, adj_vec) in threshold_vecs.iter().zip(&adjustment_vecs) {
+                // cmpgt returns 0xFF where idx > threshold-1, i.e., idx >= threshold
+                let mask = _mm_cmpgt_epi8(idx_vec, *thresh_vec);
+                // AND with adjustment to get conditional add
+                let adj = _mm_and_si128(mask, *adj_vec);
+                char_vec = _mm_add_epi8(char_vec, adj);
+            }
 
             // Unsafe: SIMD store
             let mut output = [0u8; 16];
@@ -395,19 +390,17 @@ impl GappedSequentialCodec {
             indices[2] = ((b1 << 2) | (b2 >> 6)) & 0x3F;
             indices[3] = b2 & 0x3F;
 
-            // Unsafe: SIMD operations
-            let char_vec = unsafe {
-                let idx_vec = _mm_loadu_si128(indices.as_ptr() as *const __m128i);
-                let mut char_vec = _mm_add_epi8(base_offset_vec, idx_vec);
+            // Unsafe: SIMD load operation (pointer dereference)
+            let idx_vec = unsafe { _mm_loadu_si128(indices.as_ptr() as *const __m128i) };
 
-                for (thresh_vec, adj_vec) in threshold_vecs.iter().zip(&adjustment_vecs) {
-                    let mask = _mm_cmpgt_epi8(idx_vec, *thresh_vec);
-                    let adj = _mm_and_si128(mask, *adj_vec);
-                    char_vec = _mm_add_epi8(char_vec, adj);
-                }
+            // SIMD arithmetic operations (safe in target_feature context)
+            let mut char_vec = _mm_add_epi8(base_offset_vec, idx_vec);
 
-                char_vec
-            };
+            for (thresh_vec, adj_vec) in threshold_vecs.iter().zip(&adjustment_vecs) {
+                let mask = _mm_cmpgt_epi8(idx_vec, *thresh_vec);
+                let adj = _mm_and_si128(mask, *adj_vec);
+                char_vec = _mm_add_epi8(char_vec, adj);
+            }
 
             // Unsafe: SIMD store
             let mut output = [0u8; 16];
@@ -482,19 +475,17 @@ impl GappedSequentialCodec {
                 indices[i * 2 + 1] = byte & 0x0F;
             }
 
-            // Unsafe: SIMD operations
-            let char_vec = unsafe {
-                let idx_vec = _mm_loadu_si128(indices.as_ptr() as *const __m128i);
-                let mut char_vec = _mm_add_epi8(base_offset_vec, idx_vec);
+            // Unsafe: SIMD load operation (pointer dereference)
+            let idx_vec = unsafe { _mm_loadu_si128(indices.as_ptr() as *const __m128i) };
 
-                for (thresh_vec, adj_vec) in threshold_vecs.iter().zip(&adjustment_vecs) {
-                    let mask = _mm_cmpgt_epi8(idx_vec, *thresh_vec);
-                    let adj = _mm_and_si128(mask, *adj_vec);
-                    char_vec = _mm_add_epi8(char_vec, adj);
-                }
+            // SIMD arithmetic operations (safe in target_feature context)
+            let mut char_vec = _mm_add_epi8(base_offset_vec, idx_vec);
 
-                char_vec
-            };
+            for (thresh_vec, adj_vec) in threshold_vecs.iter().zip(&adjustment_vecs) {
+                let mask = _mm_cmpgt_epi8(idx_vec, *thresh_vec);
+                let adj = _mm_and_si128(mask, *adj_vec);
+                char_vec = _mm_add_epi8(char_vec, adj);
+            }
 
             // Unsafe: SIMD store
             let mut output = [0u8; 16];
@@ -596,20 +587,18 @@ impl GappedSequentialCodec {
             indices[6] = ((b3 << 3) | (b4 >> 5)) & 0x1F;
             indices[7] = b4 & 0x1F;
 
-            // Unsafe: SIMD operations
-            let char_vec = unsafe {
-                let idx_vec = vld1q_u8(indices.as_ptr());
-                let mut char_vec = vaddq_u8(base_offset_vec, idx_vec);
+            // Unsafe: SIMD load operation (pointer dereference)
+            let idx_vec = unsafe { vld1q_u8(indices.as_ptr()) };
 
-                for (thresh_vec, adj_vec) in threshold_vecs.iter().zip(&adjustment_vecs) {
-                    // vcgeq returns 0xFF where idx >= threshold
-                    let mask = vcgeq_u8(idx_vec, *thresh_vec);
-                    let adj = vandq_u8(mask, *adj_vec);
-                    char_vec = vaddq_u8(char_vec, adj);
-                }
+            // SIMD arithmetic operations (safe in target_feature context)
+            let mut char_vec = vaddq_u8(base_offset_vec, idx_vec);
 
-                char_vec
-            };
+            for (thresh_vec, adj_vec) in threshold_vecs.iter().zip(&adjustment_vecs) {
+                // vcgeq returns 0xFF where idx >= threshold
+                let mask = vcgeq_u8(idx_vec, *thresh_vec);
+                let adj = vandq_u8(mask, *adj_vec);
+                char_vec = vaddq_u8(char_vec, adj);
+            }
 
             // Unsafe: SIMD store
             let mut output = [0u8; 16];
@@ -692,19 +681,17 @@ impl GappedSequentialCodec {
             indices[2] = ((b1 << 2) | (b2 >> 6)) & 0x3F;
             indices[3] = b2 & 0x3F;
 
-            // Unsafe: SIMD operations
-            let char_vec = unsafe {
-                let idx_vec = vld1q_u8(indices.as_ptr());
-                let mut char_vec = vaddq_u8(base_offset_vec, idx_vec);
+            // Unsafe: SIMD load operation (pointer dereference)
+            let idx_vec = unsafe { vld1q_u8(indices.as_ptr()) };
 
-                for (thresh_vec, adj_vec) in threshold_vecs.iter().zip(&adjustment_vecs) {
-                    let mask = vcgeq_u8(idx_vec, *thresh_vec);
-                    let adj = vandq_u8(mask, *adj_vec);
-                    char_vec = vaddq_u8(char_vec, adj);
-                }
+            // SIMD arithmetic operations (safe in target_feature context)
+            let mut char_vec = vaddq_u8(base_offset_vec, idx_vec);
 
-                char_vec
-            };
+            for (thresh_vec, adj_vec) in threshold_vecs.iter().zip(&adjustment_vecs) {
+                let mask = vcgeq_u8(idx_vec, *thresh_vec);
+                let adj = vandq_u8(mask, *adj_vec);
+                char_vec = vaddq_u8(char_vec, adj);
+            }
 
             // Unsafe: SIMD store
             let mut output = [0u8; 16];
@@ -779,19 +766,17 @@ impl GappedSequentialCodec {
                 indices[i * 2 + 1] = byte & 0x0F;
             }
 
-            // Unsafe: SIMD operations
-            let char_vec = unsafe {
-                let idx_vec = vld1q_u8(indices.as_ptr());
-                let mut char_vec = vaddq_u8(base_offset_vec, idx_vec);
+            // Unsafe: SIMD load operation (pointer dereference)
+            let idx_vec = unsafe { vld1q_u8(indices.as_ptr()) };
 
-                for (thresh_vec, adj_vec) in threshold_vecs.iter().zip(&adjustment_vecs) {
-                    let mask = vcgeq_u8(idx_vec, *thresh_vec);
-                    let adj = vandq_u8(mask, *adj_vec);
-                    char_vec = vaddq_u8(char_vec, adj);
-                }
+            // SIMD arithmetic operations (safe in target_feature context)
+            let mut char_vec = vaddq_u8(base_offset_vec, idx_vec);
 
-                char_vec
-            };
+            for (thresh_vec, adj_vec) in threshold_vecs.iter().zip(&adjustment_vecs) {
+                let mask = vcgeq_u8(idx_vec, *thresh_vec);
+                let adj = vandq_u8(mask, *adj_vec);
+                char_vec = vaddq_u8(char_vec, adj);
+            }
 
             // Unsafe: SIMD store
             let mut output = [0u8; 16];
@@ -883,11 +868,14 @@ impl GappedSequentialCodec {
         }
     }
 
-    /// SSSE3-targeted 5-bit decoding (base32: 8 chars -> 5 bytes)
-    /// Currently uses scalar LUT lookup; SIMD bit-packing is a future optimization
+    /// SSSE3 5-bit decoding (base32: 8 chars -> 5 bytes)
+    /// Uses SIMD for parallel char-to-index conversion via inverse threshold method
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "ssse3")]
     unsafe fn decode_ssse3_5bit(&self, encoded: &str) -> Option<Vec<u8>> {
+        use std::arch::x86_64::*;
+
+        // Safe: constants, arithmetic, slice operations
         const INPUT_BLOCK: usize = 8;
 
         let encoded_bytes = encoded.as_bytes();
@@ -897,25 +885,76 @@ impl GappedSequentialCodec {
         let num_blocks = encoded_bytes.len() / INPUT_BLOCK;
         let simd_chars = num_blocks * INPUT_BLOCK;
 
+        // SIMD vector initialization (safe in target_feature context)
+        // Pre-compute SIMD vectors for inverse threshold method
+        // For decode: index = char - base_offset - sum(char > adjusted_threshold[i])
+        let base_offset_vec = _mm_set1_epi8(self.gap_info.base_offset as i8);
+
+        // Threshold computation logic
+        // Build adjusted thresholds: the char value where each gap starts
+        let mut cumulative = 0u8;
+        let adjusted_thresholds: Vec<__m128i> = self
+            .gap_info
+            .thresholds
+            .iter()
+            .zip(&self.gap_info.adjustments)
+            .map(|(&t, &a)| {
+                let thresh = self
+                    .gap_info
+                    .base_offset
+                    .wrapping_add(t)
+                    .wrapping_add(cumulative);
+                cumulative = cumulative.wrapping_add(a);
+                _mm_set1_epi8(thresh.wrapping_sub(1) as i8) // cmpgt needs thresh-1
+            })
+            .collect();
+
+        let adjustment_vecs: Vec<__m128i> = self
+            .gap_info
+            .adjustments
+            .iter()
+            .map(|&a| _mm_set1_epi8(a as i8))
+            .collect();
+
+        let max_valid = _mm_set1_epi8(31);
+
         for block in 0..num_blocks {
+            // Safe: offset calculation
             let offset = block * INPUT_BLOCK;
 
-            // Load 8 characters into array for processing
+            // Safe: array init and copy
             let mut chars = [0u8; 16];
             chars[..8].copy_from_slice(&encoded_bytes[offset..offset + INPUT_BLOCK]);
 
-            // Decode using LUT lookup
-            let mut indices = [0u8; 8];
-            for i in 0..8 {
-                let ch = chars[i];
-                let idx = self.decode_lut[ch as usize];
-                if idx == 0xFF {
-                    return None;
-                }
-                indices[i] = idx;
+            // Unsafe: SIMD load (pointer dereference)
+            let char_vec = unsafe { _mm_loadu_si128(chars.as_ptr() as *const __m128i) };
+
+            // SIMD arithmetic operations (safe in target_feature context)
+            let mut idx_vec = _mm_sub_epi8(char_vec, base_offset_vec);
+
+            // Subtract adjustment for each threshold the char exceeds
+            for (thresh_vec, adj_vec) in adjusted_thresholds.iter().zip(&adjustment_vecs) {
+                // cmpgt returns 0xFF where char > threshold-1, i.e., char >= threshold
+                let mask = _mm_cmpgt_epi8(char_vec, *thresh_vec);
+                let adj = _mm_and_si128(mask, *adj_vec);
+                idx_vec = _mm_sub_epi8(idx_vec, adj);
             }
 
-            // Pack 8 5-bit indices into 5 bytes
+            // SIMD validation
+            let invalid_mask = _mm_cmpgt_epi8(idx_vec, max_valid);
+            let any_invalid = _mm_movemask_epi8(invalid_mask);
+
+            // Safe: conditional check
+            if (any_invalid & 0xFF) != 0 {
+                return self.decode_scalar(encoded);
+            }
+
+            // Safe: array init
+            let mut indices = [0u8; 16];
+            // Unsafe: SIMD store
+            unsafe { _mm_storeu_si128(indices.as_mut_ptr() as *mut __m128i, idx_vec) };
+
+            // Safe: bit packing and push
             result.push((indices[0] << 3) | (indices[1] >> 2));
             result.push((indices[1] << 6) | (indices[2] << 1) | (indices[3] >> 4));
             result.push((indices[3] << 4) | (indices[4] >> 1));
@@ -923,7 +962,7 @@ impl GappedSequentialCodec {
             result.push((indices[6] << 5) | indices[7]);
         }
 
-        // Handle remainder
+        // Safe: remainder handling (no SIMD)
         if simd_chars < encoded_bytes.len() {
             let remainder = &encoded[simd_chars..];
             let bits_per_char = 5usize;
@@ -951,11 +990,14 @@ impl GappedSequentialCodec {
         Some(result)
     }
 
-    /// SSSE3-targeted 6-bit decoding (base64: 4 chars -> 3 bytes)
-    /// Currently uses scalar LUT lookup; SIMD bit-packing is a future optimization
+    /// SSSE3 6-bit decoding (base64: 4 chars -> 3 bytes)
+    /// Uses SIMD for parallel char-to-index conversion via inverse threshold method
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "ssse3")]
     unsafe fn decode_ssse3_6bit(&self, encoded: &str) -> Option<Vec<u8>> {
+        use std::arch::x86_64::*;
+
+        // Safe: constants, arithmetic, slice operations
         const INPUT_BLOCK: usize = 4;
 
         let encoded_bytes = encoded.as_bytes();
@@ -965,26 +1007,78 @@ impl GappedSequentialCodec {
         let num_blocks = encoded_bytes.len() / INPUT_BLOCK;
         let simd_chars = num_blocks * INPUT_BLOCK;
 
+        // SIMD vector initialization (safe in target_feature context)
+        let base_offset_vec = _mm_set1_epi8(self.gap_info.base_offset as i8);
+
+        // Threshold computation logic
+        let mut cumulative = 0u8;
+        let adjusted_thresholds: Vec<__m128i> = self
+            .gap_info
+            .thresholds
+            .iter()
+            .zip(&self.gap_info.adjustments)
+            .map(|(&t, &a)| {
+                let thresh = self
+                    .gap_info
+                    .base_offset
+                    .wrapping_add(t)
+                    .wrapping_add(cumulative);
+                cumulative = cumulative.wrapping_add(a);
+                _mm_set1_epi8(thresh.wrapping_sub(1) as i8)
+            })
+            .collect();
+
+        let adjustment_vecs: Vec<__m128i> = self
+            .gap_info
+            .adjustments
+            .iter()
+            .map(|&a| _mm_set1_epi8(a as i8))
+            .collect();
+
+        let max_valid = _mm_set1_epi8(63);
+
         for block in 0..num_blocks {
+            // Safe: offset calculation
             let offset = block * INPUT_BLOCK;
 
-            let mut indices = [0u8; 4];
-            for i in 0..4 {
-                let ch = encoded_bytes[offset + i];
-                let idx = self.decode_lut[ch as usize];
-                if idx == 0xFF {
-                    return None;
-                }
-                indices[i] = idx;
+            // Safe: array init and copy
+            let mut chars = [0u8; 16];
+            chars[..4].copy_from_slice(&encoded_bytes[offset..offset + INPUT_BLOCK]);
+
+            // Unsafe: SIMD load (pointer dereference)
+            let char_vec = unsafe { _mm_loadu_si128(chars.as_ptr() as *const __m128i) };
+
+            // SIMD arithmetic operations (safe in target_feature context)
+            let mut idx_vec = _mm_sub_epi8(char_vec, base_offset_vec);
+
+            // Subtract adjustment for each threshold the char exceeds
+            for (thresh_vec, adj_vec) in adjusted_thresholds.iter().zip(&adjustment_vecs) {
+                let mask = _mm_cmpgt_epi8(char_vec, *thresh_vec);
+                let adj = _mm_and_si128(mask, *adj_vec);
+                idx_vec = _mm_sub_epi8(idx_vec, adj);
             }
 
-            // Pack 4 6-bit indices into 3 bytes
+            // SIMD validation
+            let invalid_mask = _mm_cmpgt_epi8(idx_vec, max_valid);
+            let any_invalid = _mm_movemask_epi8(invalid_mask);
+
+            // Safe: conditional check
+            if (any_invalid & 0xF) != 0 {
+                return self.decode_scalar(encoded);
+            }
+
+            // Safe: array init
+            let mut indices = [0u8; 16];
+            // Unsafe: SIMD store
+            unsafe { _mm_storeu_si128(indices.as_mut_ptr() as *mut __m128i, idx_vec) };
+
+            // Safe: bit packing and push
             result.push((indices[0] << 2) | (indices[1] >> 4));
             result.push((indices[1] << 4) | (indices[2] >> 2));
             result.push((indices[2] << 6) | indices[3]);
         }
 
-        // Handle remainder
+        // Safe: remainder handling (no SIMD)
         if simd_chars < encoded_bytes.len() {
             let remainder = &encoded[simd_chars..];
             let bits_per_char = 6usize;
@@ -1012,11 +1106,14 @@ impl GappedSequentialCodec {
         Some(result)
     }
 
-    /// SSSE3-targeted 4-bit decoding (base16: 2 chars -> 1 byte)
-    /// Currently uses scalar LUT lookup; SIMD bit-packing is a future optimization
+    /// SSSE3 4-bit decoding (base16: 16 chars -> 8 bytes)
+    /// Uses SIMD for parallel char-to-index conversion via inverse threshold method
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "ssse3")]
     unsafe fn decode_ssse3_4bit(&self, encoded: &str) -> Option<Vec<u8>> {
+        use std::arch::x86_64::*;
+
+        // Safe: constants, arithmetic, slice operations
         const INPUT_BLOCK: usize = 16;
 
         let encoded_bytes = encoded.as_bytes();
@@ -1026,25 +1123,75 @@ impl GappedSequentialCodec {
         let num_blocks = encoded_bytes.len() / INPUT_BLOCK;
         let simd_chars = num_blocks * INPUT_BLOCK;
 
+        // SIMD vector initialization (safe in target_feature context)
+        let base_offset_vec = _mm_set1_epi8(self.gap_info.base_offset as i8);
+
+        // Threshold computation logic
+        let mut cumulative = 0u8;
+        let adjusted_thresholds: Vec<__m128i> = self
+            .gap_info
+            .thresholds
+            .iter()
+            .zip(&self.gap_info.adjustments)
+            .map(|(&t, &a)| {
+                let thresh = self
+                    .gap_info
+                    .base_offset
+                    .wrapping_add(t)
+                    .wrapping_add(cumulative);
+                cumulative = cumulative.wrapping_add(a);
+                _mm_set1_epi8(thresh.wrapping_sub(1) as i8)
+            })
+            .collect();
+
+        let adjustment_vecs: Vec<__m128i> = self
+            .gap_info
+            .adjustments
+            .iter()
+            .map(|&a| _mm_set1_epi8(a as i8))
+            .collect();
+
+        let max_valid = _mm_set1_epi8(15);
+
         for block in 0..num_blocks {
+            // Safe: offset calculation
             let offset = block * INPUT_BLOCK;
 
+            // Unsafe: SIMD load (pointer dereference)
+            let char_vec =
+                unsafe { _mm_loadu_si128(encoded_bytes[offset..].as_ptr() as *const __m128i) };
+
+            // SIMD arithmetic operations (safe in target_feature context)
+            let mut idx_vec = _mm_sub_epi8(char_vec, base_offset_vec);
+
+            // Subtract adjustment for each threshold the char exceeds
+            for (thresh_vec, adj_vec) in adjusted_thresholds.iter().zip(&adjustment_vecs) {
+                let mask = _mm_cmpgt_epi8(char_vec, *thresh_vec);
+                let adj = _mm_and_si128(mask, *adj_vec);
+                idx_vec = _mm_sub_epi8(idx_vec, adj);
+            }
+
+            // SIMD validation
+            let invalid_mask = _mm_cmpgt_epi8(idx_vec, max_valid);
+            let any_invalid = _mm_movemask_epi8(invalid_mask);
+
+            // Safe: conditional check
+            if any_invalid != 0 {
+                return self.decode_scalar(encoded);
+            }
+
+            // Safe: array init
+            let mut indices = [0u8; 16];
+            // Unsafe: SIMD store
+            unsafe { _mm_storeu_si128(indices.as_mut_ptr() as *mut __m128i, idx_vec) };
+
+            // Safe: bit packing and push
             for i in 0..8 {
-                let ch_hi = encoded_bytes[offset + i * 2];
-                let ch_lo = encoded_bytes[offset + i * 2 + 1];
-
-                let idx_hi = self.decode_lut[ch_hi as usize];
-                let idx_lo = self.decode_lut[ch_lo as usize];
-
-                if idx_hi == 0xFF || idx_lo == 0xFF {
-                    return None;
-                }
-
-                result.push((idx_hi << 4) | idx_lo);
+                result.push((indices[i * 2] << 4) | indices[i * 2 + 1]);
             }
         }
 
-        // Handle remainder
+        // Safe: remainder handling (no SIMD)
         if simd_chars < encoded_bytes.len() {
             let remainder = &encoded[simd_chars..];
             let bits_per_char = 4usize;
@@ -1085,10 +1232,13 @@ impl GappedSequentialCodec {
     }
 
     /// NEON 5-bit decoding (base32: 8 chars -> 5 bytes)
+    /// Uses SIMD for parallel char-to-index conversion via inverse threshold method
     #[cfg(target_arch = "aarch64")]
     #[target_feature(enable = "neon")]
-    #[allow(unsafe_op_in_unsafe_fn)]
     unsafe fn decode_neon_5bit(&self, encoded: &str) -> Option<Vec<u8>> {
+        use std::arch::aarch64::*;
+
+        // Safe: constants, arithmetic, slice operations
         const INPUT_BLOCK: usize = 8;
 
         let encoded_bytes = encoded.as_bytes();
@@ -1098,21 +1248,79 @@ impl GappedSequentialCodec {
         let num_blocks = encoded_bytes.len() / INPUT_BLOCK;
         let simd_chars = num_blocks * INPUT_BLOCK;
 
+        // SIMD vector initialization (safe in target_feature context)
+        // Pre-compute SIMD vectors for inverse threshold method
+        // For decode: index = char - base_offset - sum(char > adjusted_threshold[i])
+        let base_offset_vec = vdupq_n_u8(self.gap_info.base_offset);
+
+        // Threshold computation logic
+        // Build adjusted thresholds: the char value where each gap starts
+        let mut cumulative = 0u8;
+        let adjusted_thresholds: Vec<uint8x16_t> = self
+            .gap_info
+            .thresholds
+            .iter()
+            .zip(&self.gap_info.adjustments)
+            .map(|(&t, &a)| {
+                let thresh = self
+                    .gap_info
+                    .base_offset
+                    .wrapping_add(t)
+                    .wrapping_add(cumulative);
+                cumulative = cumulative.wrapping_add(a);
+                vdupq_n_u8(thresh) // vcgeq needs the threshold directly
+            })
+            .collect();
+
+        let adjustment_vecs: Vec<uint8x16_t> = self
+            .gap_info
+            .adjustments
+            .iter()
+            .map(|&a| vdupq_n_u8(a))
+            .collect();
+
+        let max_valid = vdupq_n_u8(31);
+
         for block in 0..num_blocks {
+            // Safe: offset calculation
             let offset = block * INPUT_BLOCK;
 
-            // Load and translate via LUT
-            let mut indices = [0u8; 8];
-            for i in 0..8 {
-                let ch = encoded_bytes[offset + i];
-                let idx = self.decode_lut[ch as usize];
-                if idx == 0xFF {
-                    return None;
-                }
-                indices[i] = idx;
+            // Safe: array init and copy
+            let mut chars = [0u8; 16];
+            chars[..8].copy_from_slice(&encoded_bytes[offset..offset + INPUT_BLOCK]);
+
+            // Unsafe: SIMD load (pointer dereference)
+            let char_vec = unsafe { vld1q_u8(chars.as_ptr()) };
+
+            // SIMD arithmetic operations (safe in target_feature context)
+            let mut idx_vec = vsubq_u8(char_vec, base_offset_vec);
+
+            // Subtract adjustment for each threshold the char exceeds
+            for (thresh_vec, adj_vec) in adjusted_thresholds.iter().zip(&adjustment_vecs) {
+                // vcgeq returns 0xFF where char >= threshold
+                let mask = vcgeq_u8(char_vec, *thresh_vec);
+                let adj = vandq_u8(mask, *adj_vec);
+                idx_vec = vsubq_u8(idx_vec, adj);
             }
 
-            // Pack 8 5-bit indices into 5 bytes
+            // SIMD validation
+            let invalid_mask = vcgtq_u8(idx_vec, max_valid);
+            // Safe: array init
+            let mut invalid_bytes = [0u8; 16];
+            // Unsafe: SIMD store
+            unsafe { vst1q_u8(invalid_bytes.as_mut_ptr(), invalid_mask) };
+
+            // Safe: conditional check
+            if invalid_bytes[..8].iter().any(|&b| b != 0) {
+                return self.decode_scalar(encoded);
+            }
+
+            // Safe: array init
+            let mut indices = [0u8; 16];
+            // Unsafe: SIMD store
+            unsafe { vst1q_u8(indices.as_mut_ptr(), idx_vec) };
+
+            // Safe: bit packing and push
             result.push((indices[0] << 3) | (indices[1] >> 2));
             result.push((indices[1] << 6) | (indices[2] << 1) | (indices[3] >> 4));
             result.push((indices[3] << 4) | (indices[4] >> 1));
@@ -1120,7 +1328,7 @@ impl GappedSequentialCodec {
             result.push((indices[6] << 5) | indices[7]);
         }
 
-        // Handle remainder
+        // Safe: remainder handling (no SIMD)
         if simd_chars < encoded_bytes.len() {
             let remainder = &encoded[simd_chars..];
             let bits_per_char = 5usize;
@@ -1149,10 +1357,13 @@ impl GappedSequentialCodec {
     }
 
     /// NEON 6-bit decoding (base64: 4 chars -> 3 bytes)
+    /// Uses SIMD for parallel char-to-index conversion via inverse threshold method
     #[cfg(target_arch = "aarch64")]
     #[target_feature(enable = "neon")]
-    #[allow(unsafe_op_in_unsafe_fn)]
     unsafe fn decode_neon_6bit(&self, encoded: &str) -> Option<Vec<u8>> {
+        use std::arch::aarch64::*;
+
+        // Safe: constants, arithmetic, slice operations
         const INPUT_BLOCK: usize = 4;
 
         let encoded_bytes = encoded.as_bytes();
@@ -1162,26 +1373,81 @@ impl GappedSequentialCodec {
         let num_blocks = encoded_bytes.len() / INPUT_BLOCK;
         let simd_chars = num_blocks * INPUT_BLOCK;
 
+        // SIMD vector initialization (safe in target_feature context)
+        let base_offset_vec = vdupq_n_u8(self.gap_info.base_offset);
+
+        // Threshold computation logic
+        let mut cumulative = 0u8;
+        let adjusted_thresholds: Vec<uint8x16_t> = self
+            .gap_info
+            .thresholds
+            .iter()
+            .zip(&self.gap_info.adjustments)
+            .map(|(&t, &a)| {
+                let thresh = self
+                    .gap_info
+                    .base_offset
+                    .wrapping_add(t)
+                    .wrapping_add(cumulative);
+                cumulative = cumulative.wrapping_add(a);
+                vdupq_n_u8(thresh)
+            })
+            .collect();
+
+        let adjustment_vecs: Vec<uint8x16_t> = self
+            .gap_info
+            .adjustments
+            .iter()
+            .map(|&a| vdupq_n_u8(a))
+            .collect();
+
+        let max_valid = vdupq_n_u8(63);
+
         for block in 0..num_blocks {
+            // Safe: offset calculation
             let offset = block * INPUT_BLOCK;
 
-            let mut indices = [0u8; 4];
-            for i in 0..4 {
-                let ch = encoded_bytes[offset + i];
-                let idx = self.decode_lut[ch as usize];
-                if idx == 0xFF {
-                    return None;
-                }
-                indices[i] = idx;
+            // Safe: array init and copy
+            let mut chars = [0u8; 16];
+            chars[..4].copy_from_slice(&encoded_bytes[offset..offset + INPUT_BLOCK]);
+
+            // Unsafe: SIMD load (pointer dereference)
+            let char_vec = unsafe { vld1q_u8(chars.as_ptr()) };
+
+            // SIMD arithmetic operations (safe in target_feature context)
+            let mut idx_vec = vsubq_u8(char_vec, base_offset_vec);
+
+            // Subtract adjustment for each threshold the char exceeds
+            for (thresh_vec, adj_vec) in adjusted_thresholds.iter().zip(&adjustment_vecs) {
+                let mask = vcgeq_u8(char_vec, *thresh_vec);
+                let adj = vandq_u8(mask, *adj_vec);
+                idx_vec = vsubq_u8(idx_vec, adj);
             }
 
-            // Pack 4 6-bit indices into 3 bytes
+            // SIMD validation
+            let invalid_mask = vcgtq_u8(idx_vec, max_valid);
+            // Safe: array init
+            let mut invalid_bytes = [0u8; 16];
+            // Unsafe: SIMD store
+            unsafe { vst1q_u8(invalid_bytes.as_mut_ptr(), invalid_mask) };
+
+            // Safe: conditional check
+            if invalid_bytes[..4].iter().any(|&b| b != 0) {
+                return self.decode_scalar(encoded);
+            }
+
+            // Safe: array init
+            let mut indices = [0u8; 16];
+            // Unsafe: SIMD store
+            unsafe { vst1q_u8(indices.as_mut_ptr(), idx_vec) };
+
+            // Safe: bit packing and push
             result.push((indices[0] << 2) | (indices[1] >> 4));
             result.push((indices[1] << 4) | (indices[2] >> 2));
             result.push((indices[2] << 6) | indices[3]);
         }
 
-        // Handle remainder
+        // Safe: remainder handling (no SIMD)
         if simd_chars < encoded_bytes.len() {
             let remainder = &encoded[simd_chars..];
             let bits_per_char = 6usize;
@@ -1209,11 +1475,14 @@ impl GappedSequentialCodec {
         Some(result)
     }
 
-    /// NEON 4-bit decoding (base16: 2 chars -> 1 byte)
+    /// NEON 4-bit decoding (base16: 16 chars -> 8 bytes)
+    /// Uses SIMD for parallel char-to-index conversion via inverse threshold method
     #[cfg(target_arch = "aarch64")]
     #[target_feature(enable = "neon")]
-    #[allow(unsafe_op_in_unsafe_fn)]
     unsafe fn decode_neon_4bit(&self, encoded: &str) -> Option<Vec<u8>> {
+        use std::arch::aarch64::*;
+
+        // Safe: constants, arithmetic, slice operations
         const INPUT_BLOCK: usize = 16;
 
         let encoded_bytes = encoded.as_bytes();
@@ -1223,25 +1492,77 @@ impl GappedSequentialCodec {
         let num_blocks = encoded_bytes.len() / INPUT_BLOCK;
         let simd_chars = num_blocks * INPUT_BLOCK;
 
+        // SIMD vector initialization (safe in target_feature context)
+        let base_offset_vec = vdupq_n_u8(self.gap_info.base_offset);
+
+        // Threshold computation logic
+        let mut cumulative = 0u8;
+        let adjusted_thresholds: Vec<uint8x16_t> = self
+            .gap_info
+            .thresholds
+            .iter()
+            .zip(&self.gap_info.adjustments)
+            .map(|(&t, &a)| {
+                let thresh = self
+                    .gap_info
+                    .base_offset
+                    .wrapping_add(t)
+                    .wrapping_add(cumulative);
+                cumulative = cumulative.wrapping_add(a);
+                vdupq_n_u8(thresh)
+            })
+            .collect();
+
+        let adjustment_vecs: Vec<uint8x16_t> = self
+            .gap_info
+            .adjustments
+            .iter()
+            .map(|&a| vdupq_n_u8(a))
+            .collect();
+
+        let max_valid = vdupq_n_u8(15);
+
         for block in 0..num_blocks {
+            // Safe: offset calculation
             let offset = block * INPUT_BLOCK;
 
+            // Unsafe: SIMD load (pointer dereference)
+            let char_vec = unsafe { vld1q_u8(encoded_bytes[offset..].as_ptr()) };
+
+            // SIMD arithmetic operations (safe in target_feature context)
+            let mut idx_vec = vsubq_u8(char_vec, base_offset_vec);
+
+            // Subtract adjustment for each threshold the char exceeds
+            for (thresh_vec, adj_vec) in adjusted_thresholds.iter().zip(&adjustment_vecs) {
+                let mask = vcgeq_u8(char_vec, *thresh_vec);
+                let adj = vandq_u8(mask, *adj_vec);
+                idx_vec = vsubq_u8(idx_vec, adj);
+            }
+
+            // SIMD validation
+            let invalid_mask = vcgtq_u8(idx_vec, max_valid);
+            // Safe: array init
+            let mut invalid_bytes = [0u8; 16];
+            // Unsafe: SIMD store
+            unsafe { vst1q_u8(invalid_bytes.as_mut_ptr(), invalid_mask) };
+
+            // Safe: conditional check
+            if invalid_bytes.iter().any(|&b| b != 0) {
+                return self.decode_scalar(encoded);
+            }
+
+            // Safe: array init
+            let mut indices = [0u8; 16];
+            // Unsafe: SIMD store
+            unsafe { vst1q_u8(indices.as_mut_ptr(), idx_vec) };
+
+            // Safe: bit packing and push
             for i in 0..8 {
-                let ch_hi = encoded_bytes[offset + i * 2];
-                let ch_lo = encoded_bytes[offset + i * 2 + 1];
-
-                let idx_hi = self.decode_lut[ch_hi as usize];
-                let idx_lo = self.decode_lut[ch_lo as usize];
-
-                if idx_hi == 0xFF || idx_lo == 0xFF {
-                    return None;
-                }
-
-                result.push((idx_hi << 4) | idx_lo);
+                result.push((indices[i * 2] << 4) | indices[i * 2 + 1]);
             }
         }
 
-        // Handle remainder
+        // Safe: remainder handling (no SIMD)
         if simd_chars < encoded_bytes.len() {
             let remainder = &encoded[simd_chars..];
             let bits_per_char = 4usize;
