@@ -5,7 +5,9 @@ use crate::cli::{
 use base_d::DictionaryRegistry;
 
 /// Available hash algorithms for listing
-const HASH_ALGORITHMS: &[&str] = &["md5", "sha256", "sha512", "blake3", "xxh64", "xxh3"];
+const HASH_ALGORITHMS: &[&str] = &[
+    "md5", "sha256", "sha512", "blake3", "ascon", "k12", "xxh64", "xxh3",
+];
 
 /// Available compression algorithms for listing
 const COMPRESS_ALGORITHMS: &[&str] = &["gzip", "zstd", "brotli", "lz4"];

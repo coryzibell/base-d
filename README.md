@@ -15,7 +15,7 @@ base-d is a flexible encoding framework that goes far beyond traditional base64.
 - **3 encoding modes** - Mathematical, chunked (RFC-compliant), and byte-range
 - **Auto-detection** - Automatically identify which dictionary was used to encode data
 - **Compression support** - Built-in gzip, zstd, brotli, lz4, snappy, and lzma compression with configurable levels
-- **Hashing support** - 24 hash algorithms: cryptographic (SHA-256, BLAKE3, etc.), CRC checksums, and xxHash including xxHash3 (pure Rust, no OpenSSL)
+- **Hashing support** - 26 hash algorithms: cryptographic (SHA-256, BLAKE3, Ascon, etc.), CRC checksums, and xxHash including xxHash3 (pure Rust, no OpenSSL)
 - **Custom dictionaries** - Define your own via TOML configuration
 - **Streaming support** - Memory-efficient processing for large files
 - **Library + CLI** - Use programmatically or from the command line
@@ -122,9 +122,11 @@ base-d decode base64 encoded.txt > output.txt
 # Compress large files efficiently
 base-d encode base64 --compress brotli --level 11 large_file.bin > compressed.txt
 
-# Hash files (supported: md5, sha256, sha512, blake3, crc32, xxhash64, xxhash3, and more)
+# Hash files (supported: md5, sha256, sha512, blake3, ascon, k12, crc32, xxhash64, xxhash3, and more)
 echo "hello world" | base-d hash sha256
 echo "hello world" | base-d hash blake3 --encode base64
+echo "hello world" | base-d hash ascon
+echo "hello world" | base-d hash k12
 echo "hello world" | base-d hash crc32
 echo "hello world" | base-d hash xxhash3
 base-d hash sha256 document.pdf

@@ -24,6 +24,8 @@ base-d includes built-in support for multiple hash algorithms including cryptogr
 | **BLAKE2b** | `--hash blake2b` | 512 bits (64 bytes) | Fastest, high security |
 | **BLAKE2s** | `--hash blake2s` | 256 bits (32 bytes) | Fast, optimized for 32-bit |
 | **BLAKE3** | `--hash blake3` | 256 bits (32 bytes) | Fastest modern hash |
+| **Ascon** | `--hash ascon` | 256 bits (32 bytes) | Lightweight, IoT/embedded |
+| **KangarooTwelve** | `--hash k12` | 256 bits (32 bytes) | High-speed, XOF capability |
 
 ### CRC Checksums (Non-Cryptographic)
 
@@ -71,6 +73,14 @@ echo "hello world" | base-d --hash xxhash64
 # xxHash3 (newest, fastest)
 echo "hello world" | base-d --hash xxhash3
 # Output: d42f7ed4b73c6bde
+
+# Ascon (lightweight for IoT/embedded)
+echo "hello world" | base-d --hash ascon
+# Output: <32-byte hash in hex>
+
+# KangarooTwelve (high-speed with XOF)
+echo "hello world" | base-d --hash k12
+# Output: <32-byte hash in hex>
 ```
 
 ### xxHash Configuration
@@ -200,7 +210,7 @@ echo "data" | base-d --hash sha512 | base-d --compress gzip -e base64
 
 ### Security Recommendations
 
-- ✅ **Recommended**: SHA-256, SHA-512, SHA3-*, BLAKE2*, BLAKE3
+- ✅ **Recommended**: SHA-256, SHA-512, SHA3-*, BLAKE2*, BLAKE3, Ascon, K12
 - ⚠️ **Legacy/Specific Use**: SHA-224, SHA-384, Keccak-* (Ethereum)
 - ❌ **NOT Secure**: MD5 (collisions known, use only for checksums)
 
@@ -209,13 +219,15 @@ echo "data" | base-d --hash sha512 | base-d --compress gzip -e base64
 **Cryptographic Hashes** (Relative speeds on modern hardware):
 
 1. **BLAKE3**: ~1000 MB/s (fastest, parallelized)
-2. **BLAKE2b**: ~800 MB/s
-3. **BLAKE2s**: ~700 MB/s
-4. **MD5**: ~600 MB/s (not secure)
-5. **SHA-512**: ~500 MB/s (faster than SHA-256 on 64-bit)
-6. **SHA-256**: ~300 MB/s
-7. **SHA3-256**: ~150 MB/s
-8. **Keccak-256**: ~150 MB/s
+2. **K12** (KangarooTwelve): ~800 MB/s (high-speed XOF)
+3. **BLAKE2b**: ~800 MB/s
+4. **BLAKE2s**: ~700 MB/s
+5. **MD5**: ~600 MB/s (not secure)
+6. **SHA-512**: ~500 MB/s (faster than SHA-256 on 64-bit)
+7. **SHA-256**: ~300 MB/s
+8. **Ascon**: ~150 MB/s (optimized for constrained devices)
+9. **SHA3-256**: ~150 MB/s
+10. **Keccak-256**: ~150 MB/s
 
 **Non-Cryptographic** (Much faster):
 
@@ -231,9 +243,11 @@ echo "data" | base-d --hash sha512 | base-d --compress gzip -e base64
 |----------|----------------------|
 | **Cryptographic** | |
 | General checksums | SHA-256, BLAKE3 |
-| High-speed checksums | BLAKE3, BLAKE2b |
+| High-speed checksums | BLAKE3, K12 |
 | Cryptographic signatures | SHA-256, SHA-512 |
 | File integrity (secure) | SHA-256, BLAKE2b |
+| IoT/Embedded devices | Ascon |
+| High-speed with XOF | K12 (KangarooTwelve) |
 | Ethereum/blockchain | Keccak-256 |
 | **Non-Cryptographic** | |
 | File integrity (fast) | CRC32, CRC32C |
@@ -267,6 +281,8 @@ All hash algorithms are implemented in **pure Rust** with:
 - `blake2` - BLAKE2b and BLAKE2s
 - `blake3` - BLAKE3 (Rust-first design)
 - `md-5` - MD5 (legacy)
+- `ascon-hash` - Ascon (lightweight authenticated encryption)
+- `k12` - KangarooTwelve (high-speed XOF)
 
 **Non-Cryptographic**:
 - `crc` - CRC16, CRC32, CRC32C, CRC64

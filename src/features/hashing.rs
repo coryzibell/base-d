@@ -1,7 +1,9 @@
+use ascon_hash::{AsconHash256, Digest as AsconDigest};
 use blake2::{Blake2b512, Blake2s256};
 use blake3::Hasher as Blake3Hasher;
+use k12::KangarooTwelve;
 use md5::Md5;
-use sha2::{Digest, Sha224, Sha256, Sha384, Sha512};
+use sha2::{Sha224, Sha256, Sha384, Sha512};
 use sha3::{Keccak224, Keccak256, Keccak384, Keccak512, Sha3_224, Sha3_256, Sha3_384, Sha3_512};
 use std::hash::Hasher;
 use twox_hash::xxhash3_64::Hasher as Xxh3Hash64;
@@ -68,6 +70,9 @@ pub enum HashAlgorithm {
     XxHash64,
     XxHash3_64,
     XxHash3_128,
+    // Modern hash algorithms
+    Ascon,
+    K12,
 }
 
 impl HashAlgorithm {
@@ -98,6 +103,8 @@ impl HashAlgorithm {
             HashAlgorithm::XxHash64,
             HashAlgorithm::XxHash3_64,
             HashAlgorithm::XxHash3_128,
+            HashAlgorithm::Ascon,
+            HashAlgorithm::K12,
         ]
     }
 
@@ -136,6 +143,8 @@ impl HashAlgorithm {
             "xxhash64" | "xxh64" => Ok(HashAlgorithm::XxHash64),
             "xxhash3" | "xxh3" | "xxhash3-64" | "xxh3-64" => Ok(HashAlgorithm::XxHash3_64),
             "xxhash3-128" | "xxh3-128" => Ok(HashAlgorithm::XxHash3_128),
+            "ascon" => Ok(HashAlgorithm::Ascon),
+            "k12" | "kangarootwelve" => Ok(HashAlgorithm::K12),
             _ => Err(format!("Unknown hash algorithm: {}", s)),
         }
     }
@@ -166,6 +175,8 @@ impl HashAlgorithm {
             HashAlgorithm::XxHash64 => "xxhash64",
             HashAlgorithm::XxHash3_64 => "xxhash3-64",
             HashAlgorithm::XxHash3_128 => "xxhash3-128",
+            HashAlgorithm::Ascon => "ascon",
+            HashAlgorithm::K12 => "k12",
         }
     }
 
@@ -196,6 +207,8 @@ impl HashAlgorithm {
             HashAlgorithm::XxHash64 => 8,
             HashAlgorithm::XxHash3_64 => 8,
             HashAlgorithm::XxHash3_128 => 16,
+            HashAlgorithm::Ascon => 32,
+            HashAlgorithm::K12 => 32,
         }
     }
 }
@@ -341,6 +354,22 @@ pub fn hash_with_config(data: &[u8], algorithm: HashAlgorithm, config: &XxHashCo
             hasher.write(data);
             hasher.finish_128().to_be_bytes().to_vec()
         }
+        HashAlgorithm::Ascon => {
+            let mut hasher = AsconHash256::new();
+            hasher.update(data);
+            hasher.finalize().to_vec()
+        }
+        HashAlgorithm::K12 => {
+            use k12::digest::ExtendableOutput;
+            use k12::digest::Update;
+            use k12::digest::XofReader;
+            let mut hasher = KangarooTwelve::new();
+            hasher.update(data);
+            let mut reader = hasher.finalize_xof();
+            let mut output = vec![0u8; 32];
+            reader.read(&mut output);
+            output
+        }
     }
 }
 
@@ -430,6 +459,8 @@ mod tests {
         assert_eq!(HashAlgorithm::XxHash64.output_size(), 8);
         assert_eq!(HashAlgorithm::XxHash3_64.output_size(), 8);
         assert_eq!(HashAlgorithm::XxHash3_128.output_size(), 16);
+        assert_eq!(HashAlgorithm::Ascon.output_size(), 32);
+        assert_eq!(HashAlgorithm::K12.output_size(), 32);
     }
 
     #[test]
@@ -561,5 +592,25 @@ mod tests {
         let h1 = hash_with_config(data, HashAlgorithm::XxHash32, &XxHashConfig::with_seed(0));
         let h2 = hash_with_config(data, HashAlgorithm::XxHash32, &XxHashConfig::with_seed(999));
         assert_ne!(h1, h2);
+    }
+
+    #[test]
+    fn test_ascon() {
+        let data = b"hello world";
+        let result = hash(data, HashAlgorithm::Ascon);
+        assert_eq!(result.len(), 32);
+        // Ascon is deterministic
+        let result2 = hash(data, HashAlgorithm::Ascon);
+        assert_eq!(result, result2);
+    }
+
+    #[test]
+    fn test_k12() {
+        let data = b"hello world";
+        let result = hash(data, HashAlgorithm::K12);
+        assert_eq!(result.len(), 32);
+        // K12 is deterministic
+        let result2 = hash(data, HashAlgorithm::K12);
+        assert_eq!(result, result2);
     }
 }

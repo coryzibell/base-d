@@ -41,6 +41,8 @@ blake3 = "1.8.2"
 md-5 = "0.10.6"
 twox-hash = { version = "2.1.2", default-features = false, features = ["std", "xxhash32", "xxhash64", "xxhash3_64", "xxhash3_128"] }
 crc = "3.3.0"
+ascon-hash = "0.3.1"
+k12 = "0.2.1"
 hex = "0.4.3"
 shellexpand = "3.1"
 
@@ -61,3 +63,13 @@ path = "src/lib.rs"
 [[bench]]
 name = "encoding"
 harness = false
+
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ target }{ archive-suffix }"
+pkg-fmt = "tgz"
+
+[package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
+pkg-fmt = "zip"
+
+[package.metadata.binstall.overrides.aarch64-pc-windows-msvc]
+pkg-fmt = "zip"
