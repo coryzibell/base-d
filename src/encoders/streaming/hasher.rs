@@ -27,6 +27,8 @@ pub(super) enum HasherWriter {
     XxHash64(twox_hash::XxHash64),
     XxHash3_64(twox_hash::xxhash3_64::Hasher),
     XxHash3_128(twox_hash::xxhash3_128::Hasher),
+    Ascon(ascon_hash::AsconHash256),
+    K12(k12::KangarooTwelve),
 }
 
 impl HasherWriter {
@@ -107,6 +109,14 @@ impl HasherWriter {
             HasherWriter::XxHash3_128(h) => {
                 h.write(data);
             }
+            HasherWriter::Ascon(h) => {
+                use ascon_hash::Digest as AsconDigest;
+                h.update(data);
+            }
+            HasherWriter::K12(h) => {
+                use k12::digest::Update;
+                h.update(data);
+            }
         }
     }
 
@@ -143,6 +153,18 @@ impl HasherWriter {
                 let mut result = Vec::with_capacity(16);
                 result.extend_from_slice(&hash.to_be_bytes());
                 result
+            }
+            HasherWriter::Ascon(h) => {
+                use ascon_hash::Digest as AsconDigest;
+                h.finalize().to_vec()
+            }
+            HasherWriter::K12(h) => {
+                use k12::digest::ExtendableOutput;
+                use k12::digest::XofReader;
+                let mut reader = h.finalize_xof();
+                let mut output = vec![0u8; 32];
+                reader.read(&mut output);
+                output
             }
         }
     }
@@ -223,5 +245,10 @@ pub(super) fn create_hasher_writer(
                 HasherWriter::XxHash3_128(twox_hash::xxhash3_128::Hasher::with_seed(config.seed))
             }
         }
+        HashAlgorithm::Ascon => {
+            use ascon_hash::Digest;
+            HasherWriter::Ascon(ascon_hash::AsconHash256::new())
+        }
+        HashAlgorithm::K12 => HasherWriter::K12(k12::KangarooTwelve::new()),
     }
 }

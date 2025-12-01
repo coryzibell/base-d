@@ -83,7 +83,9 @@ pub fn select_random_dictionary(
 
 /// Available hash algorithms for random selection
 #[allow(dead_code)]
-pub const HASH_ALGORITHMS: &[&str] = &["md5", "sha256", "sha512", "blake3", "xxh64", "xxh3"];
+pub const HASH_ALGORITHMS: &[&str] = &[
+    "md5", "sha256", "sha512", "blake3", "ascon", "k12", "xxh64", "xxh3",
+];
 
 /// Available compression algorithms for random selection
 pub const COMPRESS_ALGORITHMS: &[&str] = &["gzip", "zstd", "brotli", "lz4"];
