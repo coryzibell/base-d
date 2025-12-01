@@ -12,6 +12,37 @@ pub enum CompressionAlgorithm {
 }
 
 impl CompressionAlgorithm {
+    /// Returns all available compression algorithms.
+    pub fn all() -> Vec<CompressionAlgorithm> {
+        vec![
+            CompressionAlgorithm::Gzip,
+            CompressionAlgorithm::Zstd,
+            CompressionAlgorithm::Brotli,
+            CompressionAlgorithm::Lz4,
+            CompressionAlgorithm::Snappy,
+            CompressionAlgorithm::Lzma,
+        ]
+    }
+
+    /// Select a random compression algorithm.
+    pub fn random() -> CompressionAlgorithm {
+        use rand::prelude::IndexedRandom;
+        let all = Self::all();
+        *all.choose(&mut rand::rng()).unwrap()
+    }
+
+    /// Get default compression level for this algorithm.
+    pub fn default_level(&self) -> u32 {
+        match self {
+            CompressionAlgorithm::Gzip => 6,
+            CompressionAlgorithm::Zstd => 3,
+            CompressionAlgorithm::Brotli => 6,
+            CompressionAlgorithm::Lz4 => 0,    // LZ4 ignores level
+            CompressionAlgorithm::Snappy => 0, // Snappy ignores level
+            CompressionAlgorithm::Lzma => 6,
+        }
+    }
+
     /// Parse compression algorithm from string.
     #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Result<Self, String> {

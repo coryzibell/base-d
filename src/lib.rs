@@ -149,7 +149,13 @@ mod features;
 mod simd;
 
 pub mod bench;
+pub mod convenience;
+pub mod prelude;
 
+pub use convenience::{
+    CompressEncodeResult, HashEncodeResult, compress_encode, compress_encode_with, hash_encode,
+    hash_encode_with,
+};
 pub use core::config::{
     CompressionConfig, DictionaryConfig, DictionaryRegistry, EncodingMode, Settings,
 };

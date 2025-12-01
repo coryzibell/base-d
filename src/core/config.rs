@@ -280,6 +280,118 @@ impl DictionaryRegistry {
     pub fn get_dictionary(&self, name: &str) -> Option<&DictionaryConfig> {
         self.dictionaries.get(name)
     }
+
+    /// Builds a ready-to-use Dictionary from a named configuration.
+    ///
+    /// This is a convenience method that handles the common pattern of:
+    /// 1. Looking up the dictionary config
+    /// 2. Getting effective chars
+    /// 3. Building the Dictionary with proper mode/padding
+    ///
+    /// # Example
+    /// ```
+    /// # use base_d::DictionaryRegistry;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let registry = DictionaryRegistry::load_default()?;
+    /// let dict = registry.dictionary("base64")?;
+    /// let encoded = base_d::encode(b"Hello", &dict);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn dictionary(
+        &self,
+        name: &str,
+    ) -> Result<crate::Dictionary, crate::encoders::algorithms::errors::DictionaryNotFoundError>
+    {
+        let config = self.get_dictionary(name).ok_or_else(|| {
+            crate::encoders::algorithms::errors::DictionaryNotFoundError::new(name)
+        })?;
+
+        self.build_dictionary(config).map_err(|e| {
+            crate::encoders::algorithms::errors::DictionaryNotFoundError::with_cause(name, e)
+        })
+    }
+
+    /// Returns a random dictionary suitable for encoding.
+    ///
+    /// Only selects from dictionaries marked as `common = true` (the default).
+    /// These are dictionaries that render consistently across platforms.
+    ///
+    /// # Example
+    /// ```
+    /// # use base_d::DictionaryRegistry;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let registry = DictionaryRegistry::load_default()?;
+    /// let (name, dict) = registry.random()?;
+    /// let encoded = base_d::encode(b"Hello", &dict);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn random(&self) -> Result<(String, crate::Dictionary), Box<dyn std::error::Error>> {
+        use rand::seq::IteratorRandom;
+
+        let common_names: Vec<&String> = self
+            .dictionaries
+            .iter()
+            .filter(|(_, config)| config.common)
+            .map(|(name, _)| name)
+            .collect();
+
+        let name = common_names
+            .into_iter()
+            .choose(&mut rand::rng())
+            .ok_or("No common dictionaries available")?;
+
+        let dict = self.dictionary(name)?;
+        Ok((name.clone(), dict))
+    }
+
+    /// Returns a list of all dictionary names.
+    pub fn names(&self) -> Vec<&str> {
+        self.dictionaries.keys().map(|s| s.as_str()).collect()
+    }
+
+    /// Returns a list of common dictionary names (suitable for random selection).
+    pub fn common_names(&self) -> Vec<&str> {
+        self.dictionaries
+            .iter()
+            .filter(|(_, config)| config.common)
+            .map(|(name, _)| name.as_str())
+            .collect()
+    }
+
+    /// Internal helper to build a Dictionary from a DictionaryConfig.
+    fn build_dictionary(&self, config: &DictionaryConfig) -> Result<crate::Dictionary, String> {
+        use crate::core::config::EncodingMode;
+
+        let mode = config.effective_mode();
+
+        // ByteRange mode uses start_codepoint, not chars
+        if mode == EncodingMode::ByteRange {
+            let start = config
+                .start_codepoint
+                .ok_or("ByteRange mode requires start_codepoint")?;
+            return crate::Dictionary::builder()
+                .mode(mode)
+                .start_codepoint(start)
+                .build();
+        }
+
+        // Get effective chars (handles both explicit and range-based)
+        let chars_str = config.effective_chars()?;
+        let chars: Vec<char> = chars_str.chars().collect();
+
+        // Build with optional padding
+        let mut builder = crate::Dictionary::builder().chars(chars).mode(mode);
+
+        if let Some(pad_str) = &config.padding
+            && let Some(pad_char) = pad_str.chars().next()
+        {
+            builder = builder.padding(pad_char);
+        }
+
+        builder.build()
+    }
 }
 
 #[cfg(test)]
