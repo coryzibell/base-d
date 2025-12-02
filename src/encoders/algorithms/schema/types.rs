@@ -119,6 +119,7 @@ pub struct SchemaHeader {
     pub row_count: usize,
     pub fields: Vec<FieldDef>,
     pub null_bitmap: Option<Vec<u8>>,
+    pub metadata: Option<std::collections::HashMap<String, String>>,
 }
 
 impl SchemaHeader {
@@ -130,6 +131,7 @@ impl SchemaHeader {
             row_count,
             fields,
             null_bitmap: None,
+            metadata: None,
         }
     }
 
