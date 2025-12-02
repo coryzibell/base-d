@@ -1,5 +1,5 @@
 use crate::cli::{args::FicheArgs, global::GlobalArgs};
-use base_d::{DictionaryRegistry, decode_fiche, encode_fiche};
+use base_d::{DictionaryRegistry, decode_fiche, encode_fiche, encode_fiche_minified};
 use std::fs;
 use std::io::{self, Read};
 
@@ -21,6 +21,9 @@ pub fn handle(
     let output = if args.decode {
         // Fiche → JSON
         decode_fiche(input_text.trim(), args.pretty)?
+    } else if args.minify {
+        // JSON → Fiche (minified single line)
+        encode_fiche_minified(input_text.trim())?
     } else {
         // JSON → Fiche
         encode_fiche(input_text.trim())?

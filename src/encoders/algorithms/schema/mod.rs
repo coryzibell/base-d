@@ -156,10 +156,22 @@ pub fn decode_schema(encoded: &str, pretty: bool) -> Result<String, SchemaError>
 /// // ◉1┃alice
 /// ```
 pub fn encode_fiche(json: &str) -> Result<String, SchemaError> {
+    encode_fiche_with_options(json, false)
+}
+
+pub fn encode_fiche_minified(json: &str) -> Result<String, SchemaError> {
+    encode_fiche_with_options(json, true)
+}
+
+fn encode_fiche_with_options(json: &str, minify: bool) -> Result<String, SchemaError> {
     use parsers::{InputParser, JsonParser};
 
     let ir = JsonParser::parse(json)?;
-    fiche::serialize(&ir)
+    if minify {
+        fiche::serialize_minified(&ir)
+    } else {
+        fiche::serialize(&ir)
+    }
 }
 
 /// Decode fiche format to JSON: fiche → IR → JSON

@@ -222,6 +222,10 @@ pub struct FicheArgs {
     #[arg(short = 'p', long)]
     pub pretty: bool,
 
+    /// Minify output to single line (encode only)
+    #[arg(short = 'm', long)]
+    pub minify: bool,
+
     /// Output file (writes to stdout if not provided)
     #[arg(short = 'o', long)]
     pub output: Option<PathBuf>,

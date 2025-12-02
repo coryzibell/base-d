@@ -66,7 +66,19 @@ pub const TYPE_BOOL: &str = "bool";
 
 /// Serialize IR to fiche format
 pub fn serialize(ir: &IntermediateRepresentation) -> Result<String, SchemaError> {
+    serialize_with_options(ir, false)
+}
+
+pub fn serialize_minified(ir: &IntermediateRepresentation) -> Result<String, SchemaError> {
+    serialize_with_options(ir, true)
+}
+
+fn serialize_with_options(
+    ir: &IntermediateRepresentation,
+    minify: bool,
+) -> Result<String, SchemaError> {
     let mut output = String::new();
+    let line_sep = if minify { SPACE_MARKER } else { '\n' };
 
     // Schema line: @{root}┃{field}:{type}...
     output.push('@');
@@ -80,7 +92,7 @@ pub fn serialize(ir: &IntermediateRepresentation) -> Result<String, SchemaError>
         output.push(':');
         output.push_str(&field_type_to_str(&field.field_type));
     }
-    output.push('\n');
+    output.push(line_sep);
 
     // Data rows: ◉{value}┃{value}...
     let field_count = ir.header.fields.len();
@@ -101,10 +113,12 @@ pub fn serialize(ir: &IntermediateRepresentation) -> Result<String, SchemaError>
                 output.push_str(&value_to_str(value, &field.field_type));
             }
         }
-        output.push('\n');
+        if row < ir.header.row_count - 1 {
+            output.push(line_sep);
+        }
     }
 
-    Ok(output.trim_end().to_string())
+    Ok(output)
 }
 
 /// Parse fiche format to IR
@@ -126,8 +140,8 @@ pub fn parse(input: &str) -> Result<IntermediateRepresentation, SchemaError> {
         ));
     };
 
-    // Parse schema line
-    let schema_line = schema_part.trim();
+    // Parse schema line (strip minified line separator if present)
+    let schema_line = schema_part.trim().trim_end_matches(SPACE_MARKER);
     if !schema_line.starts_with('@') {
         return Err(SchemaError::InvalidInput(
             "Schema line must start with @".to_string(),
@@ -172,7 +186,8 @@ pub fn parse(input: &str) -> Result<IntermediateRepresentation, SchemaError> {
 
     // Split by row marker
     for row_str in data_part.split(ROW_START) {
-        let row_str = row_str.trim();
+        // Trim whitespace and minified line separator
+        let row_str = row_str.trim().trim_end_matches(SPACE_MARKER);
         if row_str.is_empty() {
             continue;
         }
@@ -584,5 +599,40 @@ mod tests {
         assert!(output.contains("Luke▓Skywalker"));
         assert!(output.contains("Tatooine▓Desert▓Planet"));
         assert_eq!(output, fiche);
+    }
+
+    #[test]
+    fn test_minified_output() {
+        // Test that minified output uses ▓ for line breaks and roundtrips correctly
+        let fiche_normal = "@users┃id:int┃name:str
+◉1┃alice
+◉2┃bob";
+
+        let ir = parse(fiche_normal).unwrap();
+
+        // Serialize minified
+        let minified = serialize_minified(&ir).unwrap();
+        assert!(!minified.contains('\n'), "Minified should have no newlines");
+        assert!(
+            minified.contains('▓'),
+            "Minified should use ▓ as line separator"
+        );
+        assert_eq!(minified, "@users┃id:int┃name:str▓◉1┃alice▓◉2┃bob");
+
+        // Parse minified back
+        let ir2 = parse(&minified).unwrap();
+        assert_eq!(ir2.header.row_count, 2);
+
+        // Values should match
+        if let Some(SchemaValue::String(name)) = ir2.get_value(0, 1) {
+            assert_eq!(name, "alice");
+        } else {
+            panic!("Expected string");
+        }
+        if let Some(SchemaValue::String(name)) = ir2.get_value(1, 1) {
+            assert_eq!(name, "bob");
+        } else {
+            panic!("Expected string");
+        }
     }
 }
