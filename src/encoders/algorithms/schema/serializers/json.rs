@@ -46,17 +46,43 @@ impl OutputSerializer for JsonSerializer {
         }
 
         // Determine output format
-        let result = if ir.header.row_count == 1 {
-            // Single row - output as object
+        let result = if ir.header.row_count == 1 && ir.header.metadata.is_none() {
+            // Single row without metadata - output as object
             unflattened_rows.into_iter().next().unwrap()
         } else {
-            // Multiple rows - output as array
+            // Multiple rows OR single row with metadata - output as array
             Value::Array(unflattened_rows)
         };
 
-        // Apply root key if present
+        // Apply root key and metadata if present
         let final_result = if let Some(root_key) = &ir.header.root_key {
             let mut obj = Map::new();
+
+            // Add metadata fields first (if present)
+            if let Some(ref metadata) = ir.header.metadata {
+                for (key, value) in metadata {
+                    // Convert ∅ symbol back to JSON null
+                    let json_value = if value == "∅" {
+                        Value::Null
+                    } else {
+                        // Try to parse as number, bool, or keep as string
+                        if let Ok(num) = value.parse::<i64>() {
+                            json!(num)
+                        } else if let Ok(num) = value.parse::<f64>() {
+                            json!(num)
+                        } else if value == "true" {
+                            json!(true)
+                        } else if value == "false" {
+                            json!(false)
+                        } else {
+                            json!(value)
+                        }
+                    };
+                    obj.insert(key.clone(), json_value);
+                }
+            }
+
+            // Add array data under root key
             obj.insert(root_key.clone(), result);
             Value::Object(obj)
         } else {
@@ -308,5 +334,35 @@ mod tests {
         let compact_value: Value = serde_json::from_str(&compact).unwrap();
         let pretty_value: Value = serde_json::from_str(&pretty).unwrap();
         assert_eq!(compact_value, pretty_value);
+    }
+
+    #[test]
+    fn test_metadata_with_null() {
+        use std::collections::HashMap;
+
+        let fields = vec![FieldDef::new("id", FieldType::U64)];
+        let mut header = SchemaHeader::new(2, fields);
+        header.root_key = Some("users".to_string());
+        header.set_flag(FLAG_HAS_ROOT_KEY);
+
+        let mut metadata = HashMap::new();
+        metadata.insert("note".to_string(), "∅".to_string());
+        metadata.insert("total".to_string(), "2".to_string());
+        header.metadata = Some(metadata);
+
+        let values = vec![SchemaValue::U64(1), SchemaValue::U64(2)];
+        let ir = IntermediateRepresentation::new(header, values).unwrap();
+
+        let output = JsonSerializer::serialize(&ir, false).unwrap();
+        let parsed: Value = serde_json::from_str(&output).unwrap();
+
+        // Check metadata was reconstructed
+        assert_eq!(parsed["note"], Value::Null);
+        assert_eq!(parsed["total"], json!(2));
+
+        // Check array data
+        assert!(parsed["users"].is_array());
+        assert_eq!(parsed["users"][0]["id"], json!(1));
+        assert_eq!(parsed["users"][1]["id"], json!(2));
     }
 }

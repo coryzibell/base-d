@@ -99,6 +99,7 @@ fn unpack_header(cursor: &mut Cursor) -> Result<SchemaHeader, SchemaError> {
         row_count,
         fields,
         null_bitmap,
+        metadata: None, // Binary format doesn't preserve metadata (it's a fiche-only feature)
     })
 }
 

@@ -82,10 +82,28 @@ fn serialize_with_options(
     let mut output = String::new();
     let line_sep = if minify { SPACE_MARKER } else { '\n' };
 
-    // Schema line: @{root}┃{field}:{type}...
+    // Schema line: @{root}[meta1=val1,meta2=val2]┃{field}:{type}...
     output.push('@');
     if let Some(ref root_key) = ir.header.root_key {
         output.push_str(root_key);
+    }
+
+    // Add metadata annotation if present
+    if let Some(ref metadata) = ir.header.metadata {
+        output.push('[');
+        let mut sorted_keys: Vec<&String> = metadata.keys().collect();
+        sorted_keys.sort(); // Deterministic order for roundtrip
+        for (idx, key) in sorted_keys.iter().enumerate() {
+            if idx > 0 {
+                output.push(',');
+            }
+            output.push_str(key);
+            output.push('=');
+            // Replace spaces with SPACE_MARKER in metadata values
+            let value = metadata[*key].replace(' ', &SPACE_MARKER.to_string());
+            output.push_str(&value);
+        }
+        output.push(']');
     }
 
     for field in &ir.header.fields {
@@ -151,23 +169,67 @@ pub fn parse(input: &str) -> Result<IntermediateRepresentation, SchemaError> {
     }
 
     let schema_content = &schema_line[1..]; // Remove @
-    let schema_parts: Vec<&str> = schema_content.split(FIELD_SEP).collect();
 
-    // First part is root key (may be empty)
-    let root_key = if schema_parts.is_empty() || schema_parts[0].is_empty() {
-        None
-    } else if schema_parts[0].contains(':') {
-        // No root key, first part is a field
-        None
+    // Check for metadata annotation: @root[key=val,...]┃field:type...
+    let (root_and_metadata, field_defs) = if let Some(sep_pos) = schema_content.find(FIELD_SEP) {
+        (&schema_content[..sep_pos], &schema_content[sep_pos..])
     } else {
-        Some(schema_parts[0].to_string())
+        return Err(SchemaError::InvalidInput(
+            "Schema line must contain at least one field definition".to_string(),
+        ));
+    };
+
+    // Parse root key and metadata
+    let (root_key, metadata) = if let Some(bracket_start) = root_and_metadata.find('[') {
+        let root = &root_and_metadata[..bracket_start];
+        let root_key = if root.is_empty() {
+            None
+        } else {
+            Some(root.to_string())
+        };
+
+        if let Some(bracket_end) = root_and_metadata.find(']') {
+            let meta_str = &root_and_metadata[bracket_start + 1..bracket_end];
+            let mut metadata = std::collections::HashMap::new();
+
+            // Parse key=value pairs
+            for pair in meta_str.split(',') {
+                if let Some(eq_pos) = pair.find('=') {
+                    let key = pair[..eq_pos].trim().to_string();
+                    let value = pair[eq_pos + 1..].trim().replace(SPACE_MARKER, " ");
+                    metadata.insert(key, value);
+                }
+            }
+
+            (
+                root_key,
+                if metadata.is_empty() {
+                    None
+                } else {
+                    Some(metadata)
+                },
+            )
+        } else {
+            return Err(SchemaError::InvalidInput(
+                "Unclosed metadata bracket in schema".to_string(),
+            ));
+        }
+    } else {
+        // No metadata, check for root key
+        let root = root_and_metadata.trim();
+        let root_key = if root.is_empty() || root.contains(':') {
+            None
+        } else {
+            Some(root.to_string())
+        };
+        (root_key, None)
     };
 
     // Parse field definitions
-    let field_start = if root_key.is_some() { 1 } else { 0 };
+    let schema_parts: Vec<&str> = field_defs.split(FIELD_SEP).collect();
     let mut fields = Vec::new();
 
-    for part in schema_parts.iter().skip(field_start) {
+    for part in &schema_parts {
         if part.is_empty() {
             continue;
         }
@@ -232,6 +294,7 @@ pub fn parse(input: &str) -> Result<IntermediateRepresentation, SchemaError> {
         header.root_key = root_key;
         header.set_flag(FLAG_HAS_ROOT_KEY);
     }
+    header.metadata = metadata;
 
     // Build null bitmap if we have nulls
     if !null_positions.is_empty() {
@@ -636,5 +699,51 @@ mod tests {
         } else {
             panic!("Expected string");
         }
+    }
+
+    #[test]
+    fn test_metadata_annotation() {
+        let fiche = "@students[class=Year▓1,school_name=Springfield▓High]┃id:str
+◉A1
+◉B2";
+
+        let ir = parse(fiche).unwrap();
+        assert_eq!(ir.header.root_key, Some("students".to_string()));
+        assert_eq!(ir.header.row_count, 2);
+
+        // Check metadata
+        assert!(ir.header.metadata.is_some());
+        let metadata = ir.header.metadata.as_ref().unwrap();
+        assert_eq!(
+            metadata.get("school_name"),
+            Some(&"Springfield High".to_string())
+        );
+        assert_eq!(metadata.get("class"), Some(&"Year 1".to_string()));
+
+        // Check roundtrip
+        let output = serialize(&ir).unwrap();
+        assert!(output.contains("[class=Year▓1,school_name=Springfield▓High]"));
+        assert_eq!(output, fiche);
+    }
+
+    #[test]
+    fn test_metadata_minified() {
+        let fiche = "@students[class=Year▓1,school_name=Springfield▓High]┃id:str▓◉A1▓◉B2";
+
+        let ir = parse(fiche).unwrap();
+        assert_eq!(ir.header.row_count, 2);
+
+        // Check metadata
+        assert!(ir.header.metadata.is_some());
+        let metadata = ir.header.metadata.as_ref().unwrap();
+        assert_eq!(
+            metadata.get("school_name"),
+            Some(&"Springfield High".to_string())
+        );
+        assert_eq!(metadata.get("class"), Some(&"Year 1".to_string()));
+
+        // Check minified roundtrip
+        let output = serialize_minified(&ir).unwrap();
+        assert_eq!(output, fiche);
     }
 }

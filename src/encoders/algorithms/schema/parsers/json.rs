@@ -133,6 +133,58 @@ fn parse_object(obj: Map<String, Value>) -> Result<IntermediateRepresentation, S
     // Check for common pagination wrapper keys
     const WRAPPER_KEYS: &[&str] = &["results", "data", "items", "records"];
 
+    // Check for metadata pattern: scalar fields + one array field
+    let mut array_field: Option<(String, Vec<Value>)> = None;
+    let mut scalar_fields: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+
+    for (key, value) in &obj {
+        match value {
+            Value::Array(arr)
+                if !arr.is_empty() && arr.iter().all(|item| matches!(item, Value::Object(_))) =>
+            {
+                if array_field.is_none() {
+                    array_field = Some((key.clone(), arr.clone()));
+                } else {
+                    // Multiple arrays - not metadata pattern
+                    array_field = None;
+                    scalar_fields.clear();
+                    break;
+                }
+            }
+            Value::String(s) => {
+                scalar_fields.insert(key.clone(), s.clone());
+            }
+            Value::Number(n) => {
+                scalar_fields.insert(key.clone(), n.to_string());
+            }
+            Value::Bool(b) => {
+                scalar_fields.insert(key.clone(), b.to_string());
+            }
+            Value::Null => {
+                // Encode null metadata as ∅ symbol
+                scalar_fields.insert(key.clone(), "∅".to_string());
+            }
+            _ => {
+                // Non-scalar or nested object - not metadata pattern
+                scalar_fields.clear();
+                array_field = None;
+                break;
+            }
+        }
+    }
+
+    // If we have exactly one array field and at least one scalar field, extract metadata
+    if let Some((array_key, arr)) = array_field
+        && !scalar_fields.is_empty()
+    {
+        let mut ir = parse_array(arr)?;
+        ir.header.root_key = Some(array_key);
+        ir.header.set_flag(FLAG_HAS_ROOT_KEY);
+        ir.header.metadata = Some(scalar_fields);
+        return Ok(ir);
+    }
+
     // Check if this is a wrapper object with one of the known keys
     if obj.len() == 1 {
         // Check if value is an array of objects before consuming
@@ -598,5 +650,44 @@ mod tests {
             .find(|f| f.name == "person჻tags")
             .unwrap();
         assert!(matches!(tags_field.field_type, FieldType::Array(_)));
+    }
+
+    #[test]
+    fn test_metadata_pattern() {
+        let input = r#"{"school_name": "Springfield High", "class": "Year 1", "students": [{"id": "A1"}, {"id": "B2"}]}"#;
+        let ir = JsonParser::parse(input).unwrap();
+
+        // Should extract metadata
+        assert!(ir.header.metadata.is_some());
+        let metadata = ir.header.metadata.as_ref().unwrap();
+        assert_eq!(
+            metadata.get("school_name"),
+            Some(&"Springfield High".to_string())
+        );
+        assert_eq!(metadata.get("class"), Some(&"Year 1".to_string()));
+
+        // Array becomes the data rows
+        assert_eq!(ir.header.root_key, Some("students".to_string()));
+        assert_eq!(ir.header.row_count, 2);
+        assert_eq!(ir.header.fields.len(), 1);
+        assert_eq!(ir.header.fields[0].name, "id");
+    }
+
+    #[test]
+    fn test_metadata_with_null() {
+        let input = r#"{"note": null, "total": 2, "users": [{"id": 1}, {"id": 2}]}"#;
+        let ir = JsonParser::parse(input).unwrap();
+
+        // Should extract metadata including null
+        assert!(ir.header.metadata.is_some());
+        let metadata = ir.header.metadata.as_ref().unwrap();
+        assert_eq!(metadata.get("note"), Some(&"∅".to_string()));
+        assert_eq!(metadata.get("total"), Some(&"2".to_string()));
+
+        // Array data
+        assert_eq!(ir.header.root_key, Some("users".to_string()));
+        assert_eq!(ir.header.row_count, 2);
+        assert_eq!(ir.header.fields.len(), 1);
+        assert_eq!(ir.header.fields[0].name, "id");
     }
 }
