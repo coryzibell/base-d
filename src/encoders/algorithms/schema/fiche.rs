@@ -39,6 +39,24 @@ pub const ROW_START: char = '◉'; // U+25C9 fisheye
 pub const FIELD_SEP: char = '┃'; // U+2503 heavy pipe
 pub const ARRAY_SEP: char = '◈'; // U+25C8 diamond in diamond
 pub const NULL_VALUE: &str = "∅"; // U+2205 empty set
+pub const SPACE_MARKER: char = '⸱'; // U+2E31 Word Separator Middle Dot
+
+// Nested depth markers (circled numbers)
+const DEPTH_MARKERS: [char; 20] = [
+    '①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩', '⑪', '⑫', '⑬', '⑭', '⑮', '⑯', '⑰', '⑱', '⑲',
+    '⑳',
+];
+
+fn get_depth_marker(depth: usize) -> char {
+    if depth == 0 {
+        ROW_START
+    } else if depth <= DEPTH_MARKERS.len() {
+        DEPTH_MARKERS[depth - 1]
+    } else {
+        // Fallback for extremely deep nesting
+        DEPTH_MARKERS[DEPTH_MARKERS.len() - 1]
+    }
+}
 
 // Type names in fiche schema
 pub const TYPE_INT: &str = "int";
@@ -175,8 +193,13 @@ pub fn parse(input: &str) -> Result<IntermediateRepresentation, SchemaError> {
             let value_str = value_str.trim();
 
             if value_str == NULL_VALUE {
-                null_positions.push(row_count * fields.len() + field_idx);
-                values.push(SchemaValue::Null);
+                // For array fields, ∅ means empty array, not null
+                if matches!(field.field_type, FieldType::Array(_)) {
+                    values.push(SchemaValue::Array(vec![]));
+                } else {
+                    null_positions.push(row_count * fields.len() + field_idx);
+                    values.push(SchemaValue::Null);
+                }
             } else {
                 let value = parse_value(value_str, &field.field_type)?;
                 values.push(value);
@@ -218,7 +241,7 @@ fn field_type_to_str(ft: &FieldType) -> String {
         FieldType::String => TYPE_STR.to_string(),
         FieldType::Bool => TYPE_BOOL.to_string(),
         FieldType::Null => TYPE_STR.to_string(), // Nulls rendered as str type
-        FieldType::Array(inner) => format!("{}[]", field_type_to_str(inner)),
+        FieldType::Array(_) => "@".to_string(),  // Nested content marker
         FieldType::Any => TYPE_STR.to_string(),
     }
 }
@@ -235,8 +258,9 @@ fn parse_type_str(s: &str) -> Result<FieldType, SchemaError> {
         TYPE_STR => Ok(FieldType::String),
         TYPE_FLOAT => Ok(FieldType::F64),
         TYPE_BOOL => Ok(FieldType::Bool),
+        "@" => Ok(FieldType::Array(Box::new(FieldType::String))), // Nested content, assume string array
         _ => Err(SchemaError::InvalidInput(format!(
-            "Unknown type '{}'. Valid types: int, str, float, bool",
+            "Unknown type '{}'. Valid types: int, str, float, bool, @",
             s
         ))),
     }
@@ -260,6 +284,11 @@ fn parse_field_def(s: &str) -> Result<(String, FieldType), SchemaError> {
 
 /// Convert SchemaValue to fiche string
 fn value_to_str(value: &SchemaValue, field_type: &FieldType) -> String {
+    value_to_str_depth(value, field_type, 1)
+}
+
+/// Convert SchemaValue to fiche string with depth tracking
+fn value_to_str_depth(value: &SchemaValue, field_type: &FieldType, depth: usize) -> String {
     match value {
         SchemaValue::U64(n) => n.to_string(),
         SchemaValue::I64(n) => n.to_string(),
@@ -271,19 +300,29 @@ fn value_to_str(value: &SchemaValue, field_type: &FieldType) -> String {
                 n.to_string()
             }
         }
-        SchemaValue::String(s) => s.clone(),
+        SchemaValue::String(s) => s.replace(' ', &SPACE_MARKER.to_string()),
         SchemaValue::Bool(b) => b.to_string(),
         SchemaValue::Null => NULL_VALUE.to_string(),
         SchemaValue::Array(arr) => {
+            if arr.is_empty() {
+                return NULL_VALUE.to_string();
+            }
+
             let inner_type = if let FieldType::Array(inner) = field_type {
                 inner.as_ref()
             } else {
                 &FieldType::String
             };
-            arr.iter()
-                .map(|v| value_to_str(v, inner_type))
-                .collect::<Vec<_>>()
-                .join(&ARRAY_SEP.to_string())
+
+            let marker = get_depth_marker(depth);
+            let marker_str = marker.to_string();
+            let elements: Vec<String> = arr
+                .iter()
+                .map(|v| value_to_str_depth(v, inner_type, depth + 1))
+                .collect();
+
+            // Prepend marker to first element and join rest with marker
+            format!("{}{}", marker_str, elements.join(&marker_str))
         }
     }
 }
@@ -303,7 +342,7 @@ fn parse_value(s: &str, field_type: &FieldType) -> Result<SchemaValue, SchemaErr
             .parse::<f64>()
             .map(SchemaValue::F64)
             .map_err(|_| SchemaError::InvalidInput(format!("Invalid float: '{}'", s))),
-        FieldType::String => Ok(SchemaValue::String(s.to_string())),
+        FieldType::String => Ok(SchemaValue::String(s.replace(SPACE_MARKER, " "))),
         FieldType::Bool => match s {
             "true" => Ok(SchemaValue::Bool(true)),
             "false" => Ok(SchemaValue::Bool(false)),
@@ -314,16 +353,48 @@ fn parse_value(s: &str, field_type: &FieldType) -> Result<SchemaValue, SchemaErr
         },
         FieldType::Null => Ok(SchemaValue::Null),
         FieldType::Array(inner) => {
-            if s.is_empty() {
+            if s.is_empty() || s == NULL_VALUE {
                 return Ok(SchemaValue::Array(vec![]));
             }
-            let elements: Result<Vec<_>, _> = s
-                .split(ARRAY_SEP)
+            // Try splitting by depth markers first (①, ②, etc.)
+            let elements: Result<Vec<_>, _> = split_by_depth_markers(s)
+                .into_iter()
                 .map(|elem| parse_value(elem.trim(), inner))
                 .collect();
             elements.map(SchemaValue::Array)
         }
         FieldType::Any => Ok(SchemaValue::String(s.to_string())),
+    }
+}
+
+/// Split a string by depth markers (①, ②, etc.) or fallback to ARRAY_SEP
+fn split_by_depth_markers(s: &str) -> Vec<&str> {
+    // Check if any depth markers are present
+    let has_depth_markers = DEPTH_MARKERS.iter().any(|&marker| s.contains(marker));
+
+    if has_depth_markers {
+        // Split by any depth marker
+        let mut result = Vec::new();
+        let mut current_start = 0;
+
+        for (idx, ch) in s.char_indices() {
+            if DEPTH_MARKERS.contains(&ch) {
+                if current_start < idx {
+                    result.push(&s[current_start..idx]);
+                }
+                current_start = idx + ch.len_utf8();
+            }
+        }
+
+        // Add remaining part
+        if current_start < s.len() {
+            result.push(&s[current_start..]);
+        }
+
+        result
+    } else {
+        // Fallback to ARRAY_SEP (backward compatibility)
+        s.split(ARRAY_SEP).collect()
     }
 }
 
@@ -354,7 +425,8 @@ mod tests {
     }
 
     #[test]
-    fn test_arrays() {
+    fn test_arrays_legacy_syntax() {
+        // Test backward compatibility with old str[] syntax
         let fiche = "@users┃id:int┃tags:str[]
 ◉1┃admin◈editor
 ◉2┃viewer";
@@ -369,8 +441,9 @@ mod tests {
             panic!("Expected array");
         }
 
+        // Note: output uses new @ syntax
         let output = serialize(&ir).unwrap();
-        assert_eq!(output, fiche);
+        assert!(output.contains("tags:@"));
     }
 
     #[test]
@@ -390,7 +463,7 @@ mod tests {
     #[test]
     fn test_embedded_json() {
         let fiche = r#"@logs┃level:str┃msg:str
-◉error┃Failed to parse {"key": "value"}"#;
+◉error┃Failed⸱to⸱parse⸱{"key":⸱"value"}"#;
 
         let ir = parse(fiche).unwrap();
 
@@ -423,5 +496,93 @@ mod tests {
             parse_type_str("str[]"),
             Ok(FieldType::Array(box_inner)) if *box_inner == FieldType::String
         ));
+    }
+
+    #[test]
+    fn test_nested_arrays() {
+        let fiche = "@people┃name:str┃height:str┃films:@┃vehicles:@
+◉Luke┃172┃①film/1①film/2┃∅
+◉Leia┃150┃①film/1┃①vehicle/30";
+
+        let ir = parse(fiche).unwrap();
+        assert_eq!(ir.header.row_count, 2);
+        assert_eq!(ir.header.fields.len(), 4);
+
+        // Check Luke's name (scalar string)
+        if let Some(SchemaValue::String(name)) = ir.get_value(0, 0) {
+            assert_eq!(name, "Luke");
+        } else {
+            panic!("Expected string");
+        }
+
+        // Check Luke's height
+        if let Some(SchemaValue::String(height)) = ir.get_value(0, 1) {
+            assert_eq!(height, "172");
+        } else {
+            panic!("Expected string");
+        }
+
+        // Check Luke's films (array)
+        if let Some(SchemaValue::Array(films)) = ir.get_value(0, 2) {
+            assert_eq!(films.len(), 2);
+            if let SchemaValue::String(film) = &films[0] {
+                assert_eq!(film, "film/1");
+            } else {
+                panic!("Expected string");
+            }
+        } else {
+            panic!("Expected array");
+        }
+
+        // Check Luke's empty vehicles
+        if let Some(SchemaValue::Array(vehicles)) = ir.get_value(0, 3) {
+            assert_eq!(vehicles.len(), 0);
+        } else {
+            panic!("Expected array");
+        }
+
+        // Check Leia's vehicles
+        if let Some(SchemaValue::Array(vehicles)) = ir.get_value(1, 3) {
+            assert_eq!(vehicles.len(), 1);
+            if let SchemaValue::String(vehicle) = &vehicles[0] {
+                assert_eq!(vehicle, "vehicle/30");
+            } else {
+                panic!("Expected string");
+            }
+        } else {
+            panic!("Expected array");
+        }
+
+        let output = serialize(&ir).unwrap();
+        assert_eq!(output, fiche);
+    }
+
+    #[test]
+    fn test_space_preservation() {
+        let fiche = "@people┃name:str┃home:str
+◉Luke⸱Skywalker┃Tatooine⸱Desert⸱Planet
+◉Leia⸱Organa┃Alderaan";
+
+        let ir = parse(fiche).unwrap();
+        assert_eq!(ir.header.row_count, 2);
+
+        // Check decoded values have spaces
+        if let Some(SchemaValue::String(name)) = ir.get_value(0, 0) {
+            assert_eq!(name, "Luke Skywalker");
+        } else {
+            panic!("Expected string");
+        }
+
+        if let Some(SchemaValue::String(home)) = ir.get_value(0, 1) {
+            assert_eq!(home, "Tatooine Desert Planet");
+        } else {
+            panic!("Expected string");
+        }
+
+        // Check re-encoding produces minified spaces
+        let output = serialize(&ir).unwrap();
+        assert!(output.contains("Luke⸱Skywalker"));
+        assert!(output.contains("Tatooine⸱Desert⸱Planet"));
+        assert_eq!(output, fiche);
     }
 }

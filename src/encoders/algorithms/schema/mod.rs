@@ -420,6 +420,65 @@ mod integration_tests {
     }
 
     #[test]
+    fn test_json_swapi_nested_arrays() {
+        // SWAPI-like data with nested arrays of primitives
+        let input = r#"{"people":[{"name":"Luke","height":"172","films":["film/1","film/2"],"vehicles":[]},{"name":"C-3PO","height":"167","films":["film/1","film/2","film/3"],"vehicles":[]}]}"#;
+        let ir = JsonParser::parse(input).unwrap();
+
+        // Verify fiche representation
+        let fiche_output = fiche::serialize(&ir).unwrap();
+
+        // Should have @people root key
+        assert!(fiche_output.starts_with("@people"));
+        // Should have @ markers for array fields
+        assert!(fiche_output.contains("films:@"));
+        assert!(fiche_output.contains("vehicles:@"));
+        // Should have circled numbers for nested elements
+        assert!(fiche_output.contains("①"));
+
+        // Verify round trip
+        let binary = pack(&ir);
+        let ir2 = unpack(&binary).unwrap();
+        let output = JsonSerializer::serialize(&ir2, false).unwrap();
+
+        let input_value: serde_json::Value = serde_json::from_str(input).unwrap();
+        let output_value: serde_json::Value = serde_json::from_str(&output).unwrap();
+        assert_eq!(input_value, output_value);
+    }
+
+    #[test]
+    fn test_json_wrapper_keys() {
+        // Test common pagination wrapper keys get unwrapped
+        let test_cases = vec![
+            r#"{"results":[{"id":1,"name":"a"},{"id":2,"name":"b"}]}"#,
+            r#"{"data":[{"id":1,"name":"a"},{"id":2,"name":"b"}]}"#,
+            r#"{"items":[{"id":1,"name":"a"},{"id":2,"name":"b"}]}"#,
+            r#"{"records":[{"id":1,"name":"a"},{"id":2,"name":"b"}]}"#,
+        ];
+
+        for input in test_cases {
+            let ir = JsonParser::parse(input).unwrap();
+
+            // Should have root key from wrapper
+            assert!(ir.header.root_key.is_some());
+            let root = ir.header.root_key.as_ref().unwrap();
+            assert!(root == "results" || root == "data" || root == "items" || root == "records");
+
+            // Should have 2 rows (unwrapped the array)
+            assert_eq!(ir.header.row_count, 2);
+
+            // Round trip should preserve data
+            let binary = pack(&ir);
+            let ir2 = unpack(&binary).unwrap();
+            let output = JsonSerializer::serialize(&ir2, false).unwrap();
+
+            let input_value: serde_json::Value = serde_json::from_str(input).unwrap();
+            let output_value: serde_json::Value = serde_json::from_str(&output).unwrap();
+            assert_eq!(input_value, output_value);
+        }
+    }
+
+    #[test]
     fn test_json_nested_objects() {
         let input = r#"{"user":{"profile":{"name":"alice","age":30}}}"#;
         let ir = JsonParser::parse(input).unwrap();
