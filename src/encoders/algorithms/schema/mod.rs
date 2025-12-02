@@ -46,8 +46,8 @@ pub fn decode_schema(encoded: &str) -> Result<String, SchemaError> {
 mod integration_tests {
     use super::*;
     use crate::encoders::algorithms::schema::types::{
-        FieldDef, FieldType, IntermediateRepresentation, SchemaHeader, SchemaValue,
-        FLAG_HAS_NULLS, FLAG_HAS_ROOT_KEY,
+        FLAG_HAS_NULLS, FLAG_HAS_ROOT_KEY, FieldDef, FieldType, IntermediateRepresentation,
+        SchemaHeader, SchemaValue,
     };
     use parsers::{InputParser, JsonParser};
     use serializers::{JsonSerializer, OutputSerializer};
