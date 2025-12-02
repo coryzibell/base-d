@@ -144,6 +144,27 @@ cat secret.bin | base-d hash xxhash3 --secret-stdin data.bin
 cargo install base-d
 ```
 
+## Schema Encoding
+
+LLM-to-LLM wire protocol for structured data. Binary-packed, display-safe, parser-inert.
+
+```bash
+# Encode JSON
+echo '{"users":[{"id":1,"name":"alice"}]}' | base-d schema
+# Output: 𓍹╣◟╥◕◝▰◣◥▟╺▖◘▰◝▤◀╧𓍺
+
+# Decode
+echo '𓍹╣◟╥◕◝▰◣◥▟╺▖◘▰◝▤◀╧𓍺' | base-d schema -d
+
+# With compression
+base-d schema -c brotli input.json
+
+# Pretty output
+base-d schema -d --pretty encoded.txt
+```
+
+See [SCHEMA.md](SCHEMA.md) for format specification.
+
 ## Usage
 
 ### As a Library

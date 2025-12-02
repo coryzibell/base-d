@@ -33,7 +33,10 @@ impl<'a> Cursor<'a> {
 
     fn read_byte(&mut self) -> Result<u8, SchemaError> {
         if self.pos >= self.data.len() {
-            return Err(SchemaError::UnexpectedEndOfData);
+            return Err(SchemaError::UnexpectedEndOfData {
+                context: "reading single byte".to_string(),
+                position: self.pos,
+            });
         }
         let byte = self.data[self.pos];
         self.pos += 1;
@@ -42,7 +45,10 @@ impl<'a> Cursor<'a> {
 
     fn read_bytes(&mut self, count: usize) -> Result<&'a [u8], SchemaError> {
         if self.remaining() < count {
-            return Err(SchemaError::UnexpectedEndOfData);
+            return Err(SchemaError::UnexpectedEndOfData {
+                context: format!("reading {} bytes", count),
+                position: self.pos,
+            });
         }
         let bytes = &self.data[self.pos..self.pos + count];
         self.pos += count;
@@ -57,19 +63,22 @@ fn unpack_header(cursor: &mut Cursor) -> Result<SchemaHeader, SchemaError> {
 
     // Root key (if present)
     let root_key = if flags & FLAG_HAS_ROOT_KEY != 0 {
-        let len = decode_varint(cursor)? as usize;
+        let len = decode_varint(cursor, "root key length")? as usize;
         let bytes = cursor.read_bytes(len)?;
-        let key = String::from_utf8(bytes.to_vec()).map_err(SchemaError::InvalidUtf8)?;
+        let key = String::from_utf8(bytes.to_vec()).map_err(|e| SchemaError::InvalidUtf8 {
+            context: "root key".to_string(),
+            error: e,
+        })?;
         Some(key)
     } else {
         None
     };
 
     // Row count
-    let row_count = decode_varint(cursor)? as usize;
+    let row_count = decode_varint(cursor, "row count")? as usize;
 
     // Field count
-    let field_count = decode_varint(cursor)? as usize;
+    let field_count = decode_varint(cursor, "field count")? as usize;
 
     // Field types
     let fields = unpack_field_types(cursor, field_count)?;
@@ -99,24 +108,28 @@ fn unpack_field_types(
     field_count: usize,
 ) -> Result<Vec<FieldDef>, SchemaError> {
     // Read type buffer length
-    let type_buffer_len = decode_varint(cursor)? as usize;
+    let type_buffer_len = decode_varint(cursor, "type buffer length")? as usize;
     let type_bytes = cursor.read_bytes(type_buffer_len)?;
 
     // Parse field types from nibbles
     let mut types = Vec::new();
     let mut nibble_cursor = NibbleCursor::new(type_bytes);
 
-    for _ in 0..field_count {
-        let field_type = unpack_field_type_recursive(&mut nibble_cursor)?;
+    for i in 0..field_count {
+        let field_type = unpack_field_type_recursive(&mut nibble_cursor, i)?;
         types.push(field_type);
     }
 
     // Read field names
     let mut fields = Vec::new();
-    for field_type in types {
-        let name_len = decode_varint(cursor)? as usize;
+    for (idx, field_type) in types.into_iter().enumerate() {
+        let name_len = decode_varint(cursor, &format!("field {} name length", idx))? as usize;
         let name_bytes = cursor.read_bytes(name_len)?;
-        let name = String::from_utf8(name_bytes.to_vec()).map_err(SchemaError::InvalidUtf8)?;
+        let name =
+            String::from_utf8(name_bytes.to_vec()).map_err(|e| SchemaError::InvalidUtf8 {
+                context: format!("field {} name", idx),
+                error: e,
+            })?;
         fields.push(FieldDef::new(name, field_type));
     }
 
@@ -141,7 +154,10 @@ impl<'a> NibbleCursor<'a> {
 
     fn read_nibble(&mut self) -> Result<u8, SchemaError> {
         if self.pos >= self.bytes.len() {
-            return Err(SchemaError::UnexpectedEndOfData);
+            return Err(SchemaError::UnexpectedEndOfData {
+                context: "reading type tag nibble".to_string(),
+                position: self.pos,
+            });
         }
 
         let byte = self.bytes[self.pos];
@@ -159,15 +175,30 @@ impl<'a> NibbleCursor<'a> {
 }
 
 /// Unpack a field type recursively
-fn unpack_field_type_recursive(cursor: &mut NibbleCursor) -> Result<FieldType, SchemaError> {
+fn unpack_field_type_recursive(
+    cursor: &mut NibbleCursor,
+    field_index: usize,
+) -> Result<FieldType, SchemaError> {
     let tag = cursor.read_nibble()?;
 
     if tag == 6 {
         // Array type - recursively read element type
-        let element_type = Box::new(unpack_field_type_recursive(cursor)?);
-        FieldType::from_type_tag(tag, Some(element_type))
+        let element_type = Box::new(unpack_field_type_recursive(cursor, field_index)?);
+        FieldType::from_type_tag(tag, Some(element_type)).map_err(|e| match e {
+            SchemaError::InvalidTypeTag { tag, .. } => SchemaError::InvalidTypeTag {
+                tag,
+                context: Some(format!("field {} type definition", field_index)),
+            },
+            other => other,
+        })
     } else {
-        FieldType::from_type_tag(tag, None)
+        FieldType::from_type_tag(tag, None).map_err(|e| match e {
+            SchemaError::InvalidTypeTag { tag, .. } => SchemaError::InvalidTypeTag {
+                tag,
+                context: Some(format!("field {} type definition", field_index)),
+            },
+            other => other,
+        })
     }
 }
 
@@ -204,11 +235,11 @@ fn unpack_values(
 fn unpack_value(cursor: &mut Cursor, field_type: &FieldType) -> Result<SchemaValue, SchemaError> {
     match field_type {
         FieldType::U64 => {
-            let v = decode_varint(cursor)?;
+            let v = decode_varint(cursor, "u64 value")?;
             Ok(SchemaValue::U64(v))
         }
         FieldType::I64 => {
-            let v = decode_signed_varint(cursor)?;
+            let v = decode_signed_varint(cursor, "i64 value")?;
             Ok(SchemaValue::I64(v))
         }
         FieldType::F64 => {
@@ -217,9 +248,12 @@ fn unpack_value(cursor: &mut Cursor, field_type: &FieldType) -> Result<SchemaVal
             Ok(SchemaValue::F64(v))
         }
         FieldType::String => {
-            let len = decode_varint(cursor)? as usize;
+            let len = decode_varint(cursor, "string length")? as usize;
             let bytes = cursor.read_bytes(len)?;
-            let s = String::from_utf8(bytes.to_vec()).map_err(SchemaError::InvalidUtf8)?;
+            let s = String::from_utf8(bytes.to_vec()).map_err(|e| SchemaError::InvalidUtf8 {
+                context: "string value".to_string(),
+                error: e,
+            })?;
             Ok(SchemaValue::String(s))
         }
         FieldType::Bool => {
@@ -228,7 +262,7 @@ fn unpack_value(cursor: &mut Cursor, field_type: &FieldType) -> Result<SchemaVal
         }
         FieldType::Null => Ok(SchemaValue::Null),
         FieldType::Array(element_type) => {
-            let count = decode_varint(cursor)? as usize;
+            let count = decode_varint(cursor, "array element count")? as usize;
             let mut arr = Vec::new();
             for _ in 0..count {
                 let item = unpack_value(cursor, element_type)?;
@@ -246,13 +280,17 @@ fn unpack_value(cursor: &mut Cursor, field_type: &FieldType) -> Result<SchemaVal
 }
 
 /// Decode unsigned varint (LEB128)
-fn decode_varint(cursor: &mut Cursor) -> Result<u64, SchemaError> {
+fn decode_varint(cursor: &mut Cursor, context: &str) -> Result<u64, SchemaError> {
+    let start_pos = cursor.pos;
     let mut result = 0u64;
     let mut shift = 0;
 
     loop {
         if shift >= 64 {
-            return Err(SchemaError::InvalidVarint);
+            return Err(SchemaError::InvalidVarint {
+                context: context.to_string(),
+                position: start_pos,
+            });
         }
 
         let byte = cursor.read_byte()?;
@@ -268,8 +306,8 @@ fn decode_varint(cursor: &mut Cursor) -> Result<u64, SchemaError> {
 }
 
 /// Decode signed varint using zigzag decoding
-fn decode_signed_varint(cursor: &mut Cursor) -> Result<i64, SchemaError> {
-    let encoded = decode_varint(cursor)?;
+fn decode_signed_varint(cursor: &mut Cursor, context: &str) -> Result<i64, SchemaError> {
+    let encoded = decode_varint(cursor, context)?;
     let decoded = ((encoded >> 1) as i64) ^ (-((encoded & 1) as i64));
     Ok(decoded)
 }
@@ -282,50 +320,50 @@ mod tests {
     fn test_decode_varint() {
         let data = vec![0];
         let mut cursor = Cursor::new(&data);
-        assert_eq!(decode_varint(&mut cursor).unwrap(), 0);
+        assert_eq!(decode_varint(&mut cursor, "test").unwrap(), 0);
 
         let data = vec![1];
         let mut cursor = Cursor::new(&data);
-        assert_eq!(decode_varint(&mut cursor).unwrap(), 1);
+        assert_eq!(decode_varint(&mut cursor, "test").unwrap(), 1);
 
         let data = vec![127];
         let mut cursor = Cursor::new(&data);
-        assert_eq!(decode_varint(&mut cursor).unwrap(), 127);
+        assert_eq!(decode_varint(&mut cursor, "test").unwrap(), 127);
 
         let data = vec![0x80, 0x01];
         let mut cursor = Cursor::new(&data);
-        assert_eq!(decode_varint(&mut cursor).unwrap(), 128);
+        assert_eq!(decode_varint(&mut cursor, "test").unwrap(), 128);
 
         let data = vec![0xFF, 0x7F];
         let mut cursor = Cursor::new(&data);
-        assert_eq!(decode_varint(&mut cursor).unwrap(), 16383);
+        assert_eq!(decode_varint(&mut cursor, "test").unwrap(), 16383);
 
         let data = vec![0x80, 0x80, 0x01];
         let mut cursor = Cursor::new(&data);
-        assert_eq!(decode_varint(&mut cursor).unwrap(), 16384);
+        assert_eq!(decode_varint(&mut cursor, "test").unwrap(), 16384);
     }
 
     #[test]
     fn test_decode_signed_varint() {
         let data = vec![0];
         let mut cursor = Cursor::new(&data);
-        assert_eq!(decode_signed_varint(&mut cursor).unwrap(), 0);
+        assert_eq!(decode_signed_varint(&mut cursor, "test").unwrap(), 0);
 
         let data = vec![1];
         let mut cursor = Cursor::new(&data);
-        assert_eq!(decode_signed_varint(&mut cursor).unwrap(), -1);
+        assert_eq!(decode_signed_varint(&mut cursor, "test").unwrap(), -1);
 
         let data = vec![2];
         let mut cursor = Cursor::new(&data);
-        assert_eq!(decode_signed_varint(&mut cursor).unwrap(), 1);
+        assert_eq!(decode_signed_varint(&mut cursor, "test").unwrap(), 1);
 
         let data = vec![127];
         let mut cursor = Cursor::new(&data);
-        assert_eq!(decode_signed_varint(&mut cursor).unwrap(), -64);
+        assert_eq!(decode_signed_varint(&mut cursor, "test").unwrap(), -64);
 
         let data = vec![128, 1];
         let mut cursor = Cursor::new(&data);
-        assert_eq!(decode_signed_varint(&mut cursor).unwrap(), 64);
+        assert_eq!(decode_signed_varint(&mut cursor, "test").unwrap(), 64);
     }
 
     #[test]
@@ -337,7 +375,7 @@ mod tests {
             binary_packer::encode_varint(&mut buf, value);
 
             let mut cursor = Cursor::new(&buf);
-            let decoded = decode_varint(&mut cursor).unwrap();
+            let decoded = decode_varint(&mut cursor, "test").unwrap();
             assert_eq!(decoded, value);
         }
     }
@@ -351,7 +389,7 @@ mod tests {
             binary_packer::encode_signed_varint(&mut buf, value);
 
             let mut cursor = Cursor::new(&buf);
-            let decoded = decode_signed_varint(&mut cursor).unwrap();
+            let decoded = decode_signed_varint(&mut cursor, "test").unwrap();
             assert_eq!(decoded, value);
         }
     }

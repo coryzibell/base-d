@@ -1,6 +1,20 @@
 use std::fmt;
 
 /// Field types supported in schema encoding
+///
+/// Each field in the schema has a declared type. These types map to JSON types
+/// and are encoded with 4-bit type tags in the binary format.
+///
+/// # Type Mapping
+///
+/// * `U64` - JSON numbers (positive integers)
+/// * `I64` - JSON numbers (negative integers)
+/// * `F64` - JSON numbers (floats)
+/// * `String` - JSON strings
+/// * `Bool` - JSON booleans
+/// * `Null` - JSON null
+/// * `Array(T)` - JSON arrays (homogeneous element type)
+/// * `Any` - Mixed-type values (reserved for future use)
 #[derive(Debug, Clone, PartialEq)]
 pub enum FieldType {
     U64,
@@ -28,6 +42,22 @@ impl FieldType {
         }
     }
 
+    /// Get user-friendly display name for error messages
+    pub fn display_name(&self) -> String {
+        match self {
+            FieldType::U64 => "unsigned integer".to_string(),
+            FieldType::I64 => "signed integer".to_string(),
+            FieldType::F64 => "floating-point number".to_string(),
+            FieldType::String => "string".to_string(),
+            FieldType::Bool => "boolean".to_string(),
+            FieldType::Null => "null".to_string(),
+            FieldType::Array(element_type) => {
+                format!("array of {}", element_type.display_name())
+            }
+            FieldType::Any => "any type".to_string(),
+        }
+    }
+
     /// Construct a FieldType from a 4-bit type tag
     pub fn from_type_tag(
         tag: u8,
@@ -44,11 +74,14 @@ impl FieldType {
                 if let Some(et) = element_type {
                     Ok(FieldType::Array(et))
                 } else {
-                    Err(SchemaError::InvalidTypeTag(tag))
+                    Err(SchemaError::InvalidTypeTag {
+                        tag,
+                        context: Some("array type requires element type".to_string()),
+                    })
                 }
             }
             7 => Ok(FieldType::Any),
-            _ => Err(SchemaError::InvalidTypeTag(tag)),
+            _ => Err(SchemaError::InvalidTypeTag { tag, context: None }),
         }
     }
 }
@@ -59,7 +92,26 @@ pub const FLAG_TYPED_VALUES: u8 = 0b0000_0001; // Per-value type tags
 pub const FLAG_HAS_NULLS: u8 = 0b0000_0010; // Null bitmap present
 pub const FLAG_HAS_ROOT_KEY: u8 = 0b0000_0100; // Root key in header
 
-/// Schema header
+/// Schema header containing metadata about the encoded data
+///
+/// The header is self-describing and stores:
+/// * Flags indicating optional features (nulls, root key, etc.)
+/// * Optional root key for single-array JSON structures
+/// * Row and field counts
+/// * Field definitions (names and types)
+/// * Optional null bitmap for tracking null values
+///
+/// # Binary Format
+///
+/// ```text
+/// [flags: u8]
+/// [root_key?: varint_string]  // if FLAG_HAS_ROOT_KEY
+/// [row_count: varint]
+/// [field_count: varint]
+/// [field_types: 4-bit packed]
+/// [field_names: varint_strings]
+/// [null_bitmap?: bytes]        // if FLAG_HAS_NULLS
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct SchemaHeader {
     pub flags: u8,
@@ -97,7 +149,25 @@ impl SchemaHeader {
     }
 }
 
-/// Field definition
+/// Field definition with name and type
+///
+/// Each field in the schema has a name and declared type. For nested objects,
+/// field names use dotted notation (e.g., `"user.profile.name"`).
+///
+/// # Examples
+///
+/// ```ignore
+/// use base_d::encoders::algorithms::schema::types::{FieldDef, FieldType};
+///
+/// // Simple field
+/// let id_field = FieldDef::new("id", FieldType::U64);
+///
+/// // Nested field (flattened)
+/// let name_field = FieldDef::new("user.profile.name", FieldType::String);
+///
+/// // Array field
+/// let tags_field = FieldDef::new("tags", FieldType::Array(Box::new(FieldType::String)));
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct FieldDef {
     pub name: String, // Flattened dotted key: "user.profile.avatar"
@@ -114,6 +184,42 @@ impl FieldDef {
 }
 
 /// The format-agnostic intermediate representation
+///
+/// This is the bridge between input formats (JSON) and the binary encoding.
+/// Data is stored in column-oriented, row-major order.
+///
+/// # Structure
+///
+/// * **Header**: Schema metadata (field names, types, counts)
+/// * **Values**: Flat array of values in row-major order
+///
+/// # Row-Major Layout
+///
+/// For 2 rows × 3 fields, values are stored as:
+/// ```text
+/// [row0_field0, row0_field1, row0_field2, row1_field0, row1_field1, row1_field2]
+/// ```
+///
+/// # Examples
+///
+/// ```ignore
+/// use base_d::{IntermediateRepresentation, SchemaHeader, SchemaValue, FieldDef, FieldType};
+///
+/// let fields = vec![
+///     FieldDef::new("id", FieldType::U64),
+///     FieldDef::new("name", FieldType::String),
+/// ];
+/// let header = SchemaHeader::new(2, fields);
+///
+/// let values = vec![
+///     SchemaValue::U64(1),
+///     SchemaValue::String("alice".to_string()),
+///     SchemaValue::U64(2),
+///     SchemaValue::String("bob".to_string()),
+/// ];
+///
+/// let ir = IntermediateRepresentation::new(header, values)?;
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct IntermediateRepresentation {
     pub header: SchemaHeader,
@@ -158,7 +264,20 @@ impl IntermediateRepresentation {
     }
 }
 
-/// Schema value
+/// Schema value representing a single data element
+///
+/// Values map directly to JSON types and are encoded using type-specific
+/// binary representations (varint for integers, IEEE 754 for floats, etc.).
+///
+/// # Binary Encoding
+///
+/// * `U64` - Varint (variable-length)
+/// * `I64` - Zigzag varint (converts negatives to small positives)
+/// * `F64` - 8 bytes IEEE 754 little-endian
+/// * `String` - Varint length + UTF-8 bytes
+/// * `Bool` - Single bit (packed 8 per byte)
+/// * `Null` - Zero bytes (tracked in null bitmap)
+/// * `Array` - Varint count + elements
 #[derive(Debug, Clone, PartialEq)]
 pub enum SchemaValue {
     U64(u64),
@@ -203,23 +322,47 @@ impl SchemaValue {
 }
 
 /// Errors that can occur during schema encoding/decoding
+///
+/// This error type covers all failure modes in the schema encoding pipeline:
+/// parsing, binary packing/unpacking, compression, and framing.
+///
+/// # Examples
+///
+/// ```ignore
+/// use base_d::{decode_schema, SchemaError};
+///
+/// let result = decode_schema("invalid", false);
+/// match result {
+///     Err(SchemaError::InvalidFrame(msg)) => {
+///         println!("Frame error: {}", msg);
+///     }
+///     Err(SchemaError::InvalidCharacter(msg)) => {
+///         println!("Character error: {}", msg);
+///     }
+///     _ => {}
+/// }
+/// ```
 #[derive(Debug, PartialEq)]
 pub enum SchemaError {
     /// Invalid type tag encountered
-    InvalidTypeTag(u8),
+    InvalidTypeTag { tag: u8, context: Option<String> },
     /// Value count mismatch
     ValueCountMismatch { expected: usize, actual: usize },
     /// Unexpected end of data
-    UnexpectedEndOfData,
+    UnexpectedEndOfData { context: String, position: usize },
     /// Invalid varint encoding
-    InvalidVarint,
+    InvalidVarint { context: String, position: usize },
     /// Invalid UTF-8 string
-    InvalidUtf8(std::string::FromUtf8Error),
+    InvalidUtf8 {
+        context: String,
+        error: std::string::FromUtf8Error,
+    },
     /// Type mismatch between value and field type
     TypeMismatch {
         field: String,
         expected: String,
         actual: String,
+        row: Option<usize>,
     },
     /// Invalid null bitmap size
     InvalidNullBitmap {
@@ -232,42 +375,100 @@ pub enum SchemaError {
     InvalidFrame(String),
     /// Invalid character in encoded data
     InvalidCharacter(String),
+    /// Compression error
+    Compression(String),
+    /// Decompression error
+    Decompression(String),
+    /// Invalid compression algorithm byte
+    InvalidCompressionAlgorithm(u8),
 }
 
 impl fmt::Display for SchemaError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            SchemaError::InvalidTypeTag(tag) => write!(f, "invalid type tag: {}", tag),
+            SchemaError::InvalidTypeTag { tag, context } => {
+                write!(
+                    f,
+                    "Invalid type tag {} at byte offset{}. Valid type tags are 0-7.",
+                    tag,
+                    context
+                        .as_ref()
+                        .map(|c| format!(" ({})", c))
+                        .unwrap_or_default()
+                )
+            }
             SchemaError::ValueCountMismatch { expected, actual } => {
                 write!(
                     f,
-                    "value count mismatch: expected {}, got {}",
+                    "Value count mismatch: expected {} values but found {}.\n\
+                     This indicates corrupted or truncated binary data.",
                     expected, actual
                 )
             }
-            SchemaError::UnexpectedEndOfData => write!(f, "unexpected end of data"),
-            SchemaError::InvalidVarint => write!(f, "invalid varint encoding"),
-            SchemaError::InvalidUtf8(e) => write!(f, "invalid UTF-8 string: {}", e),
+            SchemaError::UnexpectedEndOfData { context, position } => {
+                write!(
+                    f,
+                    "Unexpected end of data at byte {}: {}.\n\
+                     The encoded data appears to be truncated or corrupted.",
+                    position, context
+                )
+            }
+            SchemaError::InvalidVarint { context, position } => {
+                write!(
+                    f,
+                    "Invalid varint encoding at byte {}: {}.\n\
+                     Varint exceeded maximum 64-bit length or was malformed.",
+                    position, context
+                )
+            }
+            SchemaError::InvalidUtf8 { context, error } => {
+                write!(
+                    f,
+                    "Invalid UTF-8 string while decoding {}: {}",
+                    context, error
+                )
+            }
             SchemaError::TypeMismatch {
                 field,
                 expected,
                 actual,
-            } => write!(
-                f,
-                "type mismatch for field '{}': expected {}, got {}",
-                field, expected, actual
-            ),
+                row,
+            } => {
+                if let Some(row_num) = row {
+                    write!(
+                        f,
+                        "Type mismatch in field '{}' at row {}: expected {}, but found {}.",
+                        field, row_num, expected, actual
+                    )
+                } else {
+                    write!(
+                        f,
+                        "Type mismatch in field '{}': expected {}, but found {}.",
+                        field, expected, actual
+                    )
+                }
+            }
             SchemaError::InvalidNullBitmap {
                 expected_bytes,
                 actual_bytes,
-            } => write!(
+            } => {
+                write!(
+                    f,
+                    "Invalid null bitmap size: expected {} bytes for null tracking, but found {}.\n\
+                     This indicates corrupted header or bitmap data.",
+                    expected_bytes, actual_bytes
+                )
+            }
+            SchemaError::InvalidInput(msg) => write!(f, "{}", msg),
+            SchemaError::InvalidFrame(msg) => write!(f, "{}", msg),
+            SchemaError::InvalidCharacter(msg) => write!(f, "{}", msg),
+            SchemaError::Compression(msg) => write!(f, "Compression error: {}", msg),
+            SchemaError::Decompression(msg) => write!(f, "Decompression error: {}", msg),
+            SchemaError::InvalidCompressionAlgorithm(algo) => write!(
                 f,
-                "invalid null bitmap: expected {} bytes, got {}",
-                expected_bytes, actual_bytes
+                "Invalid compression algorithm byte: 0x{:02X}. Valid values are 0x00 (none), 0x01 (brotli), 0x02 (lz4), 0x03 (zstd).",
+                algo
             ),
-            SchemaError::InvalidInput(msg) => write!(f, "invalid input: {}", msg),
-            SchemaError::InvalidFrame(msg) => write!(f, "invalid frame: {}", msg),
-            SchemaError::InvalidCharacter(msg) => write!(f, "invalid character: {}", msg),
         }
     }
 }
@@ -357,13 +558,13 @@ mod tests {
         ];
 
         let result = IntermediateRepresentation::new(header, values);
-        assert!(matches!(
-            result,
-            Err(SchemaError::ValueCountMismatch {
-                expected: 4,
-                actual: 3
-            })
-        ));
+        assert!(result.is_err());
+        if let Err(SchemaError::ValueCountMismatch { expected, actual }) = result {
+            assert_eq!(expected, 4);
+            assert_eq!(actual, 3);
+        } else {
+            panic!("Expected ValueCountMismatch error");
+        }
     }
 
     #[test]

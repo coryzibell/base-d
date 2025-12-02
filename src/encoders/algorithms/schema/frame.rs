@@ -42,18 +42,29 @@ pub fn encode_framed(binary: &[u8]) -> String {
 /// let binary = decode_framed(framed)?;
 /// ```
 pub fn decode_framed(encoded: &str) -> Result<Vec<u8>, SchemaError> {
+    // Show preview of what was received
+    let preview = if encoded.len() > 40 {
+        format!("{}...", &encoded.chars().take(40).collect::<String>())
+    } else {
+        encoded.to_string()
+    };
+
     // Validate frame delimiters
     if !encoded.starts_with(FRAME_START) {
         return Err(SchemaError::InvalidFrame(format!(
-            "Missing start delimiter '{}' (U+{:04X})",
-            FRAME_START, FRAME_START as u32
+            "Missing start delimiter '{}' (U+{:04X}).\n\
+             Expected encoded data starting with {}...{}, but received:\n  {}\n\
+             Hint: To encode JSON, omit the -d flag.",
+            FRAME_START, FRAME_START as u32, FRAME_START, FRAME_END, preview
         )));
     }
 
     if !encoded.ends_with(FRAME_END) {
         return Err(SchemaError::InvalidFrame(format!(
-            "Missing end delimiter '{}' (U+{:04X})",
-            FRAME_END, FRAME_END as u32
+            "Missing end delimiter '{}' (U+{:04X}).\n\
+             Expected encoded data ending with {}, but received:\n  {}\n\
+             The data may be truncated or corrupted.",
+            FRAME_END, FRAME_END as u32, FRAME_END, preview
         )));
     }
 
@@ -131,9 +142,19 @@ fn decode_base96(encoded: &str) -> Result<Vec<u8>, SchemaError> {
 
     for (pos, &c) in chars.iter().enumerate() {
         let digit = display96::index_of(c).ok_or_else(|| {
+            // Detect if this looks like common wrong encodings
+            let hint = if c.is_ascii_alphanumeric() {
+                " (looks like Base64/hex - this is not the correct encoding)"
+            } else if c.is_ascii() {
+                " (ASCII characters are not valid in display96)"
+            } else {
+                ""
+            };
+
             SchemaError::InvalidCharacter(format!(
-                "Invalid character '{}' (U+{:04X}) at position {}. Must be in display96 alphabet",
-                c, c as u32, pos
+                "Invalid character '{}' (U+{:04X}) at position {} of {}{}.\n\
+                 Expected only display96 alphabet characters (box drawing, blocks, geometric shapes).",
+                c, c as u32, pos, chars.len(), hint
             ))
         })?;
 

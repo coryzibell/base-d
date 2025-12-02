@@ -9,14 +9,24 @@ impl InputParser for JsonParser {
     type Error = SchemaError;
 
     fn parse(input: &str) -> Result<IntermediateRepresentation, Self::Error> {
-        let parsed: Value = serde_json::from_str(input)
-            .map_err(|e| SchemaError::InvalidInput(format!("Invalid JSON: {}", e)))?;
+        let parsed: Value = serde_json::from_str(input).map_err(|e| {
+            SchemaError::InvalidInput(format!(
+                "Invalid JSON syntax: {}\n\
+                 Ensure the input is valid JSON.",
+                e
+            ))
+        })?;
 
         match parsed {
             Value::Array(arr) => parse_array(arr),
             Value::Object(obj) => parse_object(obj),
             _ => Err(SchemaError::InvalidInput(
-                "Expected JSON object or array".to_string(),
+                "Expected JSON object or array at root level.\n\
+                 Schema encoding works with:\n\
+                 - Single object: {\"name\": \"value\"}\n\
+                 - Array of objects: [{\"id\": 1}, {\"id\": 2}]\n\
+                 - Object with array: {\"users\": [{\"id\": 1}]}"
+                    .to_string(),
             )),
         }
     }
@@ -25,20 +35,34 @@ impl InputParser for JsonParser {
 /// Parse array of objects (tabular data)
 fn parse_array(arr: Vec<Value>) -> Result<IntermediateRepresentation, SchemaError> {
     if arr.is_empty() {
-        return Err(SchemaError::InvalidInput("Empty array".to_string()));
+        return Err(SchemaError::InvalidInput(
+            "Empty array - cannot infer schema from zero rows.\n\
+             Provide at least one object in the array."
+                .to_string(),
+        ));
     }
 
     let row_count = arr.len();
     let mut all_rows: Vec<Map<String, Value>> = Vec::new();
 
     // Extract objects from array
-    for item in arr {
+    for (idx, item) in arr.into_iter().enumerate() {
         match item {
             Value::Object(obj) => all_rows.push(obj),
-            _ => {
-                return Err(SchemaError::InvalidInput(
-                    "Array must contain only objects".to_string(),
-                ));
+            other => {
+                let type_name = match other {
+                    Value::Null => "null",
+                    Value::Bool(_) => "boolean",
+                    Value::Number(_) => "number",
+                    Value::String(_) => "string",
+                    Value::Array(_) => "array",
+                    Value::Object(_) => unreachable!(),
+                };
+                return Err(SchemaError::InvalidInput(format!(
+                    "Array must contain only objects (tabular data). Found {} at index {}.\n\
+                     Schema encoding expects arrays of objects like: [{{\"id\": 1}}, {{\"id\": 2}}]",
+                    type_name, idx
+                )));
             }
         }
     }
@@ -335,8 +359,10 @@ fn json_to_schema_value(
             }
             FieldType::F64 => Ok(SchemaValue::F64(n.as_f64().unwrap())),
             _ => Err(SchemaError::InvalidInput(format!(
-                "Type mismatch: expected {:?}, got number",
-                expected_type
+                "Type mismatch: expected {}, but found number.\n\
+                 The field type was inferred or specified as {}, which doesn't accept numeric values.",
+                expected_type.display_name(),
+                expected_type.display_name()
             ))),
         },
         Value::String(s) => Ok(SchemaValue::String(s.clone())),
@@ -344,7 +370,10 @@ fn json_to_schema_value(
             let element_type = if let FieldType::Array(et) = expected_type {
                 et.as_ref()
             } else {
-                return Err(SchemaError::InvalidInput("Expected array type".to_string()));
+                return Err(SchemaError::InvalidInput(format!(
+                    "Internal error: Expected array type but found {}. This is a bug in type inference.",
+                    expected_type.display_name()
+                )));
             };
 
             let mut schema_values = Vec::new();
@@ -354,7 +383,8 @@ fn json_to_schema_value(
             Ok(SchemaValue::Array(schema_values))
         }
         Value::Object(_) => Err(SchemaError::InvalidInput(
-            "Nested objects should be flattened".to_string(),
+            "Internal error: Encountered nested object that wasn't flattened. This is a bug in the JSON parser."
+                .to_string(),
         )),
     }
 }

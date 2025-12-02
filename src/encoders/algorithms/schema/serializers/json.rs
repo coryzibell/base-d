@@ -8,7 +8,7 @@ pub struct JsonSerializer;
 impl OutputSerializer for JsonSerializer {
     type Error = SchemaError;
 
-    fn serialize(ir: &IntermediateRepresentation) -> Result<String, Self::Error> {
+    fn serialize(ir: &IntermediateRepresentation, pretty: bool) -> Result<String, Self::Error> {
         if ir.header.row_count == 0 {
             return Err(SchemaError::InvalidInput(
                 "No rows to serialize".to_string(),
@@ -63,8 +63,13 @@ impl OutputSerializer for JsonSerializer {
         };
 
         // Serialize to JSON string
-        serde_json::to_string(&final_result)
-            .map_err(|e| SchemaError::InvalidInput(format!("JSON serialization failed: {}", e)))
+        if pretty {
+            serde_json::to_string_pretty(&final_result)
+                .map_err(|e| SchemaError::InvalidInput(format!("JSON serialization failed: {}", e)))
+        } else {
+            serde_json::to_string(&final_result)
+                .map_err(|e| SchemaError::InvalidInput(format!("JSON serialization failed: {}", e)))
+        }
     }
 }
 
@@ -139,7 +144,7 @@ mod tests {
         ];
         let ir = IntermediateRepresentation::new(header, values).unwrap();
 
-        let output = JsonSerializer::serialize(&ir).unwrap();
+        let output = JsonSerializer::serialize(&ir, false).unwrap();
         let parsed: Value = serde_json::from_str(&output).unwrap();
 
         assert_eq!(parsed["id"], json!(1));
@@ -153,7 +158,7 @@ mod tests {
         let values = vec![SchemaValue::U64(1), SchemaValue::U64(2)];
         let ir = IntermediateRepresentation::new(header, values).unwrap();
 
-        let output = JsonSerializer::serialize(&ir).unwrap();
+        let output = JsonSerializer::serialize(&ir, false).unwrap();
         let parsed: Value = serde_json::from_str(&output).unwrap();
 
         assert!(parsed.is_array());
@@ -168,7 +173,7 @@ mod tests {
         let values = vec![SchemaValue::String("alice".to_string())];
         let ir = IntermediateRepresentation::new(header, values).unwrap();
 
-        let output = JsonSerializer::serialize(&ir).unwrap();
+        let output = JsonSerializer::serialize(&ir, false).unwrap();
         let parsed: Value = serde_json::from_str(&output).unwrap();
 
         assert_eq!(parsed["user"]["profile"]["name"], json!("alice"));
@@ -183,7 +188,7 @@ mod tests {
         let values = vec![SchemaValue::U64(1)];
         let ir = IntermediateRepresentation::new(header, values).unwrap();
 
-        let output = JsonSerializer::serialize(&ir).unwrap();
+        let output = JsonSerializer::serialize(&ir, false).unwrap();
         let parsed: Value = serde_json::from_str(&output).unwrap();
 
         assert!(parsed["users"].is_object());
@@ -209,7 +214,7 @@ mod tests {
         let values = vec![SchemaValue::String("alice".to_string()), SchemaValue::Null];
         let ir = IntermediateRepresentation::new(header, values).unwrap();
 
-        let output = JsonSerializer::serialize(&ir).unwrap();
+        let output = JsonSerializer::serialize(&ir, false).unwrap();
         let parsed: Value = serde_json::from_str(&output).unwrap();
 
         assert_eq!(parsed["name"], json!("alice"));
@@ -230,7 +235,7 @@ mod tests {
         ])];
         let ir = IntermediateRepresentation::new(header, values).unwrap();
 
-        let output = JsonSerializer::serialize(&ir).unwrap();
+        let output = JsonSerializer::serialize(&ir, false).unwrap();
         let parsed: Value = serde_json::from_str(&output).unwrap();
 
         assert_eq!(parsed["scores"], json!([1, 2, 3]));
@@ -246,7 +251,7 @@ mod tests {
         let values = vec![SchemaValue::Array(vec![])];
         let ir = IntermediateRepresentation::new(header, values).unwrap();
 
-        let output = JsonSerializer::serialize(&ir).unwrap();
+        let output = JsonSerializer::serialize(&ir, false).unwrap();
         let parsed: Value = serde_json::from_str(&output).unwrap();
 
         assert_eq!(parsed["items"], json!([]));
@@ -259,7 +264,7 @@ mod tests {
         let values = vec![SchemaValue::U64(1)];
         let ir = IntermediateRepresentation::new(header, values).unwrap();
 
-        let output = JsonSerializer::serialize(&ir).unwrap();
+        let output = JsonSerializer::serialize(&ir, false).unwrap();
         let parsed: Value = serde_json::from_str(&output).unwrap();
 
         assert_eq!(parsed["a"]["b"]["c"]["d"], json!(1));
@@ -273,5 +278,34 @@ mod tests {
         let unflattened = unflatten_object(flat);
 
         assert_eq!(unflattened["a"]["b"], json!(1));
+    }
+
+    #[test]
+    fn test_pretty_output() {
+        let fields = vec![
+            FieldDef::new("id", FieldType::U64),
+            FieldDef::new("name", FieldType::String),
+        ];
+        let header = SchemaHeader::new(1, fields);
+        let values = vec![
+            SchemaValue::U64(1),
+            SchemaValue::String("alice".to_string()),
+        ];
+        let ir = IntermediateRepresentation::new(header, values).unwrap();
+
+        // Test compact output
+        let compact = JsonSerializer::serialize(&ir, false).unwrap();
+        assert!(!compact.contains('\n'));
+        assert_eq!(compact, r#"{"id":1,"name":"alice"}"#);
+
+        // Test pretty output
+        let pretty = JsonSerializer::serialize(&ir, true).unwrap();
+        assert!(pretty.contains('\n'));
+        assert!(pretty.contains("  ")); // Indentation
+
+        // Both should parse to same JSON value
+        let compact_value: Value = serde_json::from_str(&compact).unwrap();
+        let pretty_value: Value = serde_json::from_str(&pretty).unwrap();
+        assert_eq!(compact_value, pretty_value);
     }
 }

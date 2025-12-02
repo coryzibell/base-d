@@ -1,45 +1,126 @@
 pub mod binary_packer;
 pub mod binary_unpacker;
+pub mod compression;
 pub mod display96;
 pub mod frame;
 pub mod parsers;
 pub mod serializers;
 pub mod types;
 
+#[cfg(test)]
+mod edge_cases;
+
 // Re-export key types for convenience
 pub use binary_packer::pack;
 pub use binary_unpacker::unpack;
+pub use compression::SchemaCompressionAlgo;
 pub use types::SchemaError;
 
-/// Full schema encoding pipeline: JSON → IR → binary → display96 → framed
+/// Encode JSON to schema format: JSON → IR → binary → \[compress\] → display96 → framed
+///
+/// Transforms JSON into a compact, display-safe wire format suitable for LLM-to-LLM communication.
+/// The output is wrapped in Egyptian hieroglyph delimiters (`𓍹...𓍺`) and uses a 96-character
+/// alphabet of box-drawing and geometric shapes.
+///
+/// # Arguments
+///
+/// * `json` - JSON string to encode (must be object or array of objects)
+/// * `compress` - Optional compression algorithm (brotli, lz4, or zstd)
+///
+/// # Returns
+///
+/// Returns a framed, display-safe string like `𓍹{encoded_payload}𓍺`
+///
+/// # Errors
+///
+/// * `SchemaError::InvalidInput` - Invalid JSON or unsupported structure (e.g., root primitives)
+/// * `SchemaError::Compression` - Compression failure
 ///
 /// # Example
+///
 /// ```ignore
+/// use base_d::{encode_schema, SchemaCompressionAlgo};
+///
 /// let json = r#"{"users":[{"id":1,"name":"alice"}]}"#;
-/// let encoded = encode_schema(json)?;
-/// // Returns: "𓍹{display96_encoded}𓍺"
+///
+/// // Without compression
+/// let encoded = encode_schema(json, None)?;
+/// println!("{}", encoded); // 𓍹╣◟╥◕◝▰◣◥▟╺▖◘▰◝▤◀╧𓍺
+///
+/// // With brotli compression
+/// let compressed = encode_schema(json, Some(SchemaCompressionAlgo::Brotli))?;
 /// ```
-pub fn encode_schema(json: &str) -> Result<String, SchemaError> {
+///
+/// # See Also
+///
+/// * [`decode_schema`] - Decode schema format back to JSON
+/// * [SCHEMA.md](../../../SCHEMA.md) - Full format specification
+pub fn encode_schema(
+    json: &str,
+    compress: Option<SchemaCompressionAlgo>,
+) -> Result<String, SchemaError> {
     use parsers::{InputParser, JsonParser};
 
     let ir = JsonParser::parse(json)?;
     let binary = pack(&ir);
-    Ok(frame::encode_framed(&binary))
+    let compressed = compression::compress_with_prefix(&binary, compress)?;
+    Ok(frame::encode_framed(&compressed))
 }
 
-/// Full schema decoding pipeline: framed → display96 → binary → IR → JSON
+/// Decode schema format to JSON: framed → display96 → \[decompress\] → binary → IR → JSON
+///
+/// Reverses the schema encoding pipeline to reconstruct the original JSON from the framed,
+/// display-safe wire format. Automatically detects and handles compression.
+///
+/// # Arguments
+///
+/// * `encoded` - Schema-encoded string with delimiters (`𓍹...𓍺`)
+/// * `pretty` - Pretty-print JSON output with indentation
+///
+/// # Returns
+///
+/// Returns the decoded JSON string (minified or pretty-printed)
+///
+/// # Errors
+///
+/// * `SchemaError::InvalidFrame` - Missing or invalid frame delimiters
+/// * `SchemaError::InvalidCharacter` - Invalid character in display96 payload
+/// * `SchemaError::Decompression` - Decompression failure
+/// * `SchemaError::UnexpectedEndOfData` - Truncated or corrupted binary data
+/// * `SchemaError::InvalidTypeTag` - Invalid type tag in header
 ///
 /// # Example
+///
 /// ```ignore
-/// let framed = "𓍹{display96_encoded}𓍺";
-/// let json = decode_schema(framed)?;
+/// use base_d::decode_schema;
+///
+/// let encoded = "𓍹╣◟╥◕◝▰◣◥▟╺▖◘▰◝▤◀╧𓍺";
+///
+/// // Minified output
+/// let json = decode_schema(encoded, false)?;
+/// println!("{}", json); // {"users":[{"id":1,"name":"alice"}]}
+///
+/// // Pretty-printed output
+/// let pretty = decode_schema(encoded, true)?;
+/// println!("{}", pretty);
+/// // {
+/// //   "users": [
+/// //     {"id": 1, "name": "alice"}
+/// //   ]
+/// // }
 /// ```
-pub fn decode_schema(encoded: &str) -> Result<String, SchemaError> {
+///
+/// # See Also
+///
+/// * [`encode_schema`] - Encode JSON to schema format
+/// * [SCHEMA.md](../../../SCHEMA.md) - Full format specification
+pub fn decode_schema(encoded: &str, pretty: bool) -> Result<String, SchemaError> {
     use serializers::{JsonSerializer, OutputSerializer};
 
-    let binary = frame::decode_framed(encoded)?;
+    let compressed = frame::decode_framed(encoded)?;
+    let binary = compression::decompress_with_prefix(&compressed)?;
     let ir = unpack(&binary)?;
-    JsonSerializer::serialize(&ir)
+    JsonSerializer::serialize(&ir, pretty)
 }
 
 #[cfg(test)]
@@ -240,7 +321,10 @@ mod integration_tests {
     fn test_invalid_data() {
         // Empty data
         let result = unpack(&[]);
-        assert!(matches!(result, Err(SchemaError::UnexpectedEndOfData)));
+        assert!(matches!(
+            result,
+            Err(SchemaError::UnexpectedEndOfData { .. })
+        ));
 
         // Truncated data
         let result = unpack(&[0, 1, 2]);
@@ -252,8 +336,10 @@ mod integration_tests {
         let input = r#"{"users":[{"id":1,"name":"alice"},{"id":2,"name":"bob"}]}"#;
         let ir = JsonParser::parse(input).unwrap();
         let binary = pack(&ir);
-        let ir2 = unpack(&binary).unwrap();
-        let output = JsonSerializer::serialize(&ir2).unwrap();
+        let compressed = compression::compress_with_prefix(&binary, None).unwrap();
+        let decompressed = compression::decompress_with_prefix(&compressed).unwrap();
+        let ir2 = unpack(&decompressed).unwrap();
+        let output = JsonSerializer::serialize(&ir2, false).unwrap();
 
         // Parse both as serde_json::Value and compare (order-independent)
         let input_value: serde_json::Value = serde_json::from_str(input).unwrap();
@@ -267,7 +353,7 @@ mod integration_tests {
         let ir = JsonParser::parse(input).unwrap();
         let binary = pack(&ir);
         let ir2 = unpack(&binary).unwrap();
-        let output = JsonSerializer::serialize(&ir2).unwrap();
+        let output = JsonSerializer::serialize(&ir2, false).unwrap();
 
         let input_value: serde_json::Value = serde_json::from_str(input).unwrap();
         let output_value: serde_json::Value = serde_json::from_str(&output).unwrap();
@@ -280,7 +366,7 @@ mod integration_tests {
         let ir = JsonParser::parse(input).unwrap();
         let binary = pack(&ir);
         let ir2 = unpack(&binary).unwrap();
-        let output = JsonSerializer::serialize(&ir2).unwrap();
+        let output = JsonSerializer::serialize(&ir2, false).unwrap();
 
         let input_value: serde_json::Value = serde_json::from_str(input).unwrap();
         let output_value: serde_json::Value = serde_json::from_str(&output).unwrap();
@@ -295,7 +381,7 @@ mod integration_tests {
 
         let binary = pack(&ir);
         let ir2 = unpack(&binary).unwrap();
-        let output = JsonSerializer::serialize(&ir2).unwrap();
+        let output = JsonSerializer::serialize(&ir2, false).unwrap();
 
         let input_value: serde_json::Value = serde_json::from_str(input).unwrap();
         let output_value: serde_json::Value = serde_json::from_str(&output).unwrap();
@@ -308,7 +394,7 @@ mod integration_tests {
         let ir = JsonParser::parse(input).unwrap();
         let binary = pack(&ir);
         let ir2 = unpack(&binary).unwrap();
-        let output = JsonSerializer::serialize(&ir2).unwrap();
+        let output = JsonSerializer::serialize(&ir2, false).unwrap();
 
         let input_value: serde_json::Value = serde_json::from_str(input).unwrap();
         let output_value: serde_json::Value = serde_json::from_str(&output).unwrap();
@@ -318,14 +404,14 @@ mod integration_tests {
     #[test]
     fn test_encode_schema_roundtrip() {
         let input = r#"{"users":[{"id":1,"name":"alice"},{"id":2,"name":"bob"}]}"#;
-        let encoded = encode_schema(input).unwrap();
+        let encoded = encode_schema(input, None).unwrap();
 
         // Validate frame delimiters
         assert!(encoded.starts_with(frame::FRAME_START));
         assert!(encoded.ends_with(frame::FRAME_END));
 
         // Decode back to JSON
-        let decoded = decode_schema(&encoded).unwrap();
+        let decoded = decode_schema(&encoded, false).unwrap();
 
         // Compare as JSON values (order-independent)
         let input_value: serde_json::Value = serde_json::from_str(input).unwrap();
@@ -336,8 +422,8 @@ mod integration_tests {
     #[test]
     fn test_encode_schema_simple() {
         let input = r#"{"id":1,"name":"alice","score":95.5}"#;
-        let encoded = encode_schema(input).unwrap();
-        let decoded = decode_schema(&encoded).unwrap();
+        let encoded = encode_schema(input, None).unwrap();
+        let decoded = decode_schema(&encoded, false).unwrap();
 
         let input_value: serde_json::Value = serde_json::from_str(input).unwrap();
         let output_value: serde_json::Value = serde_json::from_str(&decoded).unwrap();
@@ -347,8 +433,8 @@ mod integration_tests {
     #[test]
     fn test_encode_schema_with_nulls() {
         let input = r#"{"name":"alice","age":null,"active":true}"#;
-        let encoded = encode_schema(input).unwrap();
-        let decoded = decode_schema(&encoded).unwrap();
+        let encoded = encode_schema(input, None).unwrap();
+        let decoded = decode_schema(&encoded, false).unwrap();
 
         let input_value: serde_json::Value = serde_json::from_str(input).unwrap();
         let output_value: serde_json::Value = serde_json::from_str(&decoded).unwrap();
@@ -358,7 +444,7 @@ mod integration_tests {
     #[test]
     fn test_encode_schema_empty_object() {
         let input = r#"{}"#;
-        let result = encode_schema(input);
+        let result = encode_schema(input, None);
         // Empty objects should fail or handle gracefully
         // This depends on JsonParser behavior
         println!("Empty object result: {:?}", result);
@@ -367,21 +453,21 @@ mod integration_tests {
     #[test]
     fn test_decode_schema_invalid_frame() {
         let invalid = "not_framed_data";
-        let result = decode_schema(invalid);
+        let result = decode_schema(invalid, false);
         assert!(matches!(result, Err(SchemaError::InvalidFrame(_))));
     }
 
     #[test]
     fn test_decode_schema_invalid_chars() {
         let invalid = format!("{}ABC{}", frame::FRAME_START, frame::FRAME_END);
-        let result = decode_schema(&invalid);
+        let result = decode_schema(&invalid, false);
         assert!(matches!(result, Err(SchemaError::InvalidCharacter(_))));
     }
 
     #[test]
     fn test_visual_wire_format() {
         let input = r#"{"users":[{"id":1,"name":"alice"},{"id":2,"name":"bob"}]}"#;
-        let encoded = encode_schema(input).unwrap();
+        let encoded = encode_schema(input, None).unwrap();
 
         println!("\n=== Visual Wire Format ===");
         println!("Input JSON: {}", input);
@@ -398,7 +484,7 @@ mod integration_tests {
         println!("Compression ratio: {:.2}x", compression_ratio);
 
         // Decode and verify
-        let decoded = decode_schema(&encoded).unwrap();
+        let decoded = decode_schema(&encoded, false).unwrap();
         let input_value: serde_json::Value = serde_json::from_str(input).unwrap();
         let output_value: serde_json::Value = serde_json::from_str(&decoded).unwrap();
         assert_eq!(input_value, output_value);
@@ -416,7 +502,7 @@ mod integration_tests {
 
         println!("\n=== Compression Comparison ===");
         for (i, input) in test_cases.iter().enumerate() {
-            let encoded = encode_schema(input).unwrap();
+            let encoded = encode_schema(input, None).unwrap();
             let ratio = input.len() as f64 / encoded.len() as f64;
 
             println!(
@@ -424,6 +510,60 @@ mod integration_tests {
                 i + 1,
                 input.len(),
                 encoded.len(),
+                ratio
+            );
+        }
+        println!();
+    }
+
+    #[test]
+    fn test_encode_schema_with_compression() {
+        use super::SchemaCompressionAlgo;
+
+        let input = r#"{"users":[{"id":1,"name":"alice"},{"id":2,"name":"bob"},{"id":3,"name":"charlie"}]}"#;
+
+        // Test each compression algorithm
+        for algo in [
+            SchemaCompressionAlgo::Brotli,
+            SchemaCompressionAlgo::Lz4,
+            SchemaCompressionAlgo::Zstd,
+        ] {
+            let encoded = encode_schema(input, Some(algo)).unwrap();
+            let decoded = decode_schema(&encoded, false).unwrap();
+
+            let input_value: serde_json::Value = serde_json::from_str(input).unwrap();
+            let output_value: serde_json::Value = serde_json::from_str(&decoded).unwrap();
+            assert_eq!(
+                input_value, output_value,
+                "Failed for compression algorithm: {:?}",
+                algo
+            );
+        }
+    }
+
+    #[test]
+    fn test_compression_size_comparison() {
+        use super::SchemaCompressionAlgo;
+
+        let input = r#"{"users":[{"id":1,"name":"alice","active":true,"score":95.5},{"id":2,"name":"bob","active":false,"score":87.3},{"id":3,"name":"charlie","active":true,"score":92.1}]}"#;
+
+        println!("\n=== Compression Size Comparison ===");
+        println!("Input JSON: {} bytes", input.len());
+
+        let no_compress = encode_schema(input, None).unwrap();
+        println!("No compression: {} bytes", no_compress.len());
+
+        for algo in [
+            SchemaCompressionAlgo::Brotli,
+            SchemaCompressionAlgo::Lz4,
+            SchemaCompressionAlgo::Zstd,
+        ] {
+            let compressed = encode_schema(input, Some(algo)).unwrap();
+            let ratio = no_compress.len() as f64 / compressed.len() as f64;
+            println!(
+                "{:?}: {} bytes ({:.2}x vs uncompressed)",
+                algo,
+                compressed.len(),
                 ratio
             );
         }

@@ -148,9 +148,35 @@ pub struct SchemaArgs {
     #[arg(short = 'd', long)]
     pub decode: bool,
 
+    /// Pretty-print JSON output (decode only)
+    #[arg(short = 'p', long)]
+    pub pretty: bool,
+
+    /// Compression algorithm (default: none)
+    #[arg(short = 'c', long, value_enum)]
+    pub compress: Option<SchemaCompressionAlgoCli>,
+
     /// Output file (writes to stdout if not provided)
     #[arg(short = 'o', long)]
     pub output: Option<PathBuf>,
+}
+
+/// Compression algorithms for schema encoding (CLI enum)
+#[derive(Clone, Copy, Debug, ValueEnum)]
+pub enum SchemaCompressionAlgoCli {
+    Brotli,
+    Lz4,
+    Zstd,
+}
+
+impl From<SchemaCompressionAlgoCli> for base_d::SchemaCompressionAlgo {
+    fn from(cli: SchemaCompressionAlgoCli) -> Self {
+        match cli {
+            SchemaCompressionAlgoCli::Brotli => base_d::SchemaCompressionAlgo::Brotli,
+            SchemaCompressionAlgoCli::Lz4 => base_d::SchemaCompressionAlgo::Lz4,
+            SchemaCompressionAlgoCli::Zstd => base_d::SchemaCompressionAlgo::Zstd,
+        }
+    }
 }
 
 /// Config subcommand actions

@@ -20,10 +20,11 @@ pub fn handle(
     // Process: encode or decode
     let output = if args.decode {
         // Schema → JSON
-        decode_schema(input_text.trim())?
+        decode_schema(input_text.trim(), args.pretty)?
     } else {
         // JSON → Schema
-        encode_schema(input_text.trim())?
+        let compress = args.compress.map(Into::into);
+        encode_schema(input_text.trim(), compress)?
     };
 
     // Write output

@@ -7,7 +7,7 @@ pub trait OutputSerializer {
     type Error;
 
     /// Serialize intermediate representation to output string
-    fn serialize(ir: &IntermediateRepresentation) -> Result<String, Self::Error>;
+    fn serialize(ir: &IntermediateRepresentation, pretty: bool) -> Result<String, Self::Error>;
 }
 
 pub use json::JsonSerializer;

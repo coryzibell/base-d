@@ -164,7 +164,7 @@ pub use encoders::algorithms::{DecodeError, DictionaryNotFoundError, find_closes
 pub use encoders::streaming::{StreamingDecoder, StreamingEncoder};
 
 // Expose schema encoding functions for CLI
-pub use encoders::algorithms::schema::{decode_schema, encode_schema};
+pub use encoders::algorithms::schema::{SchemaCompressionAlgo, decode_schema, encode_schema};
 pub use features::{
     CompressionAlgorithm, DictionaryDetector, DictionaryMatch, HashAlgorithm, XxHashConfig,
     compress, decompress, detect_dictionary, hash, hash_with_config,
