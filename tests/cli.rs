@@ -319,3 +319,79 @@ fn test_detect_with_candidates() {
         .assert()
         .success();
 }
+
+// ============================================================================
+// Schema Encoding/Decoding
+// ============================================================================
+
+#[test]
+fn test_schema_encode_stdin() {
+    base_d()
+        .arg("schema")
+        .write_stdin(r#"{"id":1,"name":"alice"}"#)
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("𓍹"))
+        .stdout(predicate::str::ends_with("𓍺\n"));
+}
+
+#[test]
+fn test_schema_decode_stdin() {
+    // First encode to get valid schema output
+    let encode_result = base_d()
+        .arg("schema")
+        .write_stdin(r#"{"id":1,"name":"alice"}"#)
+        .output()
+        .expect("encode succeeded");
+
+    let encoded = String::from_utf8(encode_result.stdout).expect("valid utf8");
+
+    // Now decode it back
+    base_d()
+        .args(["schema", "-d"])
+        .write_stdin(encoded.trim())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("id"))
+        .stdout(predicate::str::contains("alice"));
+}
+
+#[test]
+fn test_schema_roundtrip() {
+    let input = r#"{"users":[{"id":1,"name":"alice"},{"id":2,"name":"bob"}]}"#;
+
+    // Encode
+    let encode_result = base_d()
+        .arg("schema")
+        .write_stdin(input)
+        .output()
+        .expect("encode succeeded");
+
+    let encoded = String::from_utf8(encode_result.stdout).expect("valid utf8");
+
+    // Decode
+    let decode_result = base_d()
+        .args(["schema", "-d"])
+        .write_stdin(encoded.trim())
+        .output()
+        .expect("decode succeeded");
+
+    let decoded = String::from_utf8(decode_result.stdout).expect("valid utf8");
+
+    // Compare as JSON values (order-independent)
+    let input_value: serde_json::Value = serde_json::from_str(input).expect("valid input json");
+    let output_value: serde_json::Value =
+        serde_json::from_str(decoded.trim()).expect("valid output json");
+
+    assert_eq!(input_value, output_value);
+}
+
+#[test]
+fn test_schema_help() {
+    base_d()
+        .args(["schema", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Schema encoding"))
+        .stdout(predicate::str::contains("--decode"));
+}

@@ -138,6 +138,21 @@ pub struct NeoArgs {
     pub superman: bool,
 }
 
+/// Arguments for schema encoding/decoding
+#[derive(Args, Debug)]
+pub struct SchemaArgs {
+    /// Input file (reads from stdin if not provided)
+    pub file: Option<PathBuf>,
+
+    /// Decode mode (schema → JSON)
+    #[arg(short = 'd', long)]
+    pub decode: bool,
+
+    /// Output file (writes to stdout if not provided)
+    #[arg(short = 'o', long)]
+    pub output: Option<PathBuf>,
+}
+
 /// Config subcommand actions
 #[derive(Subcommand, Debug)]
 pub enum ConfigAction {
