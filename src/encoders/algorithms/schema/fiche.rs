@@ -39,7 +39,7 @@ pub const ROW_START: char = '◉'; // U+25C9 fisheye
 pub const FIELD_SEP: char = '┃'; // U+2503 heavy pipe
 pub const ARRAY_SEP: char = '◈'; // U+25C8 diamond in diamond
 pub const NULL_VALUE: &str = "∅"; // U+2205 empty set
-pub const SPACE_MARKER: char = '⸱'; // U+2E31 Word Separator Middle Dot
+pub const SPACE_MARKER: char = '▓'; // U+2593 Dark Shade
 
 // Nested depth markers (circled numbers)
 const DEPTH_MARKERS: [char; 20] = [
@@ -463,7 +463,7 @@ mod tests {
     #[test]
     fn test_embedded_json() {
         let fiche = r#"@logs┃level:str┃msg:str
-◉error┃Failed⸱to⸱parse⸱{"key":⸱"value"}"#;
+◉error┃Failed▓to▓parse▓{"key":▓"value"}"#;
 
         let ir = parse(fiche).unwrap();
 
@@ -560,8 +560,8 @@ mod tests {
     #[test]
     fn test_space_preservation() {
         let fiche = "@people┃name:str┃home:str
-◉Luke⸱Skywalker┃Tatooine⸱Desert⸱Planet
-◉Leia⸱Organa┃Alderaan";
+◉Luke▓Skywalker┃Tatooine▓Desert▓Planet
+◉Leia▓Organa┃Alderaan";
 
         let ir = parse(fiche).unwrap();
         assert_eq!(ir.header.row_count, 2);
@@ -581,8 +581,8 @@ mod tests {
 
         // Check re-encoding produces minified spaces
         let output = serialize(&ir).unwrap();
-        assert!(output.contains("Luke⸱Skywalker"));
-        assert!(output.contains("Tatooine⸱Desert⸱Planet"));
+        assert!(output.contains("Luke▓Skywalker"));
+        assert!(output.contains("Tatooine▓Desert▓Planet"));
         assert_eq!(output, fiche);
     }
 }
