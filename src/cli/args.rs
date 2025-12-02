@@ -207,3 +207,22 @@ pub enum ConfigCategory {
     Algorithms,
     Hashes,
 }
+
+/// Arguments for fiche encoding/decoding (model-readable format)
+#[derive(Args, Debug)]
+pub struct FicheArgs {
+    /// Input file (reads from stdin if not provided)
+    pub file: Option<PathBuf>,
+
+    /// Decode mode (fiche → JSON)
+    #[arg(short = 'd', long)]
+    pub decode: bool,
+
+    /// Pretty-print JSON output (decode only)
+    #[arg(short = 'p', long)]
+    pub pretty: bool,
+
+    /// Output file (writes to stdout if not provided)
+    #[arg(short = 'o', long)]
+    pub output: Option<PathBuf>,
+}

@@ -2,6 +2,7 @@ pub mod binary_packer;
 pub mod binary_unpacker;
 pub mod compression;
 pub mod display96;
+pub mod fiche;
 pub mod frame;
 pub mod parsers;
 pub mod serializers;
@@ -20,6 +21,10 @@ pub use serializers::{JsonSerializer, OutputSerializer};
 pub use types::{
     FieldDef, FieldType, IntermediateRepresentation, SchemaError, SchemaHeader, SchemaValue,
 };
+
+// Re-export fiche functions for library users
+#[allow(unused_imports)]
+pub use fiche::{parse as parse_fiche, serialize as serialize_fiche};
 
 /// Encode JSON to schema format: JSON → IR → binary → \[compress\] → display96 → framed
 ///
@@ -125,6 +130,55 @@ pub fn decode_schema(encoded: &str, pretty: bool) -> Result<String, SchemaError>
     let compressed = frame::decode_framed(encoded)?;
     let binary = compression::decompress_with_prefix(&compressed)?;
     let ir = unpack(&binary)?;
+    JsonSerializer::serialize(&ir, pretty)
+}
+
+/// Encode JSON to fiche format: JSON → IR → fiche
+///
+/// Transforms JSON into a model-readable structured format using Unicode delimiters.
+/// Unlike carrier98 (opaque binary), fiche is designed for models to parse directly.
+///
+/// # Format
+///
+/// ```text
+/// @{root}┃{field}:{type}┃{field}:{type}...
+/// ◉{value}┃{value}┃{value}...
+/// ```
+///
+/// # Example
+///
+/// ```ignore
+/// use base_d::encode_fiche;
+///
+/// let json = r#"{"users":[{"id":1,"name":"alice"}]}"#;
+/// let fiche = encode_fiche(json)?;
+/// // @users┃id:int┃name:str
+/// // ◉1┃alice
+/// ```
+pub fn encode_fiche(json: &str) -> Result<String, SchemaError> {
+    use parsers::{InputParser, JsonParser};
+
+    let ir = JsonParser::parse(json)?;
+    fiche::serialize(&ir)
+}
+
+/// Decode fiche format to JSON: fiche → IR → JSON
+///
+/// Reverses the fiche encoding to reconstruct JSON from the model-readable format.
+///
+/// # Example
+///
+/// ```ignore
+/// use base_d::decode_fiche;
+///
+/// let fiche = "@users┃id:int┃name:str\n◉1┃alice";
+/// let json = decode_fiche(fiche, false)?;
+/// // {"users":[{"id":1,"name":"alice"}]}
+/// ```
+pub fn decode_fiche(fiche_input: &str, pretty: bool) -> Result<String, SchemaError> {
+    use serializers::{JsonSerializer, OutputSerializer};
+
+    let ir = fiche::parse(fiche_input)?;
     JsonSerializer::serialize(&ir, pretty)
 }
 

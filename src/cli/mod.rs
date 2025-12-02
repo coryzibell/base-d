@@ -38,8 +38,11 @@ enum Commands {
     /// Compute hash of data
     Hash(args::HashArgs),
 
-    /// Schema encoding: compact JSON representation
+    /// Schema encoding: compact JSON representation (carrier98)
     Schema(args::SchemaArgs),
+
+    /// Fiche encoding: model-readable structured format
+    Fiche(args::FicheArgs),
 
     /// Query configuration and available options
     Config {
@@ -64,6 +67,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Detect(args) => handlers::detect::handle(args, &cli.global, &config),
         Commands::Hash(args) => handlers::hash::handle(args, &cli.global, &config),
         Commands::Schema(args) => handlers::schema::handle(args, &cli.global, &config),
+        Commands::Fiche(args) => handlers::fiche::handle(args, &cli.global, &config),
         Commands::Config { action } => handlers::config::handle(action, &cli.global, &config),
         Commands::Neo(args) => handlers::neo::handle(args, &cli.global, &config),
     }
