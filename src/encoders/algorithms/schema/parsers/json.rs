@@ -129,8 +129,10 @@ fn parse_array(arr: Vec<Value>) -> Result<IntermediateRepresentation, SchemaErro
 
 /// Parse single object (may have root key)
 fn parse_object(obj: Map<String, Value>) -> Result<IntermediateRepresentation, SchemaError> {
-    // Check if there's a single key containing an array of objects (root key pattern)
-    // e.g. {"users":[{"id":1},{"id":2}]} vs {"scores":[1,2,3]}
+    // Check for common pagination wrapper keys
+    const WRAPPER_KEYS: &[&str] = &["results", "data", "items", "records"];
+
+    // Check if this is a wrapper object with one of the known keys
     if obj.len() == 1 {
         // Check if value is an array of objects before consuming
         let is_root_key_pattern = obj
@@ -158,6 +160,21 @@ fn parse_object(obj: Map<String, Value>) -> Result<IntermediateRepresentation, S
             // Parse as array with root key
             let mut ir = parse_array(arr)?;
             ir.header.root_key = Some(key);
+            ir.header.set_flag(FLAG_HAS_ROOT_KEY);
+            return Ok(ir);
+        }
+    }
+
+    // Check for known wrapper patterns and unwrap them
+    for wrapper_key in WRAPPER_KEYS {
+        if let Some(Value::Array(arr)) = obj.get(*wrapper_key)
+            && !arr.is_empty()
+            && arr.iter().all(|item| matches!(item, Value::Object(_)))
+        {
+            // Found a wrapper key - unwrap and parse the array
+            let arr = arr.clone();
+            let mut ir = parse_array(arr)?;
+            ir.header.root_key = Some((*wrapper_key).to_string());
             ir.header.set_flag(FLAG_HAS_ROOT_KEY);
             return Ok(ir);
         }
@@ -317,6 +334,22 @@ fn infer_field_type(
             let current_type = infer_type(value);
 
             if let Some(ref existing_type) = inferred_type {
+                // Special case: Array(Null) unifies with Array(T) → Array(T)
+                if let (FieldType::Array(existing_inner), FieldType::Array(current_inner)) =
+                    (existing_type, &current_type)
+                {
+                    if **existing_inner == FieldType::Null && **current_inner != FieldType::Null {
+                        // Upgrade from Array(Null) to Array(T)
+                        inferred_type = Some(current_type.clone());
+                        continue;
+                    } else if **current_inner == FieldType::Null
+                        && **existing_inner != FieldType::Null
+                    {
+                        // Keep existing Array(T), ignore Array(Null)
+                        continue;
+                    }
+                }
+
                 if *existing_type != current_type {
                     // Type conflict - use Any
                     return Ok(FieldType::Any);
