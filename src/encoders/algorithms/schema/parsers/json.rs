@@ -161,6 +161,10 @@ fn parse_object(obj: Map<String, Value>) -> Result<IntermediateRepresentation, S
             Value::Bool(b) => {
                 scalar_fields.insert(key.clone(), b.to_string());
             }
+            Value::Null => {
+                // Encode null metadata as ∅ symbol
+                scalar_fields.insert(key.clone(), "∅".to_string());
+            }
             _ => {
                 // Non-scalar or nested object - not metadata pattern
                 scalar_fields.clear();
@@ -664,6 +668,24 @@ mod tests {
 
         // Array becomes the data rows
         assert_eq!(ir.header.root_key, Some("students".to_string()));
+        assert_eq!(ir.header.row_count, 2);
+        assert_eq!(ir.header.fields.len(), 1);
+        assert_eq!(ir.header.fields[0].name, "id");
+    }
+
+    #[test]
+    fn test_metadata_with_null() {
+        let input = r#"{"note": null, "total": 2, "users": [{"id": 1}, {"id": 2}]}"#;
+        let ir = JsonParser::parse(input).unwrap();
+
+        // Should extract metadata including null
+        assert!(ir.header.metadata.is_some());
+        let metadata = ir.header.metadata.as_ref().unwrap();
+        assert_eq!(metadata.get("note"), Some(&"∅".to_string()));
+        assert_eq!(metadata.get("total"), Some(&"2".to_string()));
+
+        // Array data
+        assert_eq!(ir.header.root_key, Some("users".to_string()));
         assert_eq!(ir.header.row_count, 2);
         assert_eq!(ir.header.fields.len(), 1);
         assert_eq!(ir.header.fields[0].name, "id");
