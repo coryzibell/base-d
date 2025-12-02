@@ -14,7 +14,12 @@ mod edge_cases;
 pub use binary_packer::pack;
 pub use binary_unpacker::unpack;
 pub use compression::SchemaCompressionAlgo;
-pub use types::SchemaError;
+pub use frame::{decode_framed, encode_framed};
+pub use parsers::{InputParser, JsonParser};
+pub use serializers::{JsonSerializer, OutputSerializer};
+pub use types::{
+    FieldDef, FieldType, IntermediateRepresentation, SchemaError, SchemaHeader, SchemaValue,
+};
 
 /// Encode JSON to schema format: JSON → IR → binary → \[compress\] → display96 → framed
 ///

@@ -165,6 +165,141 @@ pub use encoders::streaming::{StreamingDecoder, StreamingEncoder};
 
 // Expose schema encoding functions for CLI
 pub use encoders::algorithms::schema::{SchemaCompressionAlgo, decode_schema, encode_schema};
+
+/// Schema encoding types and traits for building custom frontends
+///
+/// This module provides the intermediate representation (IR) layer for schema encoding,
+/// allowing library users to implement custom parsers (YAML, CSV, TOML, etc.) and
+/// serializers that leverage the binary encoding backend.
+///
+/// # Architecture
+///
+/// The schema encoding pipeline has three layers:
+///
+/// 1. **Input layer**: Parse custom formats into IR
+///    - Implement `InputParser` trait
+///    - Reference: `JsonParser`
+///
+/// 2. **Binary layer**: Pack/unpack IR to/from binary
+///    - `pack()` - IR to binary bytes
+///    - `unpack()` - Binary bytes to IR
+///    - `encode_framed()` - Binary to display96 with delimiters
+///    - `decode_framed()` - Display96 to binary
+///
+/// 3. **Output layer**: Serialize IR to custom formats
+///    - Implement `OutputSerializer` trait
+///    - Reference: `JsonSerializer`
+///
+/// # Example: Custom CSV Parser
+///
+/// ```ignore
+/// use base_d::schema::{
+///     InputParser, IntermediateRepresentation, SchemaHeader, FieldDef,
+///     FieldType, SchemaValue, SchemaError, pack, encode_framed,
+/// };
+///
+/// struct CsvParser;
+///
+/// impl InputParser for CsvParser {
+///     type Error = SchemaError;
+///
+///     fn parse(input: &str) -> Result<IntermediateRepresentation, Self::Error> {
+///         // Parse CSV headers
+///         let lines: Vec<&str> = input.lines().collect();
+///         let headers: Vec<&str> = lines[0].split(',').collect();
+///
+///         // Infer types and build fields
+///         let fields: Vec<FieldDef> = headers.iter()
+///             .map(|h| FieldDef::new(h.to_string(), FieldType::String))
+///             .collect();
+///
+///         // Parse rows
+///         let row_count = lines.len() - 1;
+///         let mut values = Vec::new();
+///         for line in &lines[1..] {
+///             for cell in line.split(',') {
+///                 values.push(SchemaValue::String(cell.to_string()));
+///             }
+///         }
+///
+///         let header = SchemaHeader::new(row_count, fields);
+///         IntermediateRepresentation::new(header, values)
+///     }
+/// }
+///
+/// // Encode CSV to schema format
+/// let csv = "name,age\nalice,30\nbob,25";
+/// let ir = CsvParser::parse(csv)?;
+/// let binary = pack(&ir);
+/// let encoded = encode_framed(&binary);
+/// ```
+///
+/// # IR Structure
+///
+/// The `IntermediateRepresentation` consists of:
+///
+/// * **Header**: Schema metadata
+///   - Field definitions (name + type)
+///   - Row count
+///   - Optional root key
+///   - Optional null bitmap
+///
+/// * **Values**: Flat array in row-major order
+///   - `[row0_field0, row0_field1, row1_field0, row1_field1, ...]`
+///
+/// # Type System
+///
+/// Supported field types:
+///
+/// * `U64` - Unsigned 64-bit integer
+/// * `I64` - Signed 64-bit integer
+/// * `F64` - 64-bit floating point
+/// * `String` - UTF-8 string
+/// * `Bool` - Boolean
+/// * `Null` - Null value
+/// * `Array(T)` - Homogeneous array of type T
+/// * `Any` - Mixed-type values
+///
+/// # Compression
+///
+/// Optional compression algorithms:
+///
+/// * `SchemaCompressionAlgo::Brotli` - Best ratio
+/// * `SchemaCompressionAlgo::Lz4` - Fastest
+/// * `SchemaCompressionAlgo::Zstd` - Balanced
+///
+/// # See Also
+///
+/// * [SCHEMA.md](../SCHEMA.md) - Full format specification
+/// * `encode_schema()` / `decode_schema()` - High-level JSON functions
+pub mod schema {
+    pub use crate::encoders::algorithms::schema::{
+        // IR types
+        FieldDef,
+        FieldType,
+        // Traits
+        InputParser,
+        IntermediateRepresentation,
+        // Reference implementations
+        JsonParser,
+        JsonSerializer,
+        OutputSerializer,
+        // Compression
+        SchemaCompressionAlgo,
+        // Errors
+        SchemaError,
+        SchemaHeader,
+        SchemaValue,
+        // Binary layer
+        decode_framed,
+        // High-level API
+        decode_schema,
+        encode_framed,
+        encode_schema,
+        pack,
+        unpack,
+    };
+}
 pub use features::{
     CompressionAlgorithm, DictionaryDetector, DictionaryMatch, HashAlgorithm, XxHashConfig,
     compress, decompress, detect_dictionary, hash, hash_with_config,
