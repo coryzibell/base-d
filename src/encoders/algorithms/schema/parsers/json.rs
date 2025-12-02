@@ -1,3 +1,4 @@
+use crate::encoders::algorithms::schema::fiche::NEST_SEP;
 use crate::encoders::algorithms::schema::parsers::InputParser;
 use crate::encoders::algorithms::schema::types::*;
 use serde_json::{Map, Value};
@@ -230,7 +231,7 @@ fn collect_field_names_ordered(obj: &Map<String, Value>, prefix: &str, names: &m
         let full_key = if prefix.is_empty() {
             key.clone()
         } else {
-            format!("{}.{}", prefix, key)
+            format!("{}{}{}", prefix, NEST_SEP, key)
         };
 
         match value {
@@ -244,7 +245,7 @@ fn collect_field_names_ordered(obj: &Map<String, Value>, prefix: &str, names: &m
     }
 }
 
-/// Flatten nested object into dotted keys
+/// Flatten nested object with NEST_SEP delimiter
 fn flatten_object(obj: &Map<String, Value>, prefix: &str) -> HashMap<String, Value> {
     let mut result = HashMap::new();
 
@@ -252,7 +253,7 @@ fn flatten_object(obj: &Map<String, Value>, prefix: &str) -> HashMap<String, Val
         let full_key = if prefix.is_empty() {
             key.clone()
         } else {
-            format!("{}.{}", prefix, key)
+            format!("{}{}{}", prefix, NEST_SEP, key)
         };
 
         match value {
@@ -460,7 +461,7 @@ mod tests {
 
         assert_eq!(ir.header.row_count, 1);
         assert_eq!(ir.header.fields.len(), 1);
-        assert_eq!(ir.header.fields[0].name, "user.profile.name");
+        assert_eq!(ir.header.fields[0].name, "user჻profile჻name");
     }
 
     #[test]
@@ -525,7 +526,7 @@ mod tests {
         let input = r#"{"a":{"b":{"c":{"d":1}}}}"#;
         let ir = JsonParser::parse(input).unwrap();
 
-        assert_eq!(ir.header.fields[0].name, "a.b.c.d");
+        assert_eq!(ir.header.fields[0].name, "a჻b჻c჻d");
     }
 
     #[test]
@@ -534,6 +535,68 @@ mod tests {
         let flattened = flatten_object(&obj, "");
 
         assert_eq!(flattened.len(), 1);
-        assert!(flattened.contains_key("a.b"));
+        assert!(flattened.contains_key("a჻b"));
+    }
+
+    #[test]
+    fn test_single_level_nesting() {
+        let input = r#"{"id":"A1","name":"Jim","grade":{"math":60,"physics":66,"chemistry":61}}"#;
+        let ir = JsonParser::parse(input).unwrap();
+
+        assert_eq!(ir.header.row_count, 1);
+        assert_eq!(ir.header.fields.len(), 5);
+
+        // Check field names
+        let field_names: Vec<String> = ir.header.fields.iter().map(|f| f.name.clone()).collect();
+        assert!(field_names.contains(&"id".to_string()));
+        assert!(field_names.contains(&"name".to_string()));
+        assert!(field_names.contains(&"grade჻math".to_string()));
+        assert!(field_names.contains(&"grade჻physics".to_string()));
+        assert!(field_names.contains(&"grade჻chemistry".to_string()));
+    }
+
+    #[test]
+    fn test_array_of_nested_objects() {
+        let input = r#"{"students":[{"id":"A1","name":"Jim","grade":{"math":60,"physics":66}}]}"#;
+        let ir = JsonParser::parse(input).unwrap();
+
+        assert_eq!(ir.header.row_count, 1);
+        assert_eq!(ir.header.root_key, Some("students".to_string()));
+
+        let field_names: Vec<String> = ir.header.fields.iter().map(|f| f.name.clone()).collect();
+        assert!(field_names.contains(&"id".to_string()));
+        assert!(field_names.contains(&"name".to_string()));
+        assert!(field_names.contains(&"grade჻math".to_string()));
+        assert!(field_names.contains(&"grade჻physics".to_string()));
+    }
+
+    #[test]
+    fn test_multiple_nested_levels() {
+        let input = r#"{"data":{"user":{"profile":{"address":{"city":"Boston"}}}}}"#;
+        let ir = JsonParser::parse(input).unwrap();
+
+        assert_eq!(ir.header.fields.len(), 1);
+        assert_eq!(ir.header.fields[0].name, "data჻user჻profile჻address჻city");
+    }
+
+    #[test]
+    fn test_mixed_arrays_and_objects() {
+        let input =
+            r#"{"person":{"name":"Alice","tags":["admin","user"],"address":{"city":"NYC"}}}"#;
+        let ir = JsonParser::parse(input).unwrap();
+
+        let field_names: Vec<String> = ir.header.fields.iter().map(|f| f.name.clone()).collect();
+        assert!(field_names.contains(&"person჻name".to_string()));
+        assert!(field_names.contains(&"person჻tags".to_string()));
+        assert!(field_names.contains(&"person჻address჻city".to_string()));
+
+        // Verify tags is an array type
+        let tags_field = ir
+            .header
+            .fields
+            .iter()
+            .find(|f| f.name == "person჻tags")
+            .unwrap();
+        assert!(matches!(tags_field.field_type, FieldType::Array(_)));
     }
 }

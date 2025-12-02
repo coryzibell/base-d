@@ -12,6 +12,7 @@
 //! | `┃` | U+2503 | Field separator (heavy pipe) |
 //! | `◈` | U+25C8 | Array element separator |
 //! | `∅` | U+2205 | Null value |
+//! | `჻` | U+10FB | Nested object separator |
 //!
 //! # Format
 //!
@@ -40,6 +41,7 @@ pub const FIELD_SEP: char = '┃'; // U+2503 heavy pipe
 pub const ARRAY_SEP: char = '◈'; // U+25C8 diamond in diamond
 pub const NULL_VALUE: &str = "∅"; // U+2205 empty set
 pub const SPACE_MARKER: char = '▓'; // U+2593 Dark Shade
+pub const NEST_SEP: char = '჻'; // U+10FB Georgian paragraph separator
 
 // Nested depth markers (circled numbers)
 const DEPTH_MARKERS: [char; 20] = [
