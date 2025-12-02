@@ -699,4 +699,99 @@ mod integration_tests {
         }
         println!();
     }
+
+    #[test]
+    fn test_nested_object_roundtrip_single_level() {
+        let input = r#"{"id":"A1","name":"Jim","grade":{"math":60,"physics":66,"chemistry":61}}"#;
+
+        // JSON → IR → fiche
+        let ir = JsonParser::parse(input).unwrap();
+        let fiche = fiche::serialize(&ir).unwrap();
+
+        // Verify flattened field names with ჻
+        assert!(fiche.contains("grade჻math:int"));
+        assert!(fiche.contains("grade჻physics:int"));
+        assert!(fiche.contains("grade჻chemistry:int"));
+
+        // fiche → IR → JSON
+        let ir2 = fiche::parse(&fiche).unwrap();
+        let output = JsonSerializer::serialize(&ir2, false).unwrap();
+
+        // Compare JSON
+        let input_value: serde_json::Value = serde_json::from_str(input).unwrap();
+        let output_value: serde_json::Value = serde_json::from_str(&output).unwrap();
+        assert_eq!(input_value, output_value);
+    }
+
+    #[test]
+    fn test_nested_object_roundtrip_deep() {
+        let input = r#"{"a":{"b":{"c":{"d":42}}}}"#;
+
+        let ir = JsonParser::parse(input).unwrap();
+        let fiche = fiche::serialize(&ir).unwrap();
+
+        // Verify deep nesting with ჻
+        assert!(fiche.contains("a჻b჻c჻d:int"));
+
+        let ir2 = fiche::parse(&fiche).unwrap();
+        let output = JsonSerializer::serialize(&ir2, false).unwrap();
+
+        let input_value: serde_json::Value = serde_json::from_str(input).unwrap();
+        let output_value: serde_json::Value = serde_json::from_str(&output).unwrap();
+        assert_eq!(input_value, output_value);
+    }
+
+    #[test]
+    fn test_nested_object_roundtrip_array_of_objects() {
+        let input = r#"{"students":[{"id":"A1","name":"Jim","grade":{"math":60,"physics":66}},{"id":"B2","name":"Sara","grade":{"math":85,"physics":90}}]}"#;
+
+        let ir = JsonParser::parse(input).unwrap();
+        let fiche = fiche::serialize(&ir).unwrap();
+
+        // Verify root key and flattened nested fields
+        assert!(fiche.starts_with("@students"));
+        assert!(fiche.contains("grade჻math:int"));
+        assert!(fiche.contains("grade჻physics:int"));
+
+        let ir2 = fiche::parse(&fiche).unwrap();
+        let output = JsonSerializer::serialize(&ir2, false).unwrap();
+
+        let input_value: serde_json::Value = serde_json::from_str(input).unwrap();
+        let output_value: serde_json::Value = serde_json::from_str(&output).unwrap();
+        assert_eq!(input_value, output_value);
+    }
+
+    #[test]
+    fn test_nested_object_roundtrip_mixed_with_arrays() {
+        let input = r#"{"person":{"name":"Alice","tags":["admin","user"],"address":{"city":"Boston","zip":"02101"}}}"#;
+
+        let ir = JsonParser::parse(input).unwrap();
+        let fiche = fiche::serialize(&ir).unwrap();
+
+        // Verify both object nesting and array handling
+        assert!(fiche.contains("person჻name:str"));
+        assert!(fiche.contains("person჻tags:@"));
+        assert!(fiche.contains("person჻address჻city:str"));
+        assert!(fiche.contains("person჻address჻zip:str"));
+
+        let ir2 = fiche::parse(&fiche).unwrap();
+        let output = JsonSerializer::serialize(&ir2, false).unwrap();
+
+        let input_value: serde_json::Value = serde_json::from_str(input).unwrap();
+        let output_value: serde_json::Value = serde_json::from_str(&output).unwrap();
+        assert_eq!(input_value, output_value);
+    }
+
+    #[test]
+    fn test_nested_object_roundtrip_schema_encode() {
+        let input = r#"{"data":{"user":{"profile":{"name":"alice","age":30}}}}"#;
+
+        // Full schema pipeline: JSON → IR → binary → display96 → framed
+        let encoded = encode_schema(input, None).unwrap();
+        let decoded = decode_schema(&encoded, false).unwrap();
+
+        let input_value: serde_json::Value = serde_json::from_str(input).unwrap();
+        let output_value: serde_json::Value = serde_json::from_str(&decoded).unwrap();
+        assert_eq!(input_value, output_value);
+    }
 }

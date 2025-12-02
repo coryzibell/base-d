@@ -1,3 +1,4 @@
+use crate::encoders::algorithms::schema::fiche::NEST_SEP;
 use crate::encoders::algorithms::schema::serializers::OutputSerializer;
 use crate::encoders::algorithms::schema::types::*;
 use serde_json::{Map, Value, json};
@@ -92,12 +93,12 @@ fn schema_value_to_json(value: &SchemaValue) -> Result<Value, SchemaError> {
     }
 }
 
-/// Unflatten dotted keys back to nested objects
+/// Unflatten nested keys back to nested objects
 fn unflatten_object(flat: HashMap<String, Value>) -> Value {
     let mut result = Map::new();
 
     for (key, value) in flat {
-        let parts: Vec<&str> = key.split('.').collect();
+        let parts: Vec<&str> = key.split(NEST_SEP).collect();
         insert_nested(&mut result, &parts, value);
     }
 
@@ -168,7 +169,7 @@ mod tests {
 
     #[test]
     fn test_nested_object() {
-        let fields = vec![FieldDef::new("user.profile.name", FieldType::String)];
+        let fields = vec![FieldDef::new("user჻profile჻name", FieldType::String)];
         let header = SchemaHeader::new(1, fields);
         let values = vec![SchemaValue::String("alice".to_string())];
         let ir = IntermediateRepresentation::new(header, values).unwrap();
@@ -259,7 +260,7 @@ mod tests {
 
     #[test]
     fn test_deep_nesting() {
-        let fields = vec![FieldDef::new("a.b.c.d", FieldType::U64)];
+        let fields = vec![FieldDef::new("a჻b჻c჻d", FieldType::U64)];
         let header = SchemaHeader::new(1, fields);
         let values = vec![SchemaValue::U64(1)];
         let ir = IntermediateRepresentation::new(header, values).unwrap();
@@ -273,7 +274,7 @@ mod tests {
     #[test]
     fn test_unflatten_object() {
         let mut flat = HashMap::new();
-        flat.insert("a.b".to_string(), json!(1));
+        flat.insert("a჻b".to_string(), json!(1));
 
         let unflattened = unflatten_object(flat);
 
