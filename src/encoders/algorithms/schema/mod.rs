@@ -438,14 +438,14 @@ mod integration_tests {
         let input = r#"{"people":[{"name":"Luke","height":"172","films":["film/1","film/2"],"vehicles":[]},{"name":"C-3PO","height":"167","films":["film/1","film/2","film/3"],"vehicles":[]}]}"#;
         let ir = JsonParser::parse(input).unwrap();
 
-        // Verify fiche representation
-        let fiche_output = fiche::serialize(&ir).unwrap();
+        // Verify fiche representation (readable mode for string matching)
+        let fiche_output = fiche::serialize_readable(&ir).unwrap();
 
         // Should have @people root key
         assert!(fiche_output.starts_with("@people"));
-        // Primitive arrays now inline with type⟦⟧ syntax
-        assert!(fiche_output.contains("films:str⟦⟧"));
-        assert!(fiche_output.contains("vehicles:str⟦⟧"));
+        // Primitive arrays now inline with superscript + ⟦⟧ syntax
+        assert!(fiche_output.contains("filmsˢ⟦⟧"));
+        assert!(fiche_output.contains("vehiclesˢ⟦⟧"));
 
         // Verify round trip - arrays become indexed objects
         let binary = pack(&ir);
@@ -720,17 +720,18 @@ mod integration_tests {
     fn test_nested_object_roundtrip_single_level() {
         let input = r#"{"id":"A1","name":"Jim","grade":{"math":60,"physics":66,"chemistry":61}}"#;
 
-        // JSON → IR → fiche
+        // JSON → IR → fiche (readable for string matching)
         let ir = JsonParser::parse(input).unwrap();
-        let fiche = fiche::serialize(&ir).unwrap();
+        let fiche = fiche::serialize_readable(&ir).unwrap();
 
-        // Verify flattened field names with ჻
-        assert!(fiche.contains("grade჻math:int"));
-        assert!(fiche.contains("grade჻physics:int"));
-        assert!(fiche.contains("grade჻chemistry:int"));
+        // Verify flattened field names with ჻ and superscript types
+        assert!(fiche.contains("grade჻mathⁱ"));
+        assert!(fiche.contains("grade჻physicsⁱ"));
+        assert!(fiche.contains("grade჻chemistryⁱ"));
 
-        // fiche → IR → JSON
-        let ir2 = fiche::parse(&fiche).unwrap();
+        // fiche → IR → JSON (using tokenized format for roundtrip)
+        let tokenized = fiche::serialize(&ir).unwrap();
+        let ir2 = fiche::parse(&tokenized).unwrap();
         let output = JsonSerializer::serialize(&ir2, false).unwrap();
 
         // Compare JSON
@@ -744,12 +745,14 @@ mod integration_tests {
         let input = r#"{"a":{"b":{"c":{"d":42}}}}"#;
 
         let ir = JsonParser::parse(input).unwrap();
-        let fiche = fiche::serialize(&ir).unwrap();
+        let fiche = fiche::serialize_readable(&ir).unwrap();
 
-        // Verify deep nesting with ჻
-        assert!(fiche.contains("a჻b჻c჻d:int"));
+        // Verify deep nesting with ჻ and superscript type
+        assert!(fiche.contains("a჻b჻c჻dⁱ"));
 
-        let ir2 = fiche::parse(&fiche).unwrap();
+        // Roundtrip with tokenized format
+        let tokenized = fiche::serialize(&ir).unwrap();
+        let ir2 = fiche::parse(&tokenized).unwrap();
         let output = JsonSerializer::serialize(&ir2, false).unwrap();
 
         let input_value: serde_json::Value = serde_json::from_str(input).unwrap();
@@ -762,14 +765,16 @@ mod integration_tests {
         let input = r#"{"students":[{"id":"A1","name":"Jim","grade":{"math":60,"physics":66}},{"id":"B2","name":"Sara","grade":{"math":85,"physics":90}}]}"#;
 
         let ir = JsonParser::parse(input).unwrap();
-        let fiche = fiche::serialize(&ir).unwrap();
+        let fiche = fiche::serialize_readable(&ir).unwrap();
 
-        // Verify root key and flattened nested fields
+        // Verify root key and flattened nested fields with superscript types
         assert!(fiche.starts_with("@students"));
-        assert!(fiche.contains("grade჻math:int"));
-        assert!(fiche.contains("grade჻physics:int"));
+        assert!(fiche.contains("grade჻mathⁱ"));
+        assert!(fiche.contains("grade჻physicsⁱ"));
 
-        let ir2 = fiche::parse(&fiche).unwrap();
+        // Roundtrip with tokenized format
+        let tokenized = fiche::serialize(&ir).unwrap();
+        let ir2 = fiche::parse(&tokenized).unwrap();
         let output = JsonSerializer::serialize(&ir2, false).unwrap();
 
         let input_value: serde_json::Value = serde_json::from_str(input).unwrap();
@@ -783,16 +788,18 @@ mod integration_tests {
         let input = r#"{"person":{"name":"Alice","tags":["admin","user"],"address":{"city":"Boston","zip":"02101"}}}"#;
 
         let ir = JsonParser::parse(input).unwrap();
-        let fiche = fiche::serialize(&ir).unwrap();
+        let fiche = fiche::serialize_readable(&ir).unwrap();
 
-        // Verify both object nesting and inline primitive arrays
-        assert!(fiche.contains("person჻name:str"));
-        // Primitive arrays now inline with type⟦⟧ syntax
-        assert!(fiche.contains("person჻tags:str⟦⟧"));
-        assert!(fiche.contains("person჻address჻city:str"));
-        assert!(fiche.contains("person჻address჻zip:str"));
+        // Verify both object nesting and inline primitive arrays with superscript types
+        assert!(fiche.contains("person჻nameˢ"));
+        // Primitive arrays now inline with superscript + ⟦⟧ syntax
+        assert!(fiche.contains("person჻tagsˢ⟦⟧"));
+        assert!(fiche.contains("person჻address჻cityˢ"));
+        assert!(fiche.contains("person჻address჻zipˢ"));
 
-        let ir2 = fiche::parse(&fiche).unwrap();
+        // Roundtrip with tokenized format
+        let tokenized = fiche::serialize(&ir).unwrap();
+        let ir2 = fiche::parse(&tokenized).unwrap();
         let output = JsonSerializer::serialize(&ir2, false).unwrap();
 
         // Arrays are properly reconstructed

@@ -532,6 +532,26 @@ mod tests {
     }
 
     #[test]
+    fn test_unflatten_nested_array() {
+        // Simulate flattened deep: [[3,4],[5,6]]
+        let mut flat = HashMap::new();
+        flat.insert("deep⟦⟧".to_string(), Value::Null); // outer array marker
+        flat.insert("deep჻0⟦⟧".to_string(), Value::Null); // inner array marker for deep[0]
+        flat.insert("deep჻1⟦⟧".to_string(), Value::Null); // inner array marker for deep[1]
+        flat.insert("deep჻0჻0".to_string(), json!(3));
+        flat.insert("deep჻0჻1".to_string(), json!(4));
+        flat.insert("deep჻1჻0".to_string(), json!(5));
+        flat.insert("deep჻1჻1".to_string(), json!(6));
+
+        let unflattened = unflatten_object(flat);
+
+        assert_eq!(unflattened["deep"][0][0], json!(3));
+        assert_eq!(unflattened["deep"][0][1], json!(4));
+        assert_eq!(unflattened["deep"][1][0], json!(5));
+        assert_eq!(unflattened["deep"][1][1], json!(6));
+    }
+
+    #[test]
     fn test_pretty_output() {
         let fields = vec![
             FieldDef::new("id", FieldType::U64),

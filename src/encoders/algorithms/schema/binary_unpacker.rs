@@ -264,10 +264,26 @@ fn unpack_value(cursor: &mut Cursor, field_type: &FieldType) -> Result<SchemaVal
         FieldType::Null => Ok(SchemaValue::Null),
         FieldType::Array(element_type) => {
             let count = decode_varint(cursor, "array element count")? as usize;
+            // Read the null bitmap for array elements
+            let bitmap_bytes = count.div_ceil(8);
+            let null_bitmap = if bitmap_bytes > 0 {
+                cursor.read_bytes(bitmap_bytes)?.to_vec()
+            } else {
+                vec![]
+            };
             let mut arr = Vec::new();
-            for _ in 0..count {
-                let item = unpack_value(cursor, element_type)?;
-                arr.push(item);
+            for idx in 0..count {
+                // Check if this element is null
+                let byte_idx = idx / 8;
+                let bit_idx = idx % 8;
+                let is_null =
+                    byte_idx < null_bitmap.len() && (null_bitmap[byte_idx] >> bit_idx) & 1 == 1;
+                if is_null {
+                    arr.push(SchemaValue::Null);
+                } else {
+                    let item = unpack_value(cursor, element_type)?;
+                    arr.push(item);
+                }
             }
             Ok(SchemaValue::Array(arr))
         }

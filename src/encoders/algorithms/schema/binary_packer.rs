@@ -111,8 +111,23 @@ fn pack_value(buffer: &mut Vec<u8>, value: &SchemaValue) {
         SchemaValue::Null => {} // Null encoded in bitmap, no value bytes
         SchemaValue::Array(arr) => {
             encode_varint(buffer, arr.len() as u64);
+            // For arrays, we need to encode which elements are null
+            // Write a null bitmap for the array elements
+            let bitmap_bytes = arr.len().div_ceil(8);
+            let mut null_bitmap = vec![0u8; bitmap_bytes];
+            for (idx, item) in arr.iter().enumerate() {
+                if matches!(item, SchemaValue::Null) {
+                    let byte_idx = idx / 8;
+                    let bit_idx = idx % 8;
+                    null_bitmap[byte_idx] |= 1 << bit_idx;
+                }
+            }
+            buffer.extend_from_slice(&null_bitmap);
+            // Then write non-null values
             for item in arr {
-                pack_value(buffer, item);
+                if !matches!(item, SchemaValue::Null) {
+                    pack_value(buffer, item);
+                }
             }
         }
     }
@@ -276,7 +291,21 @@ mod tests {
         let array = SchemaValue::Array(vec![SchemaValue::U64(1), SchemaValue::U64(2)]);
         pack_value(&mut buffer, &array);
 
-        // Should be: count (2) + value (1) + value (2)
-        assert_eq!(buffer, vec![2, 1, 2]);
+        // Should be: count (2) + null_bitmap (1 byte, all zeros) + value (1) + value (2)
+        assert_eq!(buffer, vec![2, 0, 1, 2]);
+    }
+
+    #[test]
+    fn test_pack_array_with_nulls() {
+        let mut buffer = Vec::new();
+        let array = SchemaValue::Array(vec![
+            SchemaValue::U64(1),
+            SchemaValue::Null,
+            SchemaValue::U64(3),
+        ]);
+        pack_value(&mut buffer, &array);
+
+        // Should be: count (3) + null_bitmap (1 byte, bit 1 set = 0b00000010 = 2) + value (1) + value (3)
+        assert_eq!(buffer, vec![3, 0b00000010, 1, 3]);
     }
 }

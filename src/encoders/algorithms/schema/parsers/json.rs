@@ -450,11 +450,19 @@ fn flatten_object(obj: &Map<String, Value>, prefix: &str) -> HashMap<String, Val
                                 result.extend(flatten_object(nested_obj, &indexed_key));
                             }
                             Value::Array(nested_arr) => {
-                                // Recursively handle nested arrays
-                                for (nested_idx, nested_item) in nested_arr.iter().enumerate() {
-                                    let nested_indexed_key =
-                                        format!("{}{}{}", indexed_key, NEST_SEP, nested_idx);
-                                    flatten_value(&nested_indexed_key, nested_item, &mut result);
+                                // Check if nested array is primitive
+                                if is_primitive_array(nested_arr) {
+                                    // Store primitive array directly at indexed position
+                                    result.insert(indexed_key, Value::Array(nested_arr.clone()));
+                                } else {
+                                    // Mark this indexed element as an array
+                                    result.insert(format!("{}⟦⟧", indexed_key), Value::Null);
+                                    // Recursively handle nested arrays
+                                    for (nested_idx, nested_item) in nested_arr.iter().enumerate() {
+                                        let nested_indexed_key =
+                                            format!("{}{}{}", indexed_key, NEST_SEP, nested_idx);
+                                        flatten_value(&nested_indexed_key, nested_item, &mut result);
+                                    }
                                 }
                             }
                             _ => {
