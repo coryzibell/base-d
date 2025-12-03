@@ -43,23 +43,6 @@ pub const NULL_VALUE: &str = "∅"; // U+2205 empty set
 pub const SPACE_MARKER: char = '▓'; // U+2593 Dark Shade
 pub const NEST_SEP: char = '჻'; // U+10FB Georgian paragraph separator
 
-// Nested depth markers (circled numbers)
-const DEPTH_MARKERS: [char; 20] = [
-    '①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩', '⑪', '⑫', '⑬', '⑭', '⑮', '⑯', '⑰', '⑱', '⑲',
-    '⑳',
-];
-
-fn get_depth_marker(depth: usize) -> char {
-    if depth == 0 {
-        ROW_START
-    } else if depth <= DEPTH_MARKERS.len() {
-        DEPTH_MARKERS[depth - 1]
-    } else {
-        // Fallback for extremely deep nesting
-        DEPTH_MARKERS[DEPTH_MARKERS.len() - 1]
-    }
-}
-
 // Type names in fiche schema
 pub const TYPE_INT: &str = "int";
 pub const TYPE_STR: &str = "str";
@@ -188,17 +171,73 @@ pub fn parse(input: &str) -> Result<IntermediateRepresentation, SchemaError> {
             Some(root.to_string())
         };
 
-        if let Some(bracket_end) = root_and_metadata.find(']') {
-            let meta_str = &root_and_metadata[bracket_start + 1..bracket_end];
+        // Find matching closing bracket (handle nested brackets in JSON values)
+        let meta_content = &root_and_metadata[bracket_start + 1..];
+        let mut depth = 0;
+        let mut bracket_end = None;
+        for (idx, ch) in meta_content.char_indices() {
+            match ch {
+                '[' => depth += 1,
+                ']' => {
+                    if depth == 0 {
+                        bracket_end = Some(idx);
+                        break;
+                    }
+                    depth -= 1;
+                }
+                _ => {}
+            }
+        }
+
+        if let Some(end_pos) = bracket_end {
+            let meta_str = &meta_content[..end_pos];
             let mut metadata = std::collections::HashMap::new();
 
-            // Parse key=value pairs
-            for pair in meta_str.split(',') {
-                if let Some(eq_pos) = pair.find('=') {
-                    let key = pair[..eq_pos].trim().to_string();
-                    let value = pair[eq_pos + 1..].trim().replace(SPACE_MARKER, " ");
-                    metadata.insert(key, value);
+            // Parse key=value pairs (handle JSON arrays with commas)
+            let mut current_key = String::new();
+            let mut current_value = String::new();
+            let mut in_value = false;
+            let mut json_depth = 0;
+
+            for ch in meta_str.chars() {
+                match ch {
+                    '=' if !in_value && json_depth == 0 => {
+                        in_value = true;
+                    }
+                    '[' if in_value => {
+                        json_depth += 1;
+                        current_value.push(ch);
+                    }
+                    ']' if in_value => {
+                        json_depth -= 1;
+                        current_value.push(ch);
+                    }
+                    ',' if in_value && json_depth == 0 => {
+                        // End of key=value pair
+                        let key = current_key.trim().to_string();
+                        let value = current_value.trim().replace(SPACE_MARKER, " ");
+                        if !key.is_empty() {
+                            metadata.insert(key, value);
+                        }
+                        current_key.clear();
+                        current_value.clear();
+                        in_value = false;
+                    }
+                    _ => {
+                        if in_value {
+                            current_value.push(ch);
+                        } else {
+                            current_key.push(ch);
+                        }
+                    }
                 }
+            }
+
+            // Insert final pair
+            if !current_key.is_empty() {
+                let key = current_key.trim().to_string();
+                let value = current_value.trim().replace(SPACE_MARKER, " ");
+                metadata.insert(key, value);
             }
 
             (
@@ -321,7 +360,11 @@ fn field_type_to_str(ft: &FieldType) -> String {
         FieldType::String => TYPE_STR.to_string(),
         FieldType::Bool => TYPE_BOOL.to_string(),
         FieldType::Null => TYPE_STR.to_string(), // Nulls rendered as str type
-        FieldType::Array(_) => "@".to_string(),  // Nested content marker
+        FieldType::Array(inner) => {
+            // Inline primitive arrays: emit type⟦⟧
+            let inner_str = field_type_to_str(inner);
+            format!("{}⟦⟧", inner_str)
+        }
         FieldType::Any => TYPE_STR.to_string(),
     }
 }
@@ -365,11 +408,6 @@ fn parse_field_def(s: &str) -> Result<(String, FieldType), SchemaError> {
 
 /// Convert SchemaValue to fiche string
 fn value_to_str(value: &SchemaValue, field_type: &FieldType) -> String {
-    value_to_str_depth(value, field_type, 1)
-}
-
-/// Convert SchemaValue to fiche string with depth tracking
-fn value_to_str_depth(value: &SchemaValue, field_type: &FieldType, depth: usize) -> String {
     match value {
         SchemaValue::U64(n) => n.to_string(),
         SchemaValue::I64(n) => n.to_string(),
@@ -395,21 +433,21 @@ fn value_to_str_depth(value: &SchemaValue, field_type: &FieldType, depth: usize)
                 &FieldType::String
             };
 
-            let marker = get_depth_marker(depth);
-            let marker_str = marker.to_string();
-            let elements: Vec<String> = arr
-                .iter()
-                .map(|v| value_to_str_depth(v, inner_type, depth + 1))
-                .collect();
+            // Inline primitive arrays with ◈ separator
+            let elements: Vec<String> = arr.iter().map(|v| value_to_str(v, inner_type)).collect();
 
-            // Prepend marker to first element and join rest with marker
-            format!("{}{}", marker_str, elements.join(&marker_str))
+            elements.join(&ARRAY_SEP.to_string())
         }
     }
 }
 
 /// Parse value string to SchemaValue
 fn parse_value(s: &str, field_type: &FieldType) -> Result<SchemaValue, SchemaError> {
+    // Check for null marker first (applies to all types)
+    if s == NULL_VALUE {
+        return Ok(SchemaValue::Null);
+    }
+
     match field_type {
         FieldType::U64 => s
             .parse::<u64>()
@@ -434,48 +472,17 @@ fn parse_value(s: &str, field_type: &FieldType) -> Result<SchemaValue, SchemaErr
         },
         FieldType::Null => Ok(SchemaValue::Null),
         FieldType::Array(inner) => {
-            if s.is_empty() || s == NULL_VALUE {
+            if s.is_empty() {
                 return Ok(SchemaValue::Array(vec![]));
             }
-            // Try splitting by depth markers first (①, ②, etc.)
-            let elements: Result<Vec<_>, _> = split_by_depth_markers(s)
-                .into_iter()
+            // Split by ARRAY_SEP (◈) for inline primitive arrays
+            let elements: Result<Vec<_>, _> = s
+                .split(ARRAY_SEP)
                 .map(|elem| parse_value(elem.trim(), inner))
                 .collect();
             elements.map(SchemaValue::Array)
         }
         FieldType::Any => Ok(SchemaValue::String(s.to_string())),
-    }
-}
-
-/// Split a string by depth markers (①, ②, etc.) or fallback to ARRAY_SEP
-fn split_by_depth_markers(s: &str) -> Vec<&str> {
-    // Check if any depth markers are present
-    let has_depth_markers = DEPTH_MARKERS.iter().any(|&marker| s.contains(marker));
-
-    if has_depth_markers {
-        // Split by any depth marker
-        let mut result = Vec::new();
-        let mut current_start = 0;
-
-        for (idx, ch) in s.char_indices() {
-            if DEPTH_MARKERS.contains(&ch) {
-                if current_start < idx {
-                    result.push(&s[current_start..idx]);
-                }
-                current_start = idx + ch.len_utf8();
-            }
-        }
-
-        // Add remaining part
-        if current_start < s.len() {
-            result.push(&s[current_start..]);
-        }
-
-        result
-    } else {
-        // Fallback to ARRAY_SEP (backward compatibility)
-        s.split(ARRAY_SEP).collect()
     }
 }
 
@@ -522,9 +529,9 @@ mod tests {
             panic!("Expected array");
         }
 
-        // Note: output uses new @ syntax for array types
+        // Output uses new type⟦⟧ syntax for inline primitive arrays
         let output = serialize(&ir).unwrap();
-        assert!(output.contains("tags:@"));
+        assert!(output.contains("tags:str⟦⟧"));
     }
 
     #[test]
@@ -544,9 +551,9 @@ mod tests {
             panic!("Expected array");
         }
 
-        // Output uses @ syntax
+        // Output uses type⟦⟧ syntax for inline primitive arrays
         let output = serialize(&ir).unwrap();
-        assert!(output.contains("tags:@"));
+        assert!(output.contains("tags:str⟦⟧"));
     }
 
     #[test]
@@ -609,9 +616,10 @@ mod tests {
 
     #[test]
     fn test_nested_arrays() {
-        let fiche = "@people┃name:str┃height:str┃films:@┃vehicles:@
-◉Luke┃172┃①film/1①film/2┃∅
-◉Leia┃150┃①film/1┃①vehicle/30";
+        // Inline primitive arrays use ◈ separator
+        let fiche = "@people┃name:str┃height:str┃films:str⟦⟧┃vehicles:str⟦⟧
+◉Luke┃172┃film/1◈film/2┃∅
+◉Leia┃150┃film/1┃vehicle/30";
 
         let ir = parse(fiche).unwrap();
         assert_eq!(ir.header.row_count, 2);

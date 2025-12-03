@@ -27,7 +27,12 @@ impl OutputSerializer for JsonSerializer {
                     .ok_or_else(|| SchemaError::InvalidInput("Missing value".to_string()))?;
 
                 let json_value = if ir.is_null(row_idx, field_idx) {
-                    Value::Null
+                    // Check if field type is Array - null in array field means empty array
+                    if matches!(field.field_type, FieldType::Array(_)) {
+                        Value::Array(vec![])
+                    } else {
+                        Value::Null
+                    }
                 } else {
                     schema_value_to_json(value)?
                 };
@@ -46,11 +51,14 @@ impl OutputSerializer for JsonSerializer {
         }
 
         // Determine output format
-        let result = if ir.header.row_count == 1 && ir.header.metadata.is_none() {
-            // Single row without metadata - output as object
+        let result = if ir.header.row_count == 1
+            && ir.header.metadata.is_none()
+            && ir.header.root_key.is_none()
+        {
+            // Single row without metadata and no root key - output as object
             unflattened_rows.into_iter().next().unwrap()
         } else {
-            // Multiple rows OR single row with metadata - output as array
+            // Multiple rows OR single row with metadata OR root key present - output as array
             Value::Array(unflattened_rows)
         };
 
@@ -64,6 +72,9 @@ impl OutputSerializer for JsonSerializer {
                     // Convert ∅ symbol back to JSON null
                     let json_value = if value == "∅" {
                         Value::Null
+                    } else if value.starts_with('[') && value.ends_with(']') {
+                        // Try to parse as JSON array (for inline primitive arrays in metadata)
+                        serde_json::from_str(value).unwrap_or_else(|_| json!(value))
                     } else {
                         // Try to parse as number, bool, or keep as string
                         if let Ok(num) = value.parse::<i64>() {
@@ -430,8 +441,9 @@ mod tests {
         let output = JsonSerializer::serialize(&ir, false).unwrap();
         let parsed: Value = serde_json::from_str(&output).unwrap();
 
-        assert!(parsed["users"].is_object());
-        assert_eq!(parsed["users"]["id"], json!(1));
+        // With root key, output is array even for single row
+        assert!(parsed["users"].is_array());
+        assert_eq!(parsed["users"][0]["id"], json!(1));
     }
 
     #[test]

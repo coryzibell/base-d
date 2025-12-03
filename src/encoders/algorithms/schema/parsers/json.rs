@@ -162,13 +162,18 @@ fn parse_object(obj: Map<String, Value>) -> Result<IntermediateRepresentation, S
 
     for (key, value) in &obj {
         match value {
+            // Primitive arrays are NOT metadata - they become inline fields with ◈
+            // Skip them here so they get handled by flatten_object()
+            Value::Array(arr) if is_primitive_array(arr) => {
+                // Don't treat as metadata - will be handled as inline array field
+            }
             Value::Array(arr)
                 if !arr.is_empty() && arr.iter().all(|item| matches!(item, Value::Object(_))) =>
             {
                 if array_field.is_none() {
                     array_field = Some((key.clone(), arr.clone()));
                 } else {
-                    // Multiple arrays - not metadata pattern
+                    // Multiple object arrays - not metadata pattern
                     array_field = None;
                     scalar_fields.clear();
                     break;
@@ -241,17 +246,25 @@ fn parse_object(obj: Map<String, Value>) -> Result<IntermediateRepresentation, S
     }
 
     // Check for known wrapper patterns and unwrap them
-    for wrapper_key in WRAPPER_KEYS {
-        if let Some(Value::Array(arr)) = obj.get(*wrapper_key)
-            && !arr.is_empty()
-            && arr.iter().all(|item| matches!(item, Value::Object(_)))
-        {
-            // Found a wrapper key - unwrap and parse the array
-            let arr = arr.clone();
-            let mut ir = parse_array(arr)?;
-            ir.header.root_key = Some((*wrapper_key).to_string());
-            ir.header.set_flag(FLAG_HAS_ROOT_KEY);
-            return Ok(ir);
+    // Only unwrap if the wrapper key is the ONLY field (or with scalar metadata)
+    // If there are other arrays (primitive or object), don't unwrap
+    let has_other_arrays = obj
+        .iter()
+        .any(|(k, v)| matches!(v, Value::Array(_)) && !WRAPPER_KEYS.contains(&k.as_str()));
+
+    if !has_other_arrays {
+        for wrapper_key in WRAPPER_KEYS {
+            if let Some(Value::Array(arr)) = obj.get(*wrapper_key)
+                && !arr.is_empty()
+                && arr.iter().all(|item| matches!(item, Value::Object(_)))
+            {
+                // Found a wrapper key - unwrap and parse the array
+                let arr = arr.clone();
+                let mut ir = parse_array(arr)?;
+                ir.header.root_key = Some((*wrapper_key).to_string());
+                ir.header.set_flag(FLAG_HAS_ROOT_KEY);
+                return Ok(ir);
+            }
         }
     }
 
@@ -283,14 +296,14 @@ fn parse_object(obj: Map<String, Value>) -> Result<IntermediateRepresentation, S
             // Array marker
             fields.push(FieldDef::new(field_name.clone(), FieldType::Null));
             has_nulls = true;
-        } else {
-            let value = &flattened[field_name];
+        } else if let Some(value) = flattened.get(field_name) {
             let field_type = infer_type(value);
             if value.is_null() {
                 has_nulls = true;
             }
             fields.push(FieldDef::new(field_name.clone(), field_type));
         }
+        // Skip fields that don't exist in flattened (shouldn't happen but defensive)
     }
 
     // Build values and null bitmap
@@ -340,13 +353,20 @@ fn collect_field_names_ordered(obj: &Map<String, Value>, prefix: &str, names: &m
                 collect_field_names_ordered(nested, &full_key, names);
             }
             Value::Array(arr) => {
-                // Mark this as an array
-                names.push(format!("{}⟦⟧", full_key));
+                // Check if this is a primitive array
+                if is_primitive_array(arr) {
+                    // Inline primitive array: single field name (no marker suffix)
+                    names.push(full_key);
+                } else {
+                    // Arrays of objects: use marker + indexed paths
+                    // Mark this as an array
+                    names.push(format!("{}⟦⟧", full_key));
 
-                // Collect indexed field names for array elements
-                for (idx, item) in arr.iter().enumerate() {
-                    let indexed_key = format!("{}{}{}", full_key, NEST_SEP, idx);
-                    collect_field_names_from_value(item, &indexed_key, names);
+                    // Collect indexed field names for array elements
+                    for (idx, item) in arr.iter().enumerate() {
+                        let indexed_key = format!("{}{}{}", full_key, NEST_SEP, idx);
+                        collect_field_names_from_value(item, &indexed_key, names);
+                    }
                 }
             }
             _ => {
@@ -363,18 +383,35 @@ fn collect_field_names_from_value(value: &Value, prefix: &str, names: &mut Vec<S
             collect_field_names_ordered(obj, prefix, names);
         }
         Value::Array(arr) => {
-            // Mark this as an array
-            names.push(format!("{}⟦⟧", prefix));
+            // Check if this is a primitive array
+            if is_primitive_array(arr) {
+                // Inline primitive array: single field name
+                names.push(prefix.to_string());
+            } else {
+                // Arrays of objects: use marker + indexed paths
+                // Mark this as an array
+                names.push(format!("{}⟦⟧", prefix));
 
-            for (idx, item) in arr.iter().enumerate() {
-                let indexed_key = format!("{}{}{}", prefix, NEST_SEP, idx);
-                collect_field_names_from_value(item, &indexed_key, names);
+                for (idx, item) in arr.iter().enumerate() {
+                    let indexed_key = format!("{}{}{}", prefix, NEST_SEP, idx);
+                    collect_field_names_from_value(item, &indexed_key, names);
+                }
             }
         }
         _ => {
             names.push(prefix.to_string());
         }
     }
+}
+
+/// Check if array contains only primitive values (not objects/arrays)
+fn is_primitive_array(arr: &[Value]) -> bool {
+    arr.iter().all(|v| {
+        matches!(
+            v,
+            Value::String(_) | Value::Number(_) | Value::Bool(_) | Value::Null
+        )
+    })
 }
 
 /// Flatten nested object with NEST_SEP delimiter
@@ -394,28 +431,36 @@ fn flatten_object(obj: &Map<String, Value>, prefix: &str) -> HashMap<String, Val
                 result.extend(flatten_object(nested, &full_key));
             }
             Value::Array(arr) => {
-                // Mark this key as an array by inserting a marker
-                result.insert(format!("{}⟦⟧", full_key), Value::Null);
+                // Check if this is a primitive array
+                if is_primitive_array(arr) {
+                    // Inline primitive array: store as single field with type⟦⟧
+                    // Store as Value::Array to preserve array type even when empty
+                    result.insert(full_key, Value::Array(arr.clone()));
+                } else {
+                    // Arrays of objects/arrays: use indexed paths (current behavior)
+                    // Mark this key as an array by inserting a marker
+                    result.insert(format!("{}⟦⟧", full_key), Value::Null);
 
-                // Flatten array elements with indexed keys
-                for (idx, item) in arr.iter().enumerate() {
-                    let indexed_key = format!("{}{}{}", full_key, NEST_SEP, idx);
-                    match item {
-                        Value::Object(nested_obj) => {
-                            // Recursively flatten nested object
-                            result.extend(flatten_object(nested_obj, &indexed_key));
-                        }
-                        Value::Array(nested_arr) => {
-                            // Recursively handle nested arrays
-                            for (nested_idx, nested_item) in nested_arr.iter().enumerate() {
-                                let nested_indexed_key =
-                                    format!("{}{}{}", indexed_key, NEST_SEP, nested_idx);
-                                flatten_value(&nested_indexed_key, nested_item, &mut result);
+                    // Flatten array elements with indexed keys
+                    for (idx, item) in arr.iter().enumerate() {
+                        let indexed_key = format!("{}{}{}", full_key, NEST_SEP, idx);
+                        match item {
+                            Value::Object(nested_obj) => {
+                                // Recursively flatten nested object
+                                result.extend(flatten_object(nested_obj, &indexed_key));
                             }
-                        }
-                        _ => {
-                            // Primitive values get direct insertion
-                            result.insert(indexed_key, item.clone());
+                            Value::Array(nested_arr) => {
+                                // Recursively handle nested arrays
+                                for (nested_idx, nested_item) in nested_arr.iter().enumerate() {
+                                    let nested_indexed_key =
+                                        format!("{}{}{}", indexed_key, NEST_SEP, nested_idx);
+                                    flatten_value(&nested_indexed_key, nested_item, &mut result);
+                                }
+                            }
+                            _ => {
+                                // Primitive values get direct insertion
+                                result.insert(indexed_key, item.clone());
+                            }
                         }
                     }
                 }
@@ -436,12 +481,19 @@ fn flatten_value(key: &str, value: &Value, result: &mut HashMap<String, Value>) 
             result.extend(flatten_object(obj, key));
         }
         Value::Array(arr) => {
-            // Mark this key as an array
-            result.insert(format!("{}⟦⟧", key), Value::Null);
+            // Check if this is a primitive array
+            if is_primitive_array(arr) {
+                // Inline primitive array - store as Value::Array to preserve type
+                result.insert(key.to_string(), Value::Array(arr.clone()));
+            } else {
+                // Arrays of objects/arrays: use indexed paths
+                // Mark this key as an array
+                result.insert(format!("{}⟦⟧", key), Value::Null);
 
-            for (idx, item) in arr.iter().enumerate() {
-                let indexed_key = format!("{}{}{}", key, NEST_SEP, idx);
-                flatten_value(&indexed_key, item, result);
+                for (idx, item) in arr.iter().enumerate() {
+                    let indexed_key = format!("{}{}{}", key, NEST_SEP, idx);
+                    flatten_value(&indexed_key, item, result);
+                }
             }
         }
         _ => {
@@ -682,28 +734,46 @@ mod tests {
 
     #[test]
     fn test_homogeneous_array() {
-        // Arrays now flatten to indexed fields plus array marker
+        // Primitive arrays now stored inline with single field
         let input = r#"{"scores":[1,2,3]}"#;
         let ir = JsonParser::parse(input).unwrap();
 
-        // Should have 4 fields: scores.0, scores.1, scores.2, scores⟦⟧
-        assert_eq!(ir.header.fields.len(), 4);
-        assert_eq!(ir.header.fields[0].name, "scores჻0");
-        assert_eq!(ir.header.fields[0].field_type, FieldType::U64);
-        assert_eq!(ir.header.fields[1].name, "scores჻1");
-        assert_eq!(ir.header.fields[2].name, "scores჻2");
-        assert_eq!(ir.header.fields[3].name, "scores⟦⟧");
+        // Should have 1 field: scores with Array type
+        assert_eq!(ir.header.fields.len(), 1);
+        assert_eq!(ir.header.fields[0].name, "scores");
+        assert!(matches!(
+            ir.header.fields[0].field_type,
+            FieldType::Array(_)
+        ));
+
+        // Verify the array values
+        if let Some(SchemaValue::Array(arr)) = ir.get_value(0, 0) {
+            assert_eq!(arr.len(), 3);
+        } else {
+            panic!("Expected array value");
+        }
     }
 
     #[test]
     fn test_empty_array() {
-        // Empty arrays flatten to just the array marker
+        // Empty primitive arrays stored inline as empty SchemaValue::Array
         let input = r#"{"items":[]}"#;
         let ir = JsonParser::parse(input).unwrap();
 
-        // Empty array produces just the marker field
+        // Empty array produces single field with Array type
         assert_eq!(ir.header.fields.len(), 1);
-        assert_eq!(ir.header.fields[0].name, "items⟦⟧");
+        assert_eq!(ir.header.fields[0].name, "items");
+        assert!(matches!(
+            ir.header.fields[0].field_type,
+            FieldType::Array(_)
+        ));
+
+        // Value should be empty array
+        if let Some(SchemaValue::Array(arr)) = ir.get_value(0, 0) {
+            assert_eq!(arr.len(), 0);
+        } else {
+            panic!("Expected empty array");
+        }
     }
 
     #[test]
@@ -766,26 +836,25 @@ mod tests {
 
     #[test]
     fn test_mixed_arrays_and_objects() {
-        // Arrays now flatten to indexed fields
+        // Primitive arrays now stored inline as single field
         let input =
             r#"{"person":{"name":"Alice","tags":["admin","user"],"address":{"city":"NYC"}}}"#;
         let ir = JsonParser::parse(input).unwrap();
 
         let field_names: Vec<String> = ir.header.fields.iter().map(|f| f.name.clone()).collect();
         assert!(field_names.contains(&"person჻name".to_string()));
-        // tags array flattens to indexed fields
-        assert!(field_names.contains(&"person჻tags჻0".to_string()));
-        assert!(field_names.contains(&"person჻tags჻1".to_string()));
+        // tags array now a single inline field
+        assert!(field_names.contains(&"person჻tags".to_string()));
         assert!(field_names.contains(&"person჻address჻city".to_string()));
 
-        // Verify tags.0 is a string type (no longer Array)
+        // Verify tags is an Array type
         let tags_field = ir
             .header
             .fields
             .iter()
-            .find(|f| f.name == "person჻tags჻0")
+            .find(|f| f.name == "person჻tags")
             .unwrap();
-        assert_eq!(tags_field.field_type, FieldType::String);
+        assert!(matches!(tags_field.field_type, FieldType::Array(_)));
     }
 
     #[test]

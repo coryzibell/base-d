@@ -434,7 +434,7 @@ mod integration_tests {
     #[test]
     fn test_json_swapi_nested_arrays() {
         // SWAPI-like data with nested arrays of primitives
-        // Arrays now flatten to indexed fields
+        // Primitive arrays now stored inline
         let input = r#"{"people":[{"name":"Luke","height":"172","films":["film/1","film/2"],"vehicles":[]},{"name":"C-3PO","height":"167","films":["film/1","film/2","film/3"],"vehicles":[]}]}"#;
         let ir = JsonParser::parse(input).unwrap();
 
@@ -443,9 +443,9 @@ mod integration_tests {
 
         // Should have @people root key
         assert!(fiche_output.starts_with("@people"));
-        // Arrays now flatten, so films.0, films.1, etc. (no @ marker)
-        assert!(fiche_output.contains("films჻0:str") || fiche_output.contains("films.0:str"));
-        // vehicles is empty array, so no fields generated
+        // Primitive arrays now inline with type⟦⟧ syntax
+        assert!(fiche_output.contains("films:str⟦⟧"));
+        assert!(fiche_output.contains("vehicles:str⟦⟧"));
 
         // Verify round trip - arrays become indexed objects
         let binary = pack(&ir);
@@ -779,16 +779,16 @@ mod integration_tests {
 
     #[test]
     fn test_nested_object_roundtrip_mixed_with_arrays() {
-        // Arrays now flatten to indexed fields
+        // Primitive arrays now stored inline
         let input = r#"{"person":{"name":"Alice","tags":["admin","user"],"address":{"city":"Boston","zip":"02101"}}}"#;
 
         let ir = JsonParser::parse(input).unwrap();
         let fiche = fiche::serialize(&ir).unwrap();
 
-        // Verify both object nesting and array flattening
+        // Verify both object nesting and inline primitive arrays
         assert!(fiche.contains("person჻name:str"));
-        // Arrays flatten, so tags.0, tags.1 (no @ marker)
-        assert!(fiche.contains("person჻tags჻0:str"));
+        // Primitive arrays now inline with type⟦⟧ syntax
+        assert!(fiche.contains("person჻tags:str⟦⟧"));
         assert!(fiche.contains("person჻address჻city:str"));
         assert!(fiche.contains("person჻address჻zip:str"));
 
