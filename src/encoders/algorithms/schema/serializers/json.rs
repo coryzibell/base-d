@@ -121,18 +121,185 @@ fn schema_value_to_json(value: &SchemaValue) -> Result<Value, SchemaError> {
 
 /// Unflatten nested keys back to nested objects
 fn unflatten_object(flat: HashMap<String, Value>) -> Value {
-    let mut result = Map::new();
+    // First pass: identify array markers (keep them for nested reconstruction)
+    let mut array_paths = std::collections::HashSet::new();
+    let mut array_markers = Vec::new();
+    for key in flat.keys() {
+        if key.ends_with("[]") {
+            // This marks an array path
+            let array_path = &key[..key.len() - 2]; // Remove "[]"
+            array_paths.insert(array_path.to_string());
+            array_markers.push(key.clone());
+        }
+    }
+
+    // Second pass: group indexed fields by their array path
+    // Sort array paths by length (SHORTEST first) to match outermost arrays first
+    let mut sorted_array_paths: Vec<String> = array_paths.into_iter().collect();
+    sorted_array_paths.sort_by(|a, b| a.len().cmp(&b.len()));
+
+    let mut array_elements: HashMap<String, Vec<(usize, String, Value)>> = HashMap::new();
+    let mut non_array_fields = HashMap::new();
 
     for (key, value) in flat {
+        // Skip array markers themselves (but we've saved them)
+        if key.ends_with("[]") {
+            continue;
+        }
+
+        // Check if this key belongs to an array (shortest path first)
+        let mut belongs_to_array = false;
+        for array_path in &sorted_array_paths {
+            // Special case: empty array path (root-level array)
+            if array_path.is_empty() {
+                // Key should be a numeric index (no prefix)
+                let parts: Vec<&str> = key.split(NEST_SEP).collect();
+                if let Ok(idx) = parts[0].parse::<usize>() {
+                    let remaining = if parts.len() > 1 {
+                        parts[1..].join(&NEST_SEP.to_string())
+                    } else {
+                        String::new()
+                    };
+                    array_elements
+                        .entry(array_path.clone())
+                        .or_insert_with(Vec::new)
+                        .push((idx, remaining, value.clone()));
+                    belongs_to_array = true;
+                    break;
+                }
+            } else {
+                // Non-empty array path: match with separator
+                let separator = NEST_SEP.to_string();
+                let expected_prefix = format!("{}{}", array_path, separator);
+                if key.starts_with(&expected_prefix) {
+                    // Extract index and remaining path
+                    let after_array = &key[expected_prefix.len()..];
+                    let parts: Vec<&str> = after_array.split(NEST_SEP).collect();
+                    if let Ok(idx) = parts[0].parse::<usize>() {
+                        // This is an array element
+                        let remaining = if parts.len() > 1 {
+                            parts[1..].join(&NEST_SEP.to_string())
+                        } else {
+                            String::new()
+                        };
+                        array_elements
+                            .entry(array_path.clone())
+                            .or_insert_with(Vec::new)
+                            .push((idx, remaining, value.clone()));
+                        belongs_to_array = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if !belongs_to_array {
+            non_array_fields.insert(key, value);
+        }
+    }
+
+    // Third pass: reconstruct arrays (longest paths first = innermost arrays first)
+    let mut array_entries: Vec<(String, Vec<(usize, String, Value)>)> =
+        array_elements.into_iter().collect();
+    array_entries.sort_by(|(a, _), (b, _)| b.len().cmp(&a.len()));
+
+    for (array_path, mut elements) in array_entries {
+        // Sort by index
+        elements.sort_by_key(|(idx, _, _)| *idx);
+
+        // Find max index to determine array length
+        let max_idx = elements.iter().map(|(idx, _, _)| *idx).max().unwrap_or(0);
+        let mut arr = vec![Value::Null; max_idx + 1];
+
+        // Group elements by index
+        let mut by_index: HashMap<usize, Vec<(String, Value)>> = HashMap::new();
+        for (idx, remaining, value) in elements {
+            by_index
+                .entry(idx)
+                .or_insert_with(Vec::new)
+                .push((remaining, value));
+        }
+
+        // Build array elements
+        for (idx, fields) in by_index {
+            if fields.len() == 1 && fields[0].0.is_empty() {
+                // Simple value
+                arr[idx] = fields[0].1.clone();
+            } else {
+                // Nested object - reconstruct with relevant array markers
+                let mut obj_map = HashMap::new();
+                for (remaining, value) in fields {
+                    // Skip null values when building objects
+                    if !value.is_null() {
+                        obj_map.insert(remaining, value);
+                    }
+                }
+
+                // Include array markers that apply to this nested context
+                let nested_elem_path = if array_path.is_empty() {
+                    idx.to_string()
+                } else {
+                    format!("{}{}{}", array_path, NEST_SEP, idx)
+                };
+                let nested_prefix_with_sep = format!("{}{}", nested_elem_path, NEST_SEP);
+
+                for marker in &array_markers {
+                    if !marker.ends_with("[]") {
+                        continue;
+                    }
+
+                    // Remove the "[]" suffix to get the path
+                    let marker_path = &marker[..marker.len() - 2];
+
+                    // Check if this marker applies to nested context
+                    if marker_path.starts_with(&nested_prefix_with_sep) {
+                        // Nested marker like deep჻0჻field[] -> relative: field[]
+                        let relative_path = &marker_path[nested_prefix_with_sep.len()..];
+                        obj_map.insert(format!("{}[]", relative_path), Value::Null);
+                    } else if marker_path == nested_elem_path {
+                        // Marker equals nested element path: deep჻0[] where we're building deep[0]
+                        // This means the element itself is an array at the root level
+                        // Add empty-path array marker
+                        obj_map.insert("[]".to_string(), Value::Null);
+                    }
+                }
+
+                arr[idx] = unflatten_object(obj_map);
+            }
+        }
+
+        // Trim trailing nulls and empty objects from array
+        while !arr.is_empty() {
+            let last = &arr[arr.len() - 1];
+            let should_remove = last.is_null()
+                || (last.is_object() && last.as_object().map_or(false, |o| o.is_empty()));
+            if should_remove {
+                arr.pop();
+            } else {
+                break;
+            }
+        }
+
+        non_array_fields.insert(array_path, Value::Array(arr));
+    }
+
+    // Fourth pass: build final object
+    // Special case: if there's only one field with empty key, return it directly
+    if non_array_fields.len() == 1 && non_array_fields.contains_key("") {
+        return non_array_fields.into_iter().next().unwrap().1;
+    }
+
+    let mut result = Map::new();
+    for (key, value) in non_array_fields {
         let parts: Vec<&str> = key.split(NEST_SEP).collect();
-        insert_nested(&mut result, &parts, value);
+        insert_nested_simple(&mut result, &parts, value);
     }
 
     Value::Object(result)
 }
 
-/// Insert a value into nested structure
-fn insert_nested(obj: &mut Map<String, Value>, parts: &[&str], value: Value) {
+/// Insert a value into nested structure (simple version without array handling)
+fn insert_nested_simple(obj: &mut Map<String, Value>, parts: &[&str], value: Value) {
     if parts.is_empty() {
         return;
     }
@@ -150,7 +317,7 @@ fn insert_nested(obj: &mut Map<String, Value>, parts: &[&str], value: Value) {
         .or_insert_with(|| Value::Object(Map::new()));
 
     if let Value::Object(nested_obj) = nested {
-        insert_nested(nested_obj, remaining, value);
+        insert_nested_simple(nested_obj, remaining, value);
     }
 }
 

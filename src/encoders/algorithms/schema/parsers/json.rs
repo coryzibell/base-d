@@ -71,24 +71,38 @@ fn parse_array(arr: Vec<Value>) -> Result<IntermediateRepresentation, SchemaErro
     // Flatten all objects and collect field names
     let mut flattened_rows: Vec<HashMap<String, Value>> = Vec::new();
     let mut all_field_names = std::collections::BTreeSet::new();
+    let mut array_markers = std::collections::BTreeSet::new();
 
     for obj in &all_rows {
         let flattened = flatten_object(obj, "");
         for key in flattened.keys() {
-            all_field_names.insert(key.clone());
+            if key.ends_with("[]") {
+                // This is an array marker, track it separately
+                array_markers.insert(key.clone());
+            } else {
+                all_field_names.insert(key.clone());
+            }
         }
         flattened_rows.push(flattened);
     }
 
-    let field_names: Vec<String> = all_field_names.into_iter().collect();
+    // Add array markers as fields with special marker type
+    let mut field_names: Vec<String> = all_field_names.into_iter().collect();
+    let array_marker_names: Vec<String> = array_markers.into_iter().collect();
+    field_names.extend(array_marker_names);
 
     // Infer types and build fields
     let mut fields = Vec::new();
     let mut has_nulls = false;
 
     for field_name in &field_names {
-        let field_type = infer_field_type(&flattened_rows, field_name, &mut has_nulls)?;
-        fields.push(FieldDef::new(field_name.clone(), field_type));
+        if field_name.ends_with("[]") {
+            // Array marker - use a special type to indicate this is metadata
+            fields.push(FieldDef::new(field_name.clone(), FieldType::Null));
+        } else {
+            let field_type = infer_field_type(&flattened_rows, field_name, &mut has_nulls)?;
+            fields.push(FieldDef::new(field_name.clone(), field_type));
+        }
     }
 
     // Build values and null bitmap
@@ -100,6 +114,14 @@ fn parse_array(arr: Vec<Value>) -> Result<IntermediateRepresentation, SchemaErro
     for (row_idx, row) in flattened_rows.iter().enumerate() {
         for (field_idx, field) in fields.iter().enumerate() {
             let value_idx = row_idx * fields.len() + field_idx;
+
+            // Handle array markers - always null
+            if field.name.ends_with("[]") {
+                values.push(SchemaValue::Null);
+                set_null_bit(&mut null_bitmap, value_idx);
+                has_nulls = true;
+                continue;
+            }
 
             if let Some(json_value) = row.get(&field.name)
                 && json_value.is_null()
@@ -237,18 +259,38 @@ fn parse_object(obj: Map<String, Value>) -> Result<IntermediateRepresentation, S
     let flattened = flatten_object(&obj, "");
     // Preserve field order from original object (serde_json preserves insertion order)
     let mut field_names = Vec::new();
+    let mut array_markers = Vec::new();
     collect_field_names_ordered(&obj, "", &mut field_names);
+
+    // Separate array markers from regular fields
+    let mut regular_fields = Vec::new();
+    for name in field_names {
+        if name.ends_with("[]") {
+            array_markers.push(name);
+        } else {
+            regular_fields.push(name);
+        }
+    }
+    // Add array markers at the end
+    regular_fields.extend(array_markers);
+    let field_names = regular_fields;
 
     let mut fields = Vec::new();
     let mut has_nulls = false;
 
     for field_name in &field_names {
-        let value = &flattened[field_name];
-        let field_type = infer_type(value);
-        if value.is_null() {
+        if field_name.ends_with("[]") {
+            // Array marker
+            fields.push(FieldDef::new(field_name.clone(), FieldType::Null));
             has_nulls = true;
+        } else {
+            let value = &flattened[field_name];
+            let field_type = infer_type(value);
+            if value.is_null() {
+                has_nulls = true;
+            }
+            fields.push(FieldDef::new(field_name.clone(), field_type));
         }
-        fields.push(FieldDef::new(field_name.clone(), field_type));
     }
 
     // Build values and null bitmap
@@ -258,6 +300,13 @@ fn parse_object(obj: Map<String, Value>) -> Result<IntermediateRepresentation, S
     let mut null_bitmap = vec![0u8; bitmap_bytes];
 
     for (field_idx, field) in fields.iter().enumerate() {
+        // Handle array markers
+        if field.name.ends_with("[]") {
+            values.push(SchemaValue::Null);
+            set_null_bit(&mut null_bitmap, field_idx);
+            continue;
+        }
+
         let json_value = &flattened[&field.name];
         if json_value.is_null() {
             values.push(SchemaValue::Null);
@@ -290,6 +339,16 @@ fn collect_field_names_ordered(obj: &Map<String, Value>, prefix: &str, names: &m
             Value::Object(nested) => {
                 collect_field_names_ordered(nested, &full_key, names);
             }
+            Value::Array(arr) => {
+                // Mark this as an array
+                names.push(format!("{}[]", full_key));
+
+                // Collect indexed field names for array elements
+                for (idx, item) in arr.iter().enumerate() {
+                    let indexed_key = format!("{}{}{}", full_key, NEST_SEP, idx);
+                    collect_field_names_from_value(item, &indexed_key, names);
+                }
+            }
             _ => {
                 names.push(full_key);
             }
@@ -297,7 +356,29 @@ fn collect_field_names_ordered(obj: &Map<String, Value>, prefix: &str, names: &m
     }
 }
 
+/// Helper to collect field names from any value type
+fn collect_field_names_from_value(value: &Value, prefix: &str, names: &mut Vec<String>) {
+    match value {
+        Value::Object(obj) => {
+            collect_field_names_ordered(obj, prefix, names);
+        }
+        Value::Array(arr) => {
+            // Mark this as an array
+            names.push(format!("{}[]", prefix));
+
+            for (idx, item) in arr.iter().enumerate() {
+                let indexed_key = format!("{}{}{}", prefix, NEST_SEP, idx);
+                collect_field_names_from_value(item, &indexed_key, names);
+            }
+        }
+        _ => {
+            names.push(prefix.to_string());
+        }
+    }
+}
+
 /// Flatten nested object with NEST_SEP delimiter
+/// Returns (flattened_map, array_paths) where array_paths tracks which keys are arrays
 fn flatten_object(obj: &Map<String, Value>, prefix: &str) -> HashMap<String, Value> {
     let mut result = HashMap::new();
 
@@ -312,6 +393,32 @@ fn flatten_object(obj: &Map<String, Value>, prefix: &str) -> HashMap<String, Val
             Value::Object(nested) => {
                 result.extend(flatten_object(nested, &full_key));
             }
+            Value::Array(arr) => {
+                // Mark this key as an array by inserting a marker
+                result.insert(format!("{}[]", full_key), Value::Null);
+
+                // Flatten array elements with indexed keys
+                for (idx, item) in arr.iter().enumerate() {
+                    let indexed_key = format!("{}{}{}", full_key, NEST_SEP, idx);
+                    match item {
+                        Value::Object(nested_obj) => {
+                            // Recursively flatten nested object
+                            result.extend(flatten_object(nested_obj, &indexed_key));
+                        }
+                        Value::Array(nested_arr) => {
+                            // Recursively handle nested arrays
+                            for (nested_idx, nested_item) in nested_arr.iter().enumerate() {
+                                let nested_indexed_key = format!("{}{}{}", indexed_key, NEST_SEP, nested_idx);
+                                flatten_value(&nested_indexed_key, nested_item, &mut result);
+                            }
+                        }
+                        _ => {
+                            // Primitive values get direct insertion
+                            result.insert(indexed_key, item.clone());
+                        }
+                    }
+                }
+            }
             _ => {
                 result.insert(full_key, value.clone());
             }
@@ -319,6 +426,27 @@ fn flatten_object(obj: &Map<String, Value>, prefix: &str) -> HashMap<String, Val
     }
 
     result
+}
+
+/// Helper function to recursively flatten any value type
+fn flatten_value(key: &str, value: &Value, result: &mut HashMap<String, Value>) {
+    match value {
+        Value::Object(obj) => {
+            result.extend(flatten_object(obj, key));
+        }
+        Value::Array(arr) => {
+            // Mark this key as an array
+            result.insert(format!("{}[]", key), Value::Null);
+
+            for (idx, item) in arr.iter().enumerate() {
+                let indexed_key = format!("{}{}{}", key, NEST_SEP, idx);
+                flatten_value(&indexed_key, item, result);
+            }
+        }
+        _ => {
+            result.insert(key.to_string(), value.clone());
+        }
+    }
 }
 
 /// Infer type from a single JSON value
@@ -553,24 +681,28 @@ mod tests {
 
     #[test]
     fn test_homogeneous_array() {
+        // Arrays now flatten to indexed fields plus array marker
         let input = r#"{"scores":[1,2,3]}"#;
         let ir = JsonParser::parse(input).unwrap();
 
-        assert_eq!(
-            ir.header.fields[0].field_type,
-            FieldType::Array(Box::new(FieldType::U64))
-        );
+        // Should have 4 fields: scores.0, scores.1, scores.2, scores[]
+        assert_eq!(ir.header.fields.len(), 4);
+        assert_eq!(ir.header.fields[0].name, "scores჻0");
+        assert_eq!(ir.header.fields[0].field_type, FieldType::U64);
+        assert_eq!(ir.header.fields[1].name, "scores჻1");
+        assert_eq!(ir.header.fields[2].name, "scores჻2");
+        assert_eq!(ir.header.fields[3].name, "scores[]");
     }
 
     #[test]
     fn test_empty_array() {
+        // Empty arrays flatten to just the array marker
         let input = r#"{"items":[]}"#;
         let ir = JsonParser::parse(input).unwrap();
 
-        assert_eq!(
-            ir.header.fields[0].field_type,
-            FieldType::Array(Box::new(FieldType::Null))
-        );
+        // Empty array produces just the marker field
+        assert_eq!(ir.header.fields.len(), 1);
+        assert_eq!(ir.header.fields[0].name, "items[]");
     }
 
     #[test]
@@ -633,23 +765,26 @@ mod tests {
 
     #[test]
     fn test_mixed_arrays_and_objects() {
+        // Arrays now flatten to indexed fields
         let input =
             r#"{"person":{"name":"Alice","tags":["admin","user"],"address":{"city":"NYC"}}}"#;
         let ir = JsonParser::parse(input).unwrap();
 
         let field_names: Vec<String> = ir.header.fields.iter().map(|f| f.name.clone()).collect();
         assert!(field_names.contains(&"person჻name".to_string()));
-        assert!(field_names.contains(&"person჻tags".to_string()));
+        // tags array flattens to indexed fields
+        assert!(field_names.contains(&"person჻tags჻0".to_string()));
+        assert!(field_names.contains(&"person჻tags჻1".to_string()));
         assert!(field_names.contains(&"person჻address჻city".to_string()));
 
-        // Verify tags is an array type
+        // Verify tags.0 is a string type (no longer Array)
         let tags_field = ir
             .header
             .fields
             .iter()
-            .find(|f| f.name == "person჻tags")
+            .find(|f| f.name == "person჻tags჻0")
             .unwrap();
-        assert!(matches!(tags_field.field_type, FieldType::Array(_)));
+        assert_eq!(tags_field.field_type, FieldType::String);
     }
 
     #[test]
