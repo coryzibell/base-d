@@ -125,9 +125,9 @@ fn unflatten_object(flat: HashMap<String, Value>) -> Value {
     let mut array_paths = std::collections::HashSet::new();
     let mut array_markers = Vec::new();
     for key in flat.keys() {
-        if key.ends_with("[]") {
+        if key.ends_with("⟦⟧") {
             // This marks an array path
-            let array_path = &key[..key.len() - 2]; // Remove "[]"
+            let array_path = key.trim_end_matches("⟦⟧");
             array_paths.insert(array_path.to_string());
             array_markers.push(key.clone());
         }
@@ -143,7 +143,7 @@ fn unflatten_object(flat: HashMap<String, Value>) -> Value {
 
     for (key, value) in flat {
         // Skip array markers themselves (but we've saved them)
-        if key.ends_with("[]") {
+        if key.ends_with("⟦⟧") {
             continue;
         }
 
@@ -244,23 +244,23 @@ fn unflatten_object(flat: HashMap<String, Value>) -> Value {
                 let nested_prefix_with_sep = format!("{}{}", nested_elem_path, NEST_SEP);
 
                 for marker in &array_markers {
-                    if !marker.ends_with("[]") {
+                    if !marker.ends_with("⟦⟧") {
                         continue;
                     }
 
-                    // Remove the "[]" suffix to get the path
-                    let marker_path = &marker[..marker.len() - 2];
+                    // Remove the "⟦⟧" suffix to get the path
+                    let marker_path = marker.trim_end_matches("⟦⟧");
 
                     // Check if this marker applies to nested context
                     if marker_path.starts_with(&nested_prefix_with_sep) {
-                        // Nested marker like deep჻0჻field[] -> relative: field[]
+                        // Nested marker like deep჻0჻field⟦⟧ -> relative: field⟦⟧
                         let relative_path = &marker_path[nested_prefix_with_sep.len()..];
-                        obj_map.insert(format!("{}[]", relative_path), Value::Null);
+                        obj_map.insert(format!("{}⟦⟧", relative_path), Value::Null);
                     } else if marker_path == nested_elem_path {
-                        // Marker equals nested element path: deep჻0[] where we're building deep[0]
+                        // Marker equals nested element path: deep჻0⟦⟧ where we're building deep[0]
                         // This means the element itself is an array at the root level
                         // Add empty-path array marker
-                        obj_map.insert("[]".to_string(), Value::Null);
+                        obj_map.insert("⟦⟧".to_string(), Value::Null);
                     }
                 }
 

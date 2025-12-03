@@ -76,7 +76,7 @@ fn parse_array(arr: Vec<Value>) -> Result<IntermediateRepresentation, SchemaErro
     for obj in &all_rows {
         let flattened = flatten_object(obj, "");
         for key in flattened.keys() {
-            if key.ends_with("[]") {
+            if key.ends_with("⟦⟧") {
                 // This is an array marker, track it separately
                 array_markers.insert(key.clone());
             } else {
@@ -96,7 +96,7 @@ fn parse_array(arr: Vec<Value>) -> Result<IntermediateRepresentation, SchemaErro
     let mut has_nulls = false;
 
     for field_name in &field_names {
-        if field_name.ends_with("[]") {
+        if field_name.ends_with("⟦⟧") {
             // Array marker - use a special type to indicate this is metadata
             fields.push(FieldDef::new(field_name.clone(), FieldType::Null));
         } else {
@@ -116,7 +116,7 @@ fn parse_array(arr: Vec<Value>) -> Result<IntermediateRepresentation, SchemaErro
             let value_idx = row_idx * fields.len() + field_idx;
 
             // Handle array markers - always null
-            if field.name.ends_with("[]") {
+            if field.name.ends_with("⟦⟧") {
                 values.push(SchemaValue::Null);
                 set_null_bit(&mut null_bitmap, value_idx);
                 has_nulls = true;
@@ -265,7 +265,7 @@ fn parse_object(obj: Map<String, Value>) -> Result<IntermediateRepresentation, S
     // Separate array markers from regular fields
     let mut regular_fields = Vec::new();
     for name in field_names {
-        if name.ends_with("[]") {
+        if name.ends_with("⟦⟧") {
             array_markers.push(name);
         } else {
             regular_fields.push(name);
@@ -279,7 +279,7 @@ fn parse_object(obj: Map<String, Value>) -> Result<IntermediateRepresentation, S
     let mut has_nulls = false;
 
     for field_name in &field_names {
-        if field_name.ends_with("[]") {
+        if field_name.ends_with("⟦⟧") {
             // Array marker
             fields.push(FieldDef::new(field_name.clone(), FieldType::Null));
             has_nulls = true;
@@ -301,7 +301,7 @@ fn parse_object(obj: Map<String, Value>) -> Result<IntermediateRepresentation, S
 
     for (field_idx, field) in fields.iter().enumerate() {
         // Handle array markers
-        if field.name.ends_with("[]") {
+        if field.name.ends_with("⟦⟧") {
             values.push(SchemaValue::Null);
             set_null_bit(&mut null_bitmap, field_idx);
             continue;
@@ -341,7 +341,7 @@ fn collect_field_names_ordered(obj: &Map<String, Value>, prefix: &str, names: &m
             }
             Value::Array(arr) => {
                 // Mark this as an array
-                names.push(format!("{}[]", full_key));
+                names.push(format!("{}⟦⟧", full_key));
 
                 // Collect indexed field names for array elements
                 for (idx, item) in arr.iter().enumerate() {
@@ -364,7 +364,7 @@ fn collect_field_names_from_value(value: &Value, prefix: &str, names: &mut Vec<S
         }
         Value::Array(arr) => {
             // Mark this as an array
-            names.push(format!("{}[]", prefix));
+            names.push(format!("{}⟦⟧", prefix));
 
             for (idx, item) in arr.iter().enumerate() {
                 let indexed_key = format!("{}{}{}", prefix, NEST_SEP, idx);
@@ -395,7 +395,7 @@ fn flatten_object(obj: &Map<String, Value>, prefix: &str) -> HashMap<String, Val
             }
             Value::Array(arr) => {
                 // Mark this key as an array by inserting a marker
-                result.insert(format!("{}[]", full_key), Value::Null);
+                result.insert(format!("{}⟦⟧", full_key), Value::Null);
 
                 // Flatten array elements with indexed keys
                 for (idx, item) in arr.iter().enumerate() {
@@ -437,7 +437,7 @@ fn flatten_value(key: &str, value: &Value, result: &mut HashMap<String, Value>) 
         }
         Value::Array(arr) => {
             // Mark this key as an array
-            result.insert(format!("{}[]", key), Value::Null);
+            result.insert(format!("{}⟦⟧", key), Value::Null);
 
             for (idx, item) in arr.iter().enumerate() {
                 let indexed_key = format!("{}{}{}", key, NEST_SEP, idx);
@@ -686,13 +686,13 @@ mod tests {
         let input = r#"{"scores":[1,2,3]}"#;
         let ir = JsonParser::parse(input).unwrap();
 
-        // Should have 4 fields: scores.0, scores.1, scores.2, scores[]
+        // Should have 4 fields: scores.0, scores.1, scores.2, scores⟦⟧
         assert_eq!(ir.header.fields.len(), 4);
         assert_eq!(ir.header.fields[0].name, "scores჻0");
         assert_eq!(ir.header.fields[0].field_type, FieldType::U64);
         assert_eq!(ir.header.fields[1].name, "scores჻1");
         assert_eq!(ir.header.fields[2].name, "scores჻2");
-        assert_eq!(ir.header.fields[3].name, "scores[]");
+        assert_eq!(ir.header.fields[3].name, "scores⟦⟧");
     }
 
     #[test]
@@ -703,7 +703,7 @@ mod tests {
 
         // Empty array produces just the marker field
         assert_eq!(ir.header.fields.len(), 1);
-        assert_eq!(ir.header.fields[0].name, "items[]");
+        assert_eq!(ir.header.fields[0].name, "items⟦⟧");
     }
 
     #[test]

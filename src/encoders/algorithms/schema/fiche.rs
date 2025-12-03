@@ -328,7 +328,8 @@ fn field_type_to_str(ft: &FieldType) -> String {
 
 /// Parse fiche type string to FieldType
 fn parse_type_str(s: &str) -> Result<FieldType, SchemaError> {
-    if let Some(inner) = s.strip_suffix("[]") {
+    // Support both old [] and new ⟦⟧ syntax for backward compatibility
+    if let Some(inner) = s.strip_suffix("⟦⟧").or_else(|| s.strip_suffix("[]")) {
         let inner_type = parse_type_str(inner)?;
         return Ok(FieldType::Array(Box::new(inner_type)));
     }
@@ -346,7 +347,7 @@ fn parse_type_str(s: &str) -> Result<FieldType, SchemaError> {
     }
 }
 
-/// Parse field definition like "name:str" or "tags:str[]"
+/// Parse field definition like "name:str" or "tags:str⟦⟧" (or legacy "tags:str[]")
 fn parse_field_def(s: &str) -> Result<(String, FieldType), SchemaError> {
     let parts: Vec<&str> = s.splitn(2, ':').collect();
     if parts.len() != 2 {
@@ -521,7 +522,29 @@ mod tests {
             panic!("Expected array");
         }
 
-        // Note: output uses new @ syntax
+        // Note: output uses new @ syntax for array types
+        let output = serialize(&ir).unwrap();
+        assert!(output.contains("tags:@"));
+    }
+
+    #[test]
+    fn test_arrays_new_bracket_syntax() {
+        // Test new ⟦⟧ syntax
+        let fiche = "@users┃id:int┃tags:str⟦⟧
+◉1┃admin◈editor
+◉2┃viewer";
+
+        let ir = parse(fiche).unwrap();
+        assert_eq!(ir.header.row_count, 2);
+
+        // Check first row's tags
+        if let Some(SchemaValue::Array(tags)) = ir.get_value(0, 1) {
+            assert_eq!(tags.len(), 2);
+        } else {
+            panic!("Expected array");
+        }
+
+        // Output uses @ syntax
         let output = serialize(&ir).unwrap();
         assert!(output.contains("tags:@"));
     }
@@ -572,8 +595,14 @@ mod tests {
         assert!(matches!(parse_type_str("str"), Ok(FieldType::String)));
         assert!(matches!(parse_type_str("float"), Ok(FieldType::F64)));
         assert!(matches!(parse_type_str("bool"), Ok(FieldType::Bool)));
+        // Test legacy [] syntax
         assert!(matches!(
             parse_type_str("str[]"),
+            Ok(FieldType::Array(box_inner)) if *box_inner == FieldType::String
+        ));
+        // Test new ⟦⟧ syntax
+        assert!(matches!(
+            parse_type_str("str⟦⟧"),
             Ok(FieldType::Array(box_inner)) if *box_inner == FieldType::String
         ));
     }
