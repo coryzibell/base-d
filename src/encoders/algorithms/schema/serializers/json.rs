@@ -136,7 +136,7 @@ fn unflatten_object(flat: HashMap<String, Value>) -> Value {
     // Second pass: group indexed fields by their array path
     // Sort array paths by length (SHORTEST first) to match outermost arrays first
     let mut sorted_array_paths: Vec<String> = array_paths.into_iter().collect();
-    sorted_array_paths.sort_by(|a, b| a.len().cmp(&b.len()));
+    sorted_array_paths.sort_by_key(|a| a.len());
 
     let mut array_elements: HashMap<String, Vec<(usize, String, Value)>> = HashMap::new();
     let mut non_array_fields = HashMap::new();
@@ -160,10 +160,11 @@ fn unflatten_object(flat: HashMap<String, Value>) -> Value {
                     } else {
                         String::new()
                     };
-                    array_elements
-                        .entry(array_path.clone())
-                        .or_insert_with(Vec::new)
-                        .push((idx, remaining, value.clone()));
+                    array_elements.entry(array_path.clone()).or_default().push((
+                        idx,
+                        remaining,
+                        value.clone(),
+                    ));
                     belongs_to_array = true;
                     break;
                 }
@@ -182,10 +183,11 @@ fn unflatten_object(flat: HashMap<String, Value>) -> Value {
                         } else {
                             String::new()
                         };
-                        array_elements
-                            .entry(array_path.clone())
-                            .or_insert_with(Vec::new)
-                            .push((idx, remaining, value.clone()));
+                        array_elements.entry(array_path.clone()).or_default().push((
+                            idx,
+                            remaining,
+                            value.clone(),
+                        ));
                         belongs_to_array = true;
                         break;
                     }
@@ -199,6 +201,7 @@ fn unflatten_object(flat: HashMap<String, Value>) -> Value {
     }
 
     // Third pass: reconstruct arrays (longest paths first = innermost arrays first)
+    #[allow(clippy::type_complexity)]
     let mut array_entries: Vec<(String, Vec<(usize, String, Value)>)> =
         array_elements.into_iter().collect();
     array_entries.sort_by(|(a, _), (b, _)| b.len().cmp(&a.len()));
@@ -214,10 +217,7 @@ fn unflatten_object(flat: HashMap<String, Value>) -> Value {
         // Group elements by index
         let mut by_index: HashMap<usize, Vec<(String, Value)>> = HashMap::new();
         for (idx, remaining, value) in elements {
-            by_index
-                .entry(idx)
-                .or_insert_with(Vec::new)
-                .push((remaining, value));
+            by_index.entry(idx).or_default().push((remaining, value));
         }
 
         // Build array elements
@@ -272,7 +272,7 @@ fn unflatten_object(flat: HashMap<String, Value>) -> Value {
         while !arr.is_empty() {
             let last = &arr[arr.len() - 1];
             let should_remove = last.is_null()
-                || (last.is_object() && last.as_object().map_or(false, |o| o.is_empty()));
+                || (last.is_object() && last.as_object().is_some_and(|o| o.is_empty()));
             if should_remove {
                 arr.pop();
             } else {
@@ -281,6 +281,51 @@ fn unflatten_object(flat: HashMap<String, Value>) -> Value {
         }
 
         non_array_fields.insert(array_path, Value::Array(arr));
+    }
+
+    // Handle empty arrays - markers with no indexed fields
+    // Check which arrays actually got reconstructed
+    let reconstructed_arrays: std::collections::HashSet<String> = non_array_fields
+        .keys()
+        .filter(|k| non_array_fields.get(*k).is_some_and(|v| v.is_array()))
+        .cloned()
+        .collect();
+
+    // For arrays that have markers but weren't reconstructed, create empty arrays
+    for array_path in &sorted_array_paths {
+        if !reconstructed_arrays.contains(array_path) && !non_array_fields.contains_key(array_path)
+        {
+            // Check if this is nested inside another array element
+            // If so, don't insert - it will be handled by recursive unflatten_object calls
+            let is_nested_in_array = sorted_array_paths.iter().any(|parent| {
+                if parent.len() >= array_path.len() {
+                    return false;
+                }
+                let prefix = if parent.is_empty() {
+                    String::new()
+                } else {
+                    format!("{}{}", parent, NEST_SEP)
+                };
+                if !array_path.starts_with(&prefix) {
+                    return false;
+                }
+                let after = if prefix.is_empty() {
+                    array_path.as_str()
+                } else {
+                    &array_path[prefix.len()..]
+                };
+                after
+                    .split(NEST_SEP)
+                    .next()
+                    .unwrap_or("")
+                    .parse::<usize>()
+                    .is_ok()
+            });
+
+            if !is_nested_in_array {
+                non_array_fields.insert(array_path.clone(), Value::Array(vec![]));
+            }
+        }
     }
 
     // Fourth pass: build final object

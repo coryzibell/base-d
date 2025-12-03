@@ -454,8 +454,13 @@ mod integration_tests {
 
         // Parse output and verify structure
         let output_value: serde_json::Value = serde_json::from_str(&output).unwrap();
-        let people = output_value.as_object().unwrap()
-            .get("people").unwrap().as_array().unwrap();
+        let people = output_value
+            .as_object()
+            .unwrap()
+            .get("people")
+            .unwrap()
+            .as_array()
+            .unwrap();
 
         // First person has films as properly reconstructed array
         let luke = &people[0];

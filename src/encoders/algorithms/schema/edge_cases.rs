@@ -406,19 +406,17 @@ fn test_array_with_null_elements() {
 
 #[test]
 fn test_nested_empty_arrays() {
-    // Empty arrays nested within objects
-    // Empty arrays produce no fields, resulting in empty object
+    // Empty arrays nested within objects should be preserved
     let input = r#"{"outer":[],"nested":{"inner":[]}}"#;
     let encoded = encode_schema(input, None).expect("encoding failed");
     let decoded = decode_schema(&encoded, false).expect("decoding failed");
 
-    // Empty arrays have no elements to flatten, so they disappear
-    let expected = r#"{}"#;
-    let expected_value: serde_json::Value = serde_json::from_str(expected).unwrap();
+    // Empty arrays should be preserved during round-trip
+    let expected_value: serde_json::Value = serde_json::from_str(input).unwrap();
     let output_value: serde_json::Value = serde_json::from_str(&decoded).unwrap();
     assert_eq!(
         expected_value, output_value,
-        "Empty arrays produce no fields"
+        "Empty arrays should be preserved"
     );
 }
 

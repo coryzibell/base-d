@@ -408,7 +408,8 @@ fn flatten_object(obj: &Map<String, Value>, prefix: &str) -> HashMap<String, Val
                         Value::Array(nested_arr) => {
                             // Recursively handle nested arrays
                             for (nested_idx, nested_item) in nested_arr.iter().enumerate() {
-                                let nested_indexed_key = format!("{}{}{}", indexed_key, NEST_SEP, nested_idx);
+                                let nested_indexed_key =
+                                    format!("{}{}{}", indexed_key, NEST_SEP, nested_idx);
                                 flatten_value(&nested_indexed_key, nested_item, &mut result);
                             }
                         }
