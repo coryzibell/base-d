@@ -17,14 +17,20 @@ pub fn detect_fiche_mode(json: &str) -> DetectedMode {
     let analysis = analyze_structure(&value, 0);
 
     // Decision heuristics:
-    // 1. If root is homogeneous array of objects → Full (tabular data)
-    // 2. If varying structure in arrays → Path (schema explosion risk)
-    // 3. If deep nesting (>4 levels) + has indexed arrays → Path
-    // 4. If schema explosion detected (>50 unique paths) → Path
+    // 1. If schema explosion detected (>50 unique paths) → Path (most reliable signal)
+    // 2. If deep nesting (>3 levels) + has indexed arrays → Path
+    // 3. If varying structure in arrays → Path (schema explosion risk)
+    // 4. If root is homogeneous array of objects → Full (tabular data)
     // 5. Default → Full
 
-    if is_homogeneous_array(&value) {
-        return DetectedMode::Full;
+    // Check schema explosion FIRST - this is the most reliable signal
+    if analysis.unique_paths > 50 {
+        return DetectedMode::Path;
+    }
+
+    // Deep nesting with indexed arrays
+    if analysis.max_depth > 3 && analysis.has_indexed_arrays {
+        return DetectedMode::Path;
     }
 
     // Varying structure is a strong signal for path mode
@@ -32,14 +38,9 @@ pub fn detect_fiche_mode(json: &str) -> DetectedMode {
         return DetectedMode::Path;
     }
 
-    // Deep nesting (>3 levels) suggests complex structure better suited for path mode
-    if analysis.max_depth > 3 && analysis.has_indexed_arrays {
-        return DetectedMode::Path;
-    }
-
-    // Lower threshold for path explosion
-    if analysis.unique_paths > 50 {
-        return DetectedMode::Path;
+    // Homogeneous arrays work well with full mode
+    if is_homogeneous_array(&value) {
+        return DetectedMode::Full;
     }
 
     // Default to full for typical structured data
