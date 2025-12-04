@@ -173,6 +173,16 @@ pub fn encode_fiche_light(json: &str, minify: bool) -> Result<String, SchemaErro
     encode_fiche_with_options(json, minify, true, false)
 }
 
+/// Encode JSON to fiche path mode (one line per leaf value)
+pub fn encode_fiche_path(json: &str) -> Result<String, SchemaError> {
+    fiche::serialize_path_mode(json)
+}
+
+/// Decode fiche path mode to JSON
+pub fn decode_fiche_path(path_input: &str) -> Result<String, SchemaError> {
+    fiche::parse_path_mode(path_input)
+}
+
 fn encode_fiche_with_options(
     json: &str,
     minify: bool,

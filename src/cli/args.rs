@@ -218,6 +218,8 @@ pub enum FicheLevel {
     /// Field names + repeated values (runic + hieroglyphs)
     #[default]
     Full,
+    /// Path mode - one line per leaf value with full path
+    Path,
 }
 
 /// Arguments for fiche encoding/decoding (model-readable format)

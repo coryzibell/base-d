@@ -58,6 +58,12 @@ pub const TYPE_BOOL_SUPER: char = 'ᵇ'; // U+1D47 modifier letter small b
 // Token map prefix
 pub const TOKEN_MAP_PREFIX: char = '@';
 
+// Path mode special symbols
+pub const TRUE_MARKER: &str = "⊤"; // U+22A4 down tack
+pub const FALSE_MARKER: &str = "⊥"; // U+22A5 up tack
+pub const EMPTY_ARRAY_MARKER: &str = "⟦⟧"; // U+27E6, U+27E7 mathematical white square brackets
+pub const EMPTY_OBJECT_MARKER: &str = "⟨⟩"; // U+27E8, U+27E9 mathematical angle brackets
+
 /// Field name tokenization alphabet (spec 1.5+)
 /// Priority: Runic (89 chars) → Hieroglyphs (1072) → Cuneiform (1024)
 /// Ancient scripts avoid ASCII/digit collision and regex interference
@@ -939,6 +945,468 @@ fn split_row<'a>(row_str: &'a str, fields: &[FieldDef]) -> Vec<&'a str> {
     let sep = FIELD_SEP.to_string();
     let parts: Vec<&str> = row_str.splitn(fields.len(), &sep).collect();
     parts
+}
+
+/// Serialize JSON to path mode format
+/// Emits one line per leaf value with full path from root
+pub fn serialize_path_mode(json: &str) -> Result<String, SchemaError> {
+    use serde_json::Value;
+    use std::collections::HashMap;
+
+    // Parse JSON
+    let value: Value = serde_json::from_str(json)
+        .map_err(|e| SchemaError::InvalidInput(format!("Invalid JSON: {}", e)))?;
+
+    // Collect all path-value pairs
+    let mut path_values: Vec<(String, String)> = Vec::new();
+    collect_paths(&value, String::new(), &mut path_values);
+
+    // Collect path segment frequencies
+    let mut segment_counts: HashMap<String, usize> = HashMap::new();
+    for (path, _) in &path_values {
+        for segment in path.split(NEST_SEP) {
+            // Skip numeric array indices
+            if segment.parse::<usize>().is_err() {
+                *segment_counts.entry(segment.to_string()).or_insert(0) += 1;
+            }
+        }
+    }
+
+    // Build path segment dictionary (runic tokens for segments appearing 2+ times)
+    let mut path_dict: HashMap<String, char> = HashMap::new();
+    let mut sorted_segments: Vec<_> = segment_counts
+        .iter()
+        .filter(|(_, count)| **count >= 2)
+        .collect();
+    sorted_segments.sort_by(|a, b| b.1.cmp(a.1).then_with(|| a.0.cmp(b.0)));
+
+    for (idx, (segment, _)) in sorted_segments.iter().enumerate() {
+        if let Some(token) = tokens::get_token(idx) {
+            path_dict.insert((*segment).clone(), token);
+        }
+    }
+
+    // Count string value frequencies for dictionary
+    let mut value_counts: HashMap<String, usize> = HashMap::new();
+    for (_, val) in &path_values {
+        // Only count non-empty strings (exclude numbers, special markers)
+        if !val.is_empty()
+            && val != NULL_VALUE
+            && val != TRUE_MARKER
+            && val != FALSE_MARKER
+            && val != EMPTY_ARRAY_MARKER
+            && val != EMPTY_OBJECT_MARKER
+            && !val
+                .chars()
+                .all(|c| c.is_ascii_digit() || c == '.' || c == '-')
+        {
+            *value_counts.entry(val.clone()).or_insert(0) += 1;
+        }
+    }
+
+    // Build dictionary for values appearing 2+ times (hieroglyphs)
+    let mut value_dict: HashMap<String, char> = HashMap::new();
+    let mut sorted_values: Vec<_> = value_counts
+        .iter()
+        .filter(|(_, count)| **count >= 2)
+        .collect();
+    sorted_values.sort_by(|a, b| b.1.cmp(a.1).then_with(|| a.0.cmp(b.0)));
+
+    for (idx, (value, _)) in sorted_values.iter().enumerate() {
+        if let Some(token) = value_tokens::get_token(idx) {
+            value_dict.insert((*value).clone(), token);
+        }
+    }
+
+    // Build output
+    let mut output = String::new();
+
+    // Emit path segment dictionary if present (runic)
+    if !path_dict.is_empty() {
+        output.push(TOKEN_MAP_PREFIX);
+        let mut sorted_dict: Vec<_> = path_dict.iter().collect();
+        sorted_dict.sort_by_key(|(_, token)| **token);
+
+        for (idx, (segment, token)) in sorted_dict.iter().enumerate() {
+            if idx > 0 {
+                output.push(',');
+            }
+            output.push(**token);
+            output.push('=');
+            output.push_str(segment);
+        }
+        output.push('\n');
+    }
+
+    // Emit value dictionary if present (hieroglyphs)
+    if !value_dict.is_empty() {
+        output.push(TOKEN_MAP_PREFIX);
+        let mut sorted_dict: Vec<_> = value_dict.iter().collect();
+        sorted_dict.sort_by_key(|(_, token)| **token);
+
+        for (idx, (value, token)) in sorted_dict.iter().enumerate() {
+            if idx > 0 {
+                output.push(',');
+            }
+            output.push(**token);
+            output.push('=');
+            output.push_str(value);
+        }
+        output.push('\n');
+    }
+
+    // Emit path-value lines with tokenized segments
+    for (path, value) in path_values {
+        // Tokenize path segments
+        let tokenized_path = tokenize_path(&path, &path_dict);
+        output.push_str(&tokenized_path);
+        output.push(FIELD_SEP);
+
+        // Replace with token if in dictionary
+        if let Some(&token) = value_dict.get(&value) {
+            output.push(token);
+        } else {
+            output.push_str(&value);
+        }
+        output.push('\n');
+    }
+
+    // Remove trailing newline
+    if output.ends_with('\n') {
+        output.pop();
+    }
+
+    Ok(output)
+}
+
+/// Replace path segments with tokens from dictionary
+fn tokenize_path(path: &str, dict: &std::collections::HashMap<String, char>) -> String {
+    let parts: Vec<&str> = path.split(NEST_SEP).collect();
+    let tokenized_parts: Vec<String> = parts
+        .iter()
+        .map(|segment| {
+            // Check if segment is in dictionary
+            if let Some(&token) = dict.get(*segment) {
+                token.to_string()
+            } else {
+                segment.to_string()
+            }
+        })
+        .collect();
+    tokenized_parts.join(&NEST_SEP.to_string())
+}
+
+/// Recursively collect all leaf paths and values from JSON
+fn collect_paths(value: &serde_json::Value, path: String, output: &mut Vec<(String, String)>) {
+    use serde_json::Value;
+
+    match value {
+        Value::Null => {
+            output.push((path, NULL_VALUE.to_string()));
+        }
+        Value::Bool(b) => {
+            let val = if *b { TRUE_MARKER } else { FALSE_MARKER };
+            output.push((path, val.to_string()));
+        }
+        Value::Number(n) => {
+            output.push((path, n.to_string()));
+        }
+        Value::String(s) => {
+            let val = s.replace(' ', &SPACE_MARKER.to_string());
+            output.push((path, val));
+        }
+        Value::Array(arr) => {
+            if arr.is_empty() {
+                output.push((path, EMPTY_ARRAY_MARKER.to_string()));
+            } else {
+                for (idx, item) in arr.iter().enumerate() {
+                    let item_path = if path.is_empty() {
+                        idx.to_string()
+                    } else {
+                        format!("{}{}{}", path, NEST_SEP, idx)
+                    };
+                    collect_paths(item, item_path, output);
+                }
+            }
+        }
+        Value::Object(obj) => {
+            if obj.is_empty() {
+                output.push((path, EMPTY_OBJECT_MARKER.to_string()));
+            } else {
+                for (key, val) in obj {
+                    let key_path = if path.is_empty() {
+                        key.clone()
+                    } else {
+                        format!("{}{}{}", path, NEST_SEP, key)
+                    };
+                    collect_paths(val, key_path, output);
+                }
+            }
+        }
+    }
+}
+
+/// Parse path mode format back to JSON
+pub fn parse_path_mode(input: &str) -> Result<String, SchemaError> {
+    use serde_json::Value;
+    use std::collections::HashMap;
+
+    let input = input.trim();
+    if input.is_empty() {
+        return Err(SchemaError::InvalidInput(
+            "Empty path mode input".to_string(),
+        ));
+    }
+
+    // Parse dictionaries if present
+    let mut path_dict: HashMap<char, String> = HashMap::new();
+    let mut value_dict: HashMap<char, String> = HashMap::new();
+    let lines: Vec<&str> = input.lines().collect();
+    let mut data_start_idx = 0;
+
+    // Parse up to 2 dictionary lines
+    for (idx, line) in lines.iter().enumerate() {
+        if !line.starts_with(TOKEN_MAP_PREFIX) {
+            data_start_idx = idx;
+            break;
+        }
+
+        let dict_content = &line[1..];
+        if dict_content.is_empty() {
+            data_start_idx = idx + 1;
+            continue;
+        }
+
+        // Detect dictionary type by first token character
+        let first_token = dict_content.chars().next();
+        if first_token.is_none() {
+            data_start_idx = idx + 1;
+            continue;
+        }
+
+        let ft = first_token.unwrap();
+        let is_runic = tokens::is_token(ft);
+        let is_hieroglyph = value_tokens::is_token(ft);
+
+        if is_runic {
+            // Path segment dictionary (runic)
+            for pair in dict_content.split(',') {
+                let parts: Vec<&str> = pair.splitn(2, '=').collect();
+                if parts.len() == 2
+                    && let Some(token) = parts[0].chars().next()
+                {
+                    path_dict.insert(token, parts[1].to_string());
+                }
+            }
+        } else if is_hieroglyph {
+            // Value dictionary (hieroglyphs)
+            for pair in dict_content.split(',') {
+                let parts: Vec<&str> = pair.splitn(2, '=').collect();
+                if parts.len() == 2
+                    && let Some(token) = parts[0].chars().next()
+                {
+                    value_dict.insert(token, parts[1].to_string());
+                }
+            }
+        }
+
+        data_start_idx = idx + 1;
+    }
+
+    // Parse path-value lines into map
+    let mut paths: HashMap<String, Value> = HashMap::new();
+
+    for line in lines.iter().skip(data_start_idx) {
+        if line.is_empty() {
+            continue;
+        }
+
+        let parts: Vec<&str> = line.splitn(2, FIELD_SEP).collect();
+        if parts.len() != 2 {
+            return Err(SchemaError::InvalidInput(format!(
+                "Invalid path line: '{}'",
+                line
+            )));
+        }
+
+        // Detokenize path segments
+        let tokenized_path = parts[0];
+        let detokenized_path = detokenize_path(tokenized_path, &path_dict);
+
+        let mut value_str = parts[1];
+
+        // Resolve value token if single char
+        let resolved: String;
+        if (value_str.len() == 1 || value_str.chars().count() == 1)
+            && let Some(c) = value_str.chars().next()
+            && let Some(expanded) = value_dict.get(&c)
+        {
+            resolved = expanded.clone();
+            value_str = &resolved;
+        }
+
+        // Parse value
+        let value = parse_path_value(value_str)?;
+        paths.insert(detokenized_path, value);
+    }
+
+    // Build JSON from paths
+    let root = build_json_from_paths(&paths)?;
+    serde_json::to_string(&root)
+        .map_err(|e| SchemaError::InvalidInput(format!("JSON serialization failed: {}", e)))
+}
+
+/// Replace path segment tokens with original strings from dictionary
+fn detokenize_path(path: &str, dict: &std::collections::HashMap<char, String>) -> String {
+    let parts: Vec<&str> = path.split(NEST_SEP).collect();
+    let detokenized_parts: Vec<String> = parts
+        .iter()
+        .map(|segment| {
+            // Check if segment is a single token character
+            if (segment.len() == 1 || segment.chars().count() == 1)
+                && let Some(c) = segment.chars().next()
+                && let Some(expanded) = dict.get(&c)
+            {
+                return expanded.clone();
+            }
+            segment.to_string()
+        })
+        .collect();
+    detokenized_parts.join(&NEST_SEP.to_string())
+}
+
+/// Parse a path value string to serde_json::Value
+fn parse_path_value(s: &str) -> Result<serde_json::Value, SchemaError> {
+    use serde_json::{Value, json};
+
+    match s {
+        NULL_VALUE => Ok(Value::Null),
+        TRUE_MARKER => Ok(json!(true)),
+        FALSE_MARKER => Ok(json!(false)),
+        EMPTY_ARRAY_MARKER => Ok(json!([])),
+        EMPTY_OBJECT_MARKER => Ok(json!({})),
+        _ => {
+            // Try number
+            if let Ok(n) = s.parse::<i64>() {
+                return Ok(json!(n));
+            }
+            if let Ok(f) = s.parse::<f64>() {
+                return Ok(json!(f));
+            }
+            // String (restore spaces)
+            Ok(json!(s.replace(SPACE_MARKER, " ")))
+        }
+    }
+}
+
+/// Build JSON structure from path-value map
+fn build_json_from_paths(
+    paths: &std::collections::HashMap<String, serde_json::Value>,
+) -> Result<serde_json::Value, SchemaError> {
+    use serde_json::json;
+
+    if paths.is_empty() {
+        return Ok(json!({}));
+    }
+
+    let mut root = json!({});
+
+    for (path, value) in paths {
+        insert_at_path(&mut root, path, value.clone())?;
+    }
+
+    Ok(root)
+}
+
+/// Insert a value at a given path in JSON structure
+fn insert_at_path(
+    root: &mut serde_json::Value,
+    path: &str,
+    value: serde_json::Value,
+) -> Result<(), SchemaError> {
+    use serde_json::{Value, json};
+
+    if path.is_empty() {
+        *root = value;
+        return Ok(());
+    }
+
+    let parts: Vec<&str> = path.split(NEST_SEP).collect();
+
+    // Recursive helper to avoid borrow checker issues
+    fn insert_recursive(
+        current: &mut Value,
+        parts: &[&str],
+        value: &Value,
+    ) -> Result<(), SchemaError> {
+        use serde_json::{Value, json};
+
+        if parts.is_empty() {
+            return Ok(());
+        }
+
+        let part = parts[0];
+        let is_last = parts.len() == 1;
+
+        // Check if this part is an array index
+        if let Ok(index) = part.parse::<usize>() {
+            // Ensure current is an array
+            if !current.is_array() {
+                *current = json!([]);
+            }
+
+            let arr = current.as_array_mut().unwrap();
+
+            // Extend array if needed
+            while arr.len() <= index {
+                arr.push(Value::Null);
+            }
+
+            if is_last {
+                arr[index] = value.clone();
+            } else {
+                // Prepare next container
+                let next_part = parts[1];
+                if next_part.parse::<usize>().is_ok() {
+                    if !arr[index].is_array() {
+                        arr[index] = json!([]);
+                    }
+                } else if !arr[index].is_object() {
+                    arr[index] = json!({});
+                }
+                insert_recursive(&mut arr[index], &parts[1..], value)?;
+            }
+        } else {
+            // Object key
+            if !current.is_object() {
+                *current = json!({});
+            }
+
+            if is_last {
+                current
+                    .as_object_mut()
+                    .unwrap()
+                    .insert(part.to_string(), value.clone());
+            } else {
+                // Prepare next container
+                let next_part = parts[1];
+                let obj = current.as_object_mut().unwrap();
+
+                if next_part.parse::<usize>().is_ok() {
+                    obj.entry(part.to_string()).or_insert_with(|| json!([]));
+                } else {
+                    obj.entry(part.to_string()).or_insert_with(|| json!({}));
+                }
+
+                let next = obj.get_mut(part).unwrap();
+                insert_recursive(next, &parts[1..], value)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    insert_recursive(root, &parts, &value)
 }
 
 #[cfg(test)]

@@ -3,7 +3,8 @@ use crate::cli::{
     global::GlobalArgs,
 };
 use base_d::{
-    DictionaryRegistry, decode_fiche, encode_fiche, encode_fiche_light, encode_fiche_readable,
+    DictionaryRegistry, decode_fiche, decode_fiche_path, encode_fiche, encode_fiche_light,
+    encode_fiche_path, encode_fiche_readable,
 };
 use std::fs;
 use std::io::{self, Read};
@@ -38,6 +39,7 @@ fn handle_encode(args: FicheEncodeArgs) -> Result<(), Box<dyn std::error::Error>
         FicheLevel::None => encode_fiche_readable(input_text.trim(), minify)?,
         FicheLevel::Light => encode_fiche_light(input_text.trim(), minify)?,
         FicheLevel::Full => encode_fiche(input_text.trim(), minify)?,
+        FicheLevel::Path => encode_fiche_path(input_text.trim())?,
     };
 
     write_output(&output, args.output.as_ref())?;
@@ -46,7 +48,20 @@ fn handle_encode(args: FicheEncodeArgs) -> Result<(), Box<dyn std::error::Error>
 
 fn handle_decode(args: FicheDecodeArgs) -> Result<(), Box<dyn std::error::Error>> {
     let input_text = read_input(args.input.as_deref())?;
-    let output = decode_fiche(input_text.trim(), args.pretty)?;
+    let trimmed = input_text.trim();
+
+    // Auto-detect path mode: has ┃ separators but no ◉ row markers
+    let has_row_marker = trimmed.lines().any(|line| line.starts_with("◉"));
+    let has_field_sep = trimmed.contains('┃');
+
+    let is_path_mode = has_field_sep && !has_row_marker;
+
+    let output = if is_path_mode {
+        decode_fiche_path(trimmed)?
+    } else {
+        decode_fiche(trimmed, args.pretty)?
+    };
+
     write_output(&output, args.output.as_ref())?;
     Ok(())
 }
