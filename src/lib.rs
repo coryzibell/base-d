@@ -170,6 +170,9 @@ pub use encoders::algorithms::schema::{
     encode_schema,
 };
 
+// Expose fiche auto-detection
+pub use encoders::algorithms::schema::fiche_analyzer::{DetectedMode, detect_fiche_mode};
+
 /// Schema encoding types and traits for building custom frontends
 ///
 /// This module provides the intermediate representation (IR) layer for schema encoding,

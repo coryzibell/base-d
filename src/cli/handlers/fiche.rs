@@ -3,8 +3,8 @@ use crate::cli::{
     global::GlobalArgs,
 };
 use base_d::{
-    DictionaryRegistry, decode_fiche, decode_fiche_path, encode_fiche, encode_fiche_light,
-    encode_fiche_path, encode_fiche_readable,
+    DetectedMode, DictionaryRegistry, decode_fiche, decode_fiche_path, detect_fiche_mode,
+    encode_fiche, encode_fiche_light, encode_fiche_path, encode_fiche_readable,
 };
 use std::fs;
 use std::io::{self, Read};
@@ -35,7 +35,20 @@ fn handle_encode(args: FicheEncodeArgs) -> Result<(), Box<dyn std::error::Error>
     let input_text = read_input(args.input.as_deref())?;
     let minify = !args.multiline;
 
-    let output = match args.level {
+    // Auto-detect level if set to Auto
+    let level = match args.level {
+        FicheLevel::Auto => {
+            let detected = detect_fiche_mode(input_text.trim());
+            match detected {
+                DetectedMode::Full => FicheLevel::Full,
+                DetectedMode::Path => FicheLevel::Path,
+            }
+        }
+        other => other,
+    };
+
+    let output = match level {
+        FicheLevel::Auto => unreachable!("Auto should be resolved by now"),
         FicheLevel::None => encode_fiche_readable(input_text.trim(), minify)?,
         FicheLevel::Light => encode_fiche_light(input_text.trim(), minify)?,
         FicheLevel::Full => encode_fiche(input_text.trim(), minify)?,

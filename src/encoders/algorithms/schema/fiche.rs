@@ -1836,4 +1836,91 @@ mod tests {
         assert_eq!(lines.len(), 5); // field dict, schema, 3 data rows
         assert!(!tokenized.contains("𓀀")); // No hieroglyphs
     }
+
+    #[test]
+    fn test_path_mode_roundtrip_simple() {
+        // Simple nested object
+        let json = r#"{"a":1,"b":{"c":"hello","d":true}}"#;
+        let fiche = serialize_path_mode(json).unwrap();
+        let result = parse_path_mode(&fiche).unwrap();
+
+        let original: serde_json::Value = serde_json::from_str(json).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(original, parsed);
+    }
+
+    #[test]
+    fn test_path_mode_roundtrip_arrays() {
+        // Arrays with indices
+        let json = r#"{"users":[{"name":"alice"},{"name":"bob"}]}"#;
+        let fiche = serialize_path_mode(json).unwrap();
+        let result = parse_path_mode(&fiche).unwrap();
+
+        let original: serde_json::Value = serde_json::from_str(json).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(original, parsed);
+    }
+
+    #[test]
+    fn test_path_mode_roundtrip_nulls_bools() {
+        // Null and boolean handling
+        let json = r#"{"active":true,"deleted":false,"data":null}"#;
+        let fiche = serialize_path_mode(json).unwrap();
+        let result = parse_path_mode(&fiche).unwrap();
+
+        let original: serde_json::Value = serde_json::from_str(json).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(original, parsed);
+    }
+
+    #[test]
+    fn test_path_mode_roundtrip_empty_containers() {
+        // Empty arrays and objects
+        let json = r#"{"items":[],"meta":{}}"#;
+        let fiche = serialize_path_mode(json).unwrap();
+        let result = parse_path_mode(&fiche).unwrap();
+
+        let original: serde_json::Value = serde_json::from_str(json).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(original, parsed);
+    }
+
+    #[test]
+    fn test_path_mode_roundtrip_deep_nesting() {
+        // Deep nesting (the use case path mode was built for)
+        let json = r#"{"a":{"b":{"c":{"d":{"e":1}}}}}"#;
+        let fiche = serialize_path_mode(json).unwrap();
+        let result = parse_path_mode(&fiche).unwrap();
+
+        let original: serde_json::Value = serde_json::from_str(json).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(original, parsed);
+    }
+
+    #[test]
+    fn test_path_mode_roundtrip_with_tokenization() {
+        // Verify path and value tokenization roundtrips
+        // "users", "name", "role" should be tokenized (runic) - appear 2+ times in paths
+        // "admin" should be tokenized (hieroglyph) - appears 2x
+        let json = r#"{"users":[{"name":"alice","role":"admin"},{"name":"bob","role":"admin"}]}"#;
+        let fiche = serialize_path_mode(json).unwrap();
+
+        // Verify path tokenization occurred (runic characters should be present)
+        assert!(
+            fiche.chars().any(tokens::is_token),
+            "Expected runic tokens for path segments"
+        );
+
+        // Verify value tokenization occurred (hieroglyph for "admin")
+        assert!(
+            fiche.chars().any(value_tokens::is_token),
+            "Expected hieroglyph token for repeated value"
+        );
+
+        let result = parse_path_mode(&fiche).unwrap();
+
+        let original: serde_json::Value = serde_json::from_str(json).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(original, parsed);
+    }
 }

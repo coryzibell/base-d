@@ -211,12 +211,14 @@ pub enum ConfigCategory {
 /// Tokenization levels for fiche encoding
 #[derive(Debug, Clone, Copy, Default, ValueEnum)]
 pub enum FicheLevel {
+    /// Auto-detect best mode based on JSON structure
+    #[default]
+    Auto,
     /// No tokenization - human readable field names
     None,
     /// Field names only (runic tokens)
     Light,
     /// Field names + repeated values (runic + hieroglyphs)
-    #[default]
     Full,
     /// Path mode - one line per leaf value with full path
     Path,
@@ -258,7 +260,7 @@ pub enum FicheCommand {
 #[derive(Args, Debug)]
 pub struct FicheEncodeArgs {
     /// Tokenization level
-    #[arg(short, long, default_value = "full")]
+    #[arg(short, long, default_value = "auto")]
     pub level: FicheLevel,
 
     /// Output file (writes to stdout if not provided)

@@ -3,6 +3,7 @@ pub mod binary_unpacker;
 pub mod compression;
 pub mod display96;
 pub mod fiche;
+pub mod fiche_analyzer;
 pub mod frame;
 pub mod parsers;
 pub mod serializers;
