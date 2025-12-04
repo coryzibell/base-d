@@ -65,12 +65,11 @@ pub mod tokens {
     /// Runic alphabet (U+16A0 – U+16F8, 89 characters, BMP)
     /// Primary tokenization alphabet - most compact, BMP-only
     pub const RUNIC: &[char] = &[
-        'ᚠ', 'ᚡ', 'ᚢ', 'ᚣ', 'ᚤ', 'ᚥ', 'ᚦ', 'ᚧ', 'ᚨ', 'ᚩ', 'ᚪ', 'ᚫ', 'ᚬ', 'ᚭ', 'ᚮ', 'ᚯ',
-        'ᚰ', 'ᚱ', 'ᚲ', 'ᚳ', 'ᚴ', 'ᚵ', 'ᚶ', 'ᚷ', 'ᚸ', 'ᚹ', 'ᚺ', 'ᚻ', 'ᚼ', 'ᚽ', 'ᚾ', 'ᚿ',
-        'ᛀ', 'ᛁ', 'ᛂ', 'ᛃ', 'ᛄ', 'ᛅ', 'ᛆ', 'ᛇ', 'ᛈ', 'ᛉ', 'ᛊ', 'ᛋ', 'ᛌ', 'ᛍ', 'ᛎ', 'ᛏ',
-        'ᛐ', 'ᛑ', 'ᛒ', 'ᛓ', 'ᛔ', 'ᛕ', 'ᛖ', 'ᛗ', 'ᛘ', 'ᛙ', 'ᛚ', 'ᛛ', 'ᛜ', 'ᛝ', 'ᛞ', 'ᛟ',
-        'ᛠ', 'ᛡ', 'ᛢ', 'ᛣ', 'ᛤ', 'ᛥ', 'ᛦ', 'ᛧ', 'ᛨ', 'ᛩ', 'ᛪ', '᛫', '᛬', '᛭', 'ᛮ', 'ᛯ',
-        'ᛰ', 'ᛱ', 'ᛲ', 'ᛳ', 'ᛴ', 'ᛵ', 'ᛶ', 'ᛷ', 'ᛸ',
+        'ᚠ', 'ᚡ', 'ᚢ', 'ᚣ', 'ᚤ', 'ᚥ', 'ᚦ', 'ᚧ', 'ᚨ', 'ᚩ', 'ᚪ', 'ᚫ', 'ᚬ', 'ᚭ', 'ᚮ', 'ᚯ', 'ᚰ', 'ᚱ',
+        'ᚲ', 'ᚳ', 'ᚴ', 'ᚵ', 'ᚶ', 'ᚷ', 'ᚸ', 'ᚹ', 'ᚺ', 'ᚻ', 'ᚼ', 'ᚽ', 'ᚾ', 'ᚿ', 'ᛀ', 'ᛁ', 'ᛂ', 'ᛃ',
+        'ᛄ', 'ᛅ', 'ᛆ', 'ᛇ', 'ᛈ', 'ᛉ', 'ᛊ', 'ᛋ', 'ᛌ', 'ᛍ', 'ᛎ', 'ᛏ', 'ᛐ', 'ᛑ', 'ᛒ', 'ᛓ', 'ᛔ', 'ᛕ',
+        'ᛖ', 'ᛗ', 'ᛘ', 'ᛙ', 'ᛚ', 'ᛛ', 'ᛜ', 'ᛝ', 'ᛞ', 'ᛟ', 'ᛠ', 'ᛡ', 'ᛢ', 'ᛣ', 'ᛤ', 'ᛥ', 'ᛦ', 'ᛧ',
+        'ᛨ', 'ᛩ', 'ᛪ', '᛫', '᛬', '᛭', 'ᛮ', 'ᛯ', 'ᛰ', 'ᛱ', 'ᛲ', 'ᛳ', 'ᛴ', 'ᛵ', 'ᛶ', 'ᛷ', 'ᛸ',
     ];
 
     /// Get a token character by index, spanning all alphabets
@@ -91,30 +90,78 @@ pub mod tokens {
     }
 
     /// Get the index of a token character
+    #[allow(dead_code)]
     pub fn token_index(c: char) -> Option<usize> {
         RUNIC.iter().position(|&t| t == c)
     }
 }
 
+/// Value tokenization alphabet (spec 1.8+)
+/// Egyptian Hieroglyphs for repeated value compression
+pub mod value_tokens {
+    /// Hieroglyphs (U+13000 – U+1342F, 1072 characters, SMP)
+    /// Used for value tokenization to avoid collision with field tokens
+    pub const HIEROGLYPH_START: char = '\u{13000}'; // 𓀀
+    pub const HIEROGLYPH_END: char = '\u{1342F}'; // 1072 chars available
+
+    /// Get a hieroglyph token by index
+    pub fn get_token(index: usize) -> Option<char> {
+        let code_point = HIEROGLYPH_START as u32 + index as u32;
+        if code_point <= HIEROGLYPH_END as u32 {
+            char::from_u32(code_point)
+        } else {
+            None
+        }
+    }
+
+    /// Check if a character is a hieroglyph token
+    pub fn is_token(c: char) -> bool {
+        (HIEROGLYPH_START..=HIEROGLYPH_END).contains(&c)
+    }
+
+    /// Get the index of a hieroglyph token
+    #[allow(dead_code)]
+    pub fn token_index(c: char) -> Option<usize> {
+        if is_token(c) {
+            Some((c as u32 - HIEROGLYPH_START as u32) as usize)
+        } else {
+            None
+        }
+    }
+}
+
 /// Serialize IR to fiche format (with tokenization)
-pub fn serialize(ir: &IntermediateRepresentation) -> Result<String, SchemaError> {
-    serialize_full_options(ir, false, true)
+pub fn serialize(ir: &IntermediateRepresentation, minify: bool) -> Result<String, SchemaError> {
+    serialize_full_options(ir, minify, true, true)
 }
 
 /// Serialize IR to fiche format without tokenization (human-readable field names)
-pub fn serialize_readable(ir: &IntermediateRepresentation) -> Result<String, SchemaError> {
-    serialize_full_options(ir, false, false)
+pub fn serialize_readable(
+    ir: &IntermediateRepresentation,
+    minify: bool,
+) -> Result<String, SchemaError> {
+    serialize_full_options(ir, minify, false, false)
 }
 
+/// Serialize IR with field tokenization only (no value dictionary)
+pub fn serialize_light(
+    ir: &IntermediateRepresentation,
+    minify: bool,
+) -> Result<String, SchemaError> {
+    serialize_full_options(ir, minify, true, false)
+}
+
+#[allow(dead_code)]
 pub fn serialize_minified(ir: &IntermediateRepresentation) -> Result<String, SchemaError> {
-    serialize_full_options(ir, true, true)
+    serialize_full_options(ir, true, true, true)
 }
 
-/// Serialize with minify and tokenization options
+/// Serialize with minify, tokenization, and value dictionary options
 fn serialize_full_options(
     ir: &IntermediateRepresentation,
     minify: bool,
     tokenize: bool,
+    tokenize_values: bool,
 ) -> Result<String, SchemaError> {
     // For backward compatibility, delegate to old function if not tokenizing
     if !tokenize {
@@ -135,7 +182,14 @@ fn serialize_full_options(
         }
     }
 
-    // Token map header: @ᚠ=field1,ᚡ=field2,...
+    // Build value dictionary if tokenize_values is enabled
+    let value_dict = if tokenize_values {
+        build_value_dictionary(ir)
+    } else {
+        std::collections::HashMap::new()
+    };
+
+    // Field token map header: @ᚠ=field1,ᚡ=field2,...
     output.push(TOKEN_MAP_PREFIX);
     for (idx, (token, name)) in token_map.iter().enumerate() {
         if idx > 0 {
@@ -146,6 +200,24 @@ fn serialize_full_options(
         output.push_str(name);
     }
     output.push(line_sep);
+
+    // Value dictionary header (if present): @𓀀=value1,𓀁=value2,...
+    if !value_dict.is_empty() {
+        output.push(TOKEN_MAP_PREFIX);
+        // Sort by token for deterministic output
+        let mut sorted_values: Vec<_> = value_dict.iter().collect();
+        sorted_values.sort_by_key(|(_, token)| **token);
+
+        for (idx, (value, token)) in sorted_values.iter().enumerate() {
+            if idx > 0 {
+                output.push(',');
+            }
+            output.push(**token);
+            output.push('=');
+            output.push_str(value);
+        }
+        output.push(line_sep);
+    }
 
     // Schema line with tokens: @{root}┃ᚠ{type}┃ᚡ{type}...
     output.push('@');
@@ -174,7 +246,10 @@ fn serialize_full_options(
     for (idx, field) in ir.header.fields.iter().enumerate() {
         output.push(FIELD_SEP);
         output.push(token_map[idx].0); // Token instead of field name
-        output.push_str(&field_type_to_str(&field.field_type));
+        // Array markers (name⟦⟧) are structural metadata - no type suffix
+        if !field.name.ends_with("⟦⟧") {
+            output.push_str(&field_type_to_str(&field.field_type));
+        }
     }
     output.push(line_sep);
 
@@ -194,7 +269,14 @@ fn serialize_full_options(
             } else {
                 let value_idx = row * field_count + field_idx;
                 let value = &ir.values[value_idx];
-                output.push_str(&value_to_str(value, &field.field_type));
+                let value_str = value_to_str(value, &field.field_type);
+
+                // Replace with token if value is in dictionary
+                if let Some(&token) = value_dict.get(&value_str) {
+                    output.push(token);
+                } else {
+                    output.push_str(&value_str);
+                }
             }
         }
         if row < ir.header.row_count - 1 {
@@ -203,6 +285,57 @@ fn serialize_full_options(
     }
 
     Ok(output)
+}
+
+/// Build value dictionary from IR
+/// Returns map of value string -> hieroglyph token for values appearing 2+ times
+fn build_value_dictionary(
+    ir: &IntermediateRepresentation,
+) -> std::collections::HashMap<String, char> {
+    use std::collections::HashMap;
+
+    // Count occurrences of each string value
+    let mut value_counts: HashMap<String, usize> = HashMap::new();
+    let field_count = ir.header.fields.len();
+
+    for row in 0..ir.header.row_count {
+        for field_idx in 0..ir.header.fields.len() {
+            // Skip nulls
+            if ir.is_null(row, field_idx) {
+                continue;
+            }
+
+            let value_idx = row * field_count + field_idx;
+            let value = &ir.values[value_idx];
+
+            // Only tokenize string values (exclude numbers, bools, nulls)
+            if let SchemaValue::String(s) = value {
+                let value_str = s.replace(' ', &SPACE_MARKER.to_string());
+                *value_counts.entry(value_str).or_insert(0) += 1;
+            }
+        }
+    }
+
+    // Build dictionary for values with count >= 2
+    let mut dict: HashMap<String, char> = HashMap::new();
+    let mut sorted_values: Vec<_> = value_counts
+        .iter()
+        .filter(|(_, count)| **count >= 2)
+        .collect();
+
+    // Sort by frequency descending (most common first)
+    sorted_values.sort_by(|a, b| b.1.cmp(a.1).then_with(|| a.0.cmp(b.0)));
+
+    for (idx, (value, _)) in sorted_values.iter().enumerate() {
+        if let Some(token) = value_tokens::get_token(idx) {
+            dict.insert((*value).clone(), token);
+        } else {
+            // Ran out of hieroglyph tokens (unlikely with 1072 available)
+            break;
+        }
+    }
+
+    dict
 }
 
 fn serialize_with_options(
@@ -239,8 +372,11 @@ fn serialize_with_options(
     for field in &ir.header.fields {
         output.push(FIELD_SEP);
         output.push_str(&field.name);
-        // Superscript format: no colon separator, type marker suffixes the name
-        output.push_str(&field_type_to_str(&field.field_type));
+        // Array markers (name⟦⟧) are structural metadata - no type suffix
+        // Other fields get superscript type marker
+        if !field.name.ends_with("⟦⟧") {
+            output.push_str(&field_type_to_str(&field.field_type));
+        }
     }
     output.push(line_sep);
 
@@ -291,52 +427,80 @@ pub fn parse(input: &str) -> Result<IntermediateRepresentation, SchemaError> {
         ));
     };
 
-    // Parse token map if present (tokenized format)
-    // Format: @ᚠ=field1,ᚡ=field2,...\n@root┃...
-    // Or minified: @ᚠ=field1,ᚡ=field2,...▓@root┃...
+    // Parse token maps if present (tokenized format)
+    // Format: @ᚠ=field1,ᚡ=field2,...\n@𓀀=value1,𓀁=value2,...\n@root┃...
+    // Or minified: @ᚠ=field1,...▓@𓀀=value1,...▓@root┃...
     let mut token_map: std::collections::HashMap<char, String> = std::collections::HashMap::new();
+    let mut value_dict: std::collections::HashMap<char, String> = std::collections::HashMap::new();
     let schema_part = schema_part.trim();
 
-    // Check if first line is a token map (starts with @{runic}= pattern)
-    let (effective_schema, _token_map_used) = {
+    // Parse dictionary lines
+    let effective_schema = {
         let lines: Vec<&str> = schema_part
-            .split(|c| c == '\n' || c == SPACE_MARKER)
+            .split(['\n', SPACE_MARKER])
             .filter(|s| !s.is_empty())
             .collect();
 
-        if lines.len() >= 2 {
-            let first_line = lines[0];
-            // Token map: starts with @ followed by a runic token and =
-            // This distinguishes it from metadata annotations like @root[key=value]
-            let is_token_map = if first_line.starts_with('@') && first_line.len() > 1 {
-                let after_at = &first_line[1..];
-                // Check if first char is a runic token followed by =
-                let first_char = after_at.chars().next();
-                first_char.is_some_and(|c| tokens::is_token(c)) && after_at.contains('=')
-            } else {
-                false
-            };
+        let mut schema_line_idx = 0;
 
-            if is_token_map {
-                // Parse token map: @ᚠ=field1,ᚡ=field2,...
-                let map_content = &first_line[1..]; // Remove @
-                for pair in map_content.split(',') {
-                    let parts: Vec<&str> = pair.splitn(2, '=').collect();
-                    if parts.len() == 2 {
-                        let token = parts[0].chars().next();
-                        let name = parts[1].to_string();
-                        if let Some(t) = token {
-                            token_map.insert(t, name);
+        // Parse up to 2 dictionary lines (field dict, value dict)
+        for (idx, line) in lines.iter().enumerate() {
+            if !line.starts_with('@') || line.len() <= 1 {
+                schema_line_idx = idx;
+                break;
+            }
+
+            let after_at = &line[1..];
+            let first_char = after_at.chars().next();
+
+            if let Some(fc) = first_char {
+                // Field token dictionary (runic)
+                if tokens::is_token(fc) && after_at.contains('=') {
+                    let map_content = after_at;
+                    for pair in map_content.split(',') {
+                        let parts: Vec<&str> = pair.splitn(2, '=').collect();
+                        if parts.len() == 2 {
+                            let token = parts[0].chars().next();
+                            let name = parts[1].to_string();
+                            if let Some(t) = token {
+                                token_map.insert(t, name);
+                            }
                         }
                     }
+                    schema_line_idx = idx + 1;
                 }
-                // Use remaining lines as schema
-                (lines[1..].join(&SPACE_MARKER.to_string()), true)
+                // Value token dictionary (hieroglyphs)
+                else if value_tokens::is_token(fc) && after_at.contains('=') {
+                    let map_content = after_at;
+                    for pair in map_content.split(',') {
+                        let parts: Vec<&str> = pair.splitn(2, '=').collect();
+                        if parts.len() == 2 {
+                            let token = parts[0].chars().next();
+                            let value = parts[1].to_string();
+                            if let Some(t) = token {
+                                value_dict.insert(t, value);
+                            }
+                        }
+                    }
+                    schema_line_idx = idx + 1;
+                }
+                // Schema line (not a dictionary)
+                else {
+                    schema_line_idx = idx;
+                    break;
+                }
             } else {
-                (schema_part.to_string(), false)
+                schema_line_idx = idx;
+                break;
             }
+        }
+
+        if schema_line_idx < lines.len() {
+            lines[schema_line_idx..].join(&SPACE_MARKER.to_string())
         } else {
-            (schema_part.to_string(), false)
+            return Err(SchemaError::InvalidInput(
+                "No schema line found after dictionaries".to_string(),
+            ));
         }
     };
 
@@ -516,7 +680,19 @@ pub fn parse(input: &str) -> Result<IntermediateRepresentation, SchemaError> {
                     values.push(SchemaValue::Null);
                 }
             } else {
-                let value = parse_value(value_str, &field.field_type)?;
+                // Check if value is a single hieroglyph token
+                let resolved_value = if value_str.len() == 1 || value_str.chars().count() == 1 {
+                    let first_char = value_str.chars().next().unwrap();
+                    if let Some(expanded) = value_dict.get(&first_char) {
+                        expanded.as_str()
+                    } else {
+                        value_str
+                    }
+                } else {
+                    value_str
+                };
+
+                let value = parse_value(resolved_value, &field.field_type)?;
                 values.push(value);
             }
         }
@@ -612,10 +788,10 @@ fn parse_field_def_with_tokens(
 
     // Check if the name is a single-char token that needs resolution
     let chars: Vec<char> = name_or_token.chars().collect();
-    if chars.len() == 1 {
-        if let Some(resolved_name) = token_map.get(&chars[0]) {
-            return Ok((resolved_name.clone(), field_type));
-        }
+    if chars.len() == 1
+        && let Some(resolved_name) = token_map.get(&chars[0])
+    {
+        return Ok((resolved_name.clone(), field_type));
     }
 
     // Not a token, use as-is
@@ -637,10 +813,10 @@ fn parse_field_def(s: &str) -> Result<(String, FieldType), SchemaError> {
 
     // Superscript format: field name ends with type marker
     // Check for array suffix first (ˢ⟦⟧, ⁱ⟦⟧, etc.)
-    let (base, is_array) = if s.ends_with("⟦⟧") {
-        (&s[..s.len() - "⟦⟧".len()], true)
-    } else if s.ends_with("[]") {
-        (&s[..s.len() - 2], true)
+    let (base, is_array) = if let Some(stripped) = s.strip_suffix("⟦⟧") {
+        (stripped, true)
+    } else if let Some(stripped) = s.strip_suffix("[]") {
+        (stripped, true)
     } else {
         (s, false)
     };
@@ -782,7 +958,7 @@ mod tests {
         assert_eq!(ir.header.root_key, Some("users".to_string()));
 
         // Use readable (non-tokenized) for roundtrip
-        let output = serialize_readable(&ir).unwrap();
+        let output = serialize_readable(&ir, false).unwrap();
         assert_eq!(output, fiche);
     }
 
@@ -796,7 +972,7 @@ mod tests {
         let ir = parse(fiche).unwrap();
 
         // Tokenized output should have token map
-        let tokenized = serialize(&ir).unwrap();
+        let tokenized = serialize(&ir, false).unwrap();
         assert!(tokenized.starts_with("@ᚠ=id,ᚡ=name,ᚢ=active\n"));
         assert!(tokenized.contains("┃ᚠⁱ┃ᚡˢ┃ᚢᵇ"));
 
@@ -823,7 +999,7 @@ mod tests {
         assert_eq!(ir.header.fields.len(), 3);
 
         // Output uses superscript format (readable mode)
-        let output = serialize_readable(&ir).unwrap();
+        let output = serialize_readable(&ir, false).unwrap();
         assert!(output.contains("idⁱ"));
         assert!(output.contains("nameˢ"));
         assert!(output.contains("activeᵇ"));
@@ -847,7 +1023,7 @@ mod tests {
         }
 
         // Output uses superscript + ⟦⟧ syntax (readable mode)
-        let output = serialize_readable(&ir).unwrap();
+        let output = serialize_readable(&ir, false).unwrap();
         assert!(output.contains("tagsˢ⟦⟧"));
     }
 
@@ -869,7 +1045,7 @@ mod tests {
         }
 
         // Roundtrip with superscript format (readable mode)
-        let output = serialize_readable(&ir).unwrap();
+        let output = serialize_readable(&ir, false).unwrap();
         assert_eq!(output, fiche);
     }
 
@@ -883,7 +1059,7 @@ mod tests {
         assert!(ir.is_null(0, 2)); // notes is null for row 0
         assert!(ir.is_null(1, 1)); // score is null for row 1
 
-        let output = serialize_readable(&ir).unwrap();
+        let output = serialize_readable(&ir, false).unwrap();
         assert_eq!(output, fiche);
     }
 
@@ -900,7 +1076,7 @@ mod tests {
             panic!("Expected string");
         }
 
-        let output = serialize_readable(&ir).unwrap();
+        let output = serialize_readable(&ir, false).unwrap();
         assert_eq!(output, fiche);
     }
 
@@ -1000,7 +1176,7 @@ mod tests {
             panic!("Expected array");
         }
 
-        let output = serialize_readable(&ir).unwrap();
+        let output = serialize_readable(&ir, false).unwrap();
         assert_eq!(output, fiche);
     }
 
@@ -1027,7 +1203,7 @@ mod tests {
         }
 
         // Check re-encoding produces minified spaces (readable mode)
-        let output = serialize_readable(&ir).unwrap();
+        let output = serialize_readable(&ir, false).unwrap();
         assert!(output.contains("Luke▓Skywalker"));
         assert!(output.contains("Tatooine▓Desert▓Planet"));
         assert_eq!(output, fiche);
@@ -1089,7 +1265,7 @@ mod tests {
         assert_eq!(metadata.get("class"), Some(&"Year 1".to_string()));
 
         // Check roundtrip (readable mode)
-        let output = serialize_readable(&ir).unwrap();
+        let output = serialize_readable(&ir, false).unwrap();
         assert!(output.contains("[class=Year▓1,school_name=Springfield▓High]"));
         assert_eq!(output, fiche);
     }
@@ -1117,5 +1293,79 @@ mod tests {
         let ir2 = parse(&tokenized).unwrap();
         assert_eq!(ir2.header.fields[0].name, "id");
         assert_eq!(ir2.header.row_count, 2);
+    }
+
+    #[test]
+    fn test_value_dictionary() {
+        // Service logs with repeated levels and service names
+        let fiche = "@logs┃levelˢ┃messageˢ┃serviceˢ
+◉info┃Request▓received┃api
+◉debug┃Parsing▓payload┃api
+◉info┃Auth▓validated┃api
+◉error┃Connection▓timeout┃db
+◉info┃Response▓sent┃api
+◉error┃Query▓failed┃db";
+
+        let ir = parse(fiche).unwrap();
+        assert_eq!(ir.header.row_count, 6);
+
+        // Serialize with value dictionary (default for serialize)
+        let tokenized = serialize(&ir, false).unwrap();
+
+        // Should have field dictionary
+        assert!(tokenized.starts_with("@ᚠ=level,ᚡ=message,ᚢ=service\n"));
+
+        // Should have value dictionary (info, api, error, db appear 2+ times)
+        assert!(tokenized.contains("@𓀀="));
+
+        // Parse back and verify roundtrip
+        let ir2 = parse(&tokenized).unwrap();
+        assert_eq!(ir2.header.row_count, 6);
+        assert_eq!(ir2.header.fields.len(), 3);
+
+        // Check field names restored
+        assert_eq!(ir2.header.fields[0].name, "level");
+        assert_eq!(ir2.header.fields[1].name, "message");
+        assert_eq!(ir2.header.fields[2].name, "service");
+
+        // Check values decoded correctly
+        if let Some(SchemaValue::String(level)) = ir2.get_value(0, 0) {
+            assert_eq!(level, "info");
+        } else {
+            panic!("Expected string value");
+        }
+
+        if let Some(SchemaValue::String(service)) = ir2.get_value(0, 2) {
+            assert_eq!(service, "api");
+        } else {
+            panic!("Expected string value");
+        }
+
+        // Verify error level in row 3
+        if let Some(SchemaValue::String(level)) = ir2.get_value(3, 0) {
+            assert_eq!(level, "error");
+        } else {
+            panic!("Expected string value");
+        }
+    }
+
+    #[test]
+    fn test_value_dictionary_no_duplicates() {
+        // All unique values - should not generate value dictionary
+        let fiche = "@data┃idˢ┃nameˢ
+◉1┃alice
+◉2┃bob
+◉3┃carol";
+
+        let ir = parse(fiche).unwrap();
+        let tokenized = serialize(&ir, false).unwrap();
+
+        // Should have field dictionary
+        assert!(tokenized.starts_with("@ᚠ=id,ᚡ=name\n"));
+
+        // Should NOT have value dictionary (no repeated values)
+        let lines: Vec<&str> = tokenized.lines().collect();
+        assert_eq!(lines.len(), 5); // field dict, schema, 3 data rows
+        assert!(!tokenized.contains("𓀀")); // No hieroglyphs
     }
 }

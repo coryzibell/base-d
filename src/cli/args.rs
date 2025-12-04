@@ -208,25 +208,80 @@ pub enum ConfigCategory {
     Hashes,
 }
 
+/// Tokenization levels for fiche encoding
+#[derive(Debug, Clone, Copy, Default, ValueEnum)]
+pub enum FicheLevel {
+    /// No tokenization - human readable field names
+    None,
+    /// Field names only (runic tokens)
+    Light,
+    /// Field names + repeated values (runic + hieroglyphs)
+    #[default]
+    Full,
+}
+
 /// Arguments for fiche encoding/decoding (model-readable format)
 #[derive(Args, Debug)]
 pub struct FicheArgs {
-    /// Input file (reads from stdin if not provided)
-    pub file: Option<PathBuf>,
+    #[command(subcommand)]
+    pub command: Option<FicheCommand>,
 
-    /// Decode mode (fiche → JSON)
-    #[arg(short = 'd', long)]
-    pub decode: bool,
-
-    /// Pretty-print JSON output (decode only)
-    #[arg(short = 'p', long)]
-    pub pretty: bool,
-
-    /// Minify output to single line (encode only)
-    #[arg(short = 'm', long)]
-    pub minify: bool,
+    // Top-level args for implicit encode
+    /// Tokenization level
+    #[arg(short, long)]
+    pub level: Option<FicheLevel>,
 
     /// Output file (writes to stdout if not provided)
-    #[arg(short = 'o', long)]
+    #[arg(short, long)]
     pub output: Option<PathBuf>,
+
+    /// Input string or file (reads from stdin if not provided)
+    pub input: Option<String>,
+
+    /// Use multiline output format
+    #[arg(long)]
+    pub multiline: bool,
+}
+
+/// Fiche subcommands
+#[derive(Subcommand, Debug)]
+pub enum FicheCommand {
+    /// Encode JSON to fiche format
+    Encode(FicheEncodeArgs),
+    /// Decode fiche to JSON
+    Decode(FicheDecodeArgs),
+}
+
+/// Arguments for fiche encoding
+#[derive(Args, Debug)]
+pub struct FicheEncodeArgs {
+    /// Tokenization level
+    #[arg(short, long, default_value = "full")]
+    pub level: FicheLevel,
+
+    /// Output file (writes to stdout if not provided)
+    #[arg(short, long)]
+    pub output: Option<PathBuf>,
+
+    /// Input string or file (reads from stdin if not provided)
+    pub input: Option<String>,
+
+    /// Use multiline output format
+    #[arg(long)]
+    pub multiline: bool,
+}
+
+/// Arguments for fiche decoding
+#[derive(Args, Debug)]
+pub struct FicheDecodeArgs {
+    /// Pretty-print JSON output
+    #[arg(short, long)]
+    pub pretty: bool,
+
+    /// Output file (writes to stdout if not provided)
+    #[arg(short, long)]
+    pub output: Option<PathBuf>,
+
+    /// Input string or file (reads from stdin if not provided)
+    pub input: Option<String>,
 }
