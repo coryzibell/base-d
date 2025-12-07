@@ -1,10 +1,12 @@
 use crate::cli::{
-    args::{FicheArgs, FicheCommand, FicheDecodeArgs, FicheEncodeArgs, FicheLevel},
+    args::{FicheArgs, FicheCommand, FicheDecodeArgs, FicheEncodeArgs, FicheMode},
     global::GlobalArgs,
 };
 use base_d::{
     DetectedMode, DictionaryRegistry, decode_fiche, decode_fiche_path, detect_fiche_mode,
-    encode_fiche, encode_fiche_light, encode_fiche_path, encode_fiche_readable,
+    encode_fiche, encode_fiche_ascii, encode_fiche_light, encode_fiche_path, encode_fiche_readable,
+    encode_markdown_fiche, encode_markdown_fiche_ascii, encode_markdown_fiche_light,
+    encode_markdown_fiche_markdown, encode_markdown_fiche_readable,
 };
 use std::fs;
 use std::io::{self, Read};
@@ -21,10 +23,11 @@ pub fn handle(
         None => {
             // Implicit encode mode with top-level args
             let encode_args = FicheEncodeArgs {
-                level: args.level.unwrap_or_default(),
+                mode: args.mode.unwrap_or_default(),
                 output: args.output,
                 input: args.input,
                 multiline: args.multiline,
+                markdown: args.markdown,
             };
             handle_encode(encode_args)
         }
@@ -35,24 +38,45 @@ fn handle_encode(args: FicheEncodeArgs) -> Result<(), Box<dyn std::error::Error>
     let input_text = read_input(args.input.as_deref())?;
     let minify = !args.multiline;
 
-    // Auto-detect level if set to Auto
-    let level = match args.level {
-        FicheLevel::Auto => {
+    // Auto-detect mode if set to Auto (only for JSON, not markdown)
+    let mode = match args.mode {
+        FicheMode::Auto if !args.markdown => {
             let detected = detect_fiche_mode(input_text.trim());
             match detected {
-                DetectedMode::Full => FicheLevel::Full,
-                DetectedMode::Path => FicheLevel::Path,
+                DetectedMode::Full => FicheMode::Full,
+                DetectedMode::Path => FicheMode::Path,
             }
         }
+        FicheMode::Auto => FicheMode::None, // Default to readable for markdown
         other => other,
     };
 
-    let output = match level {
-        FicheLevel::Auto => unreachable!("Auto should be resolved by now"),
-        FicheLevel::None => encode_fiche_readable(input_text.trim(), minify)?,
-        FicheLevel::Light => encode_fiche_light(input_text.trim(), minify)?,
-        FicheLevel::Full => encode_fiche(input_text.trim(), minify)?,
-        FicheLevel::Path => encode_fiche_path(input_text.trim())?,
+    let output = if args.markdown {
+        // Markdown document → fiche
+        match mode {
+            FicheMode::Auto => unreachable!("Auto should be resolved by now"),
+            FicheMode::None => encode_markdown_fiche_readable(input_text.trim(), minify)?,
+            FicheMode::Light => encode_markdown_fiche_light(input_text.trim(), minify)?,
+            FicheMode::Full => encode_markdown_fiche(input_text.trim(), minify)?,
+            FicheMode::Path => {
+                return Err("Path mode is not supported for markdown input".into());
+            }
+            FicheMode::Ascii => encode_markdown_fiche_ascii(input_text.trim())?,
+            FicheMode::Markdown => encode_markdown_fiche_markdown(input_text.trim())?,
+        }
+    } else {
+        // JSON → fiche (existing behavior)
+        match mode {
+            FicheMode::Auto => unreachable!("Auto should be resolved by now"),
+            FicheMode::None => encode_fiche_readable(input_text.trim(), minify)?,
+            FicheMode::Light => encode_fiche_light(input_text.trim(), minify)?,
+            FicheMode::Full => encode_fiche(input_text.trim(), minify)?,
+            FicheMode::Path => encode_fiche_path(input_text.trim())?,
+            FicheMode::Ascii => encode_fiche_ascii(input_text.trim())?,
+            FicheMode::Markdown => {
+                return Err("Markdown mode requires --markdown flag (markdown input only)".into());
+            }
+        }
     };
 
     write_output(&output, args.output.as_ref())?;

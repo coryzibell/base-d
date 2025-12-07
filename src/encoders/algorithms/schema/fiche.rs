@@ -1409,6 +1409,358 @@ fn insert_at_path(
     insert_recursive(root, &parts, &value)
 }
 
+/// Serialize IR to ASCII inline fiche format (no Unicode symbols)
+/// Format: schema;dictionary;row;row;row...
+/// Example: id,name,score,active;V1=true,V2=false;1,Alice,95,V1;2,Bob,87,V2
+pub fn serialize_ascii(ir: &IntermediateRepresentation) -> Result<String, SchemaError> {
+    use std::collections::HashMap;
+
+    let mut output = String::new();
+
+    // Build value dictionary for strings appearing 2+ times
+    let mut value_counts: HashMap<String, usize> = HashMap::new();
+    let field_count = ir.header.fields.len();
+
+    for row in 0..ir.header.row_count {
+        for field_idx in 0..ir.header.fields.len() {
+            if ir.is_null(row, field_idx) {
+                continue;
+            }
+            let value_idx = row * field_count + field_idx;
+            let value = &ir.values[value_idx];
+
+            if let SchemaValue::String(s) = value {
+                *value_counts.entry(s.clone()).or_insert(0) += 1;
+            } else if let SchemaValue::Bool(b) = value {
+                let b_str = b.to_string();
+                *value_counts.entry(b_str).or_insert(0) += 1;
+            }
+        }
+    }
+
+    // Build dictionary for values with count >= 2
+    let mut value_dict: HashMap<String, String> = HashMap::new();
+    let mut reverse_dict: HashMap<String, String> = HashMap::new();
+    let mut sorted_values: Vec<_> = value_counts
+        .iter()
+        .filter(|(_, count)| **count >= 2)
+        .collect();
+    sorted_values.sort_by(|a, b| b.1.cmp(a.1).then_with(|| a.0.cmp(b.0)));
+
+    for (idx, (value, _)) in sorted_values.iter().enumerate() {
+        let token = format!("V{}", idx + 1);
+        value_dict.insert((*value).clone(), token.clone());
+        reverse_dict.insert(token, (*value).clone());
+    }
+
+    // Schema header: field1,field2,field3 (with optional type suffixes)
+    for (idx, field) in ir.header.fields.iter().enumerate() {
+        if idx > 0 {
+            output.push(',');
+        }
+        // Preserve spaces in field names - commas/semicolons are unambiguous delimiters
+        output.push_str(&field.name);
+
+        // Optional type suffix
+        let type_suffix = match field.field_type {
+            FieldType::I64 | FieldType::U64 => ":i",
+            FieldType::String => ":s",
+            FieldType::F64 => ":f",
+            FieldType::Bool => ":b",
+            FieldType::Array(_) => ":a",
+            _ => "",
+        };
+        output.push_str(type_suffix);
+    }
+
+    // Value dictionary section (if present)
+    if !value_dict.is_empty() {
+        output.push(';');
+        let mut sorted_dict: Vec<_> = reverse_dict.iter().collect();
+        sorted_dict.sort_by_key(|(token, _)| *token);
+
+        for (idx, (token, value)) in sorted_dict.iter().enumerate() {
+            if idx > 0 {
+                output.push(',');
+            }
+            output.push_str(token);
+            output.push('=');
+            // Preserve spaces in dictionary values
+            output.push_str(value);
+        }
+    }
+
+    // Data rows
+    for row in 0..ir.header.row_count {
+        output.push(';');
+
+        for (field_idx, _field) in ir.header.fields.iter().enumerate() {
+            if field_idx > 0 {
+                output.push(',');
+            }
+
+            if ir.is_null(row, field_idx) {
+                // Empty field = null
+                continue;
+            }
+
+            let value_idx = row * field_count + field_idx;
+            let value = &ir.values[value_idx];
+
+            match value {
+                SchemaValue::U64(n) => output.push_str(&n.to_string()),
+                SchemaValue::I64(n) => output.push_str(&n.to_string()),
+                SchemaValue::F64(n) => {
+                    if n.fract() == 0.0 && n.abs() < 1e15 {
+                        output.push_str(&format!("{:.1}", n));
+                    } else {
+                        output.push_str(&n.to_string());
+                    }
+                }
+                SchemaValue::String(s) => {
+                    if let Some(token) = value_dict.get(s) {
+                        output.push_str(token);
+                    } else {
+                        // Preserve spaces - delimiters are unambiguous
+                        output.push_str(s);
+                    }
+                }
+                SchemaValue::Bool(b) => {
+                    let b_str = b.to_string();
+                    if let Some(token) = value_dict.get(&b_str) {
+                        output.push_str(token);
+                    } else {
+                        output.push_str(&b_str);
+                    }
+                }
+                SchemaValue::Null => {
+                    // Already handled by is_null check
+                }
+                SchemaValue::Array(arr) => {
+                    // Arrays serialized as pipe-separated values (preserves spaces in elements)
+                    for (i, elem) in arr.iter().enumerate() {
+                        if i > 0 {
+                            output.push('|');
+                        }
+                        match elem {
+                            SchemaValue::String(s) => output.push_str(s),
+                            SchemaValue::I64(n) => output.push_str(&n.to_string()),
+                            SchemaValue::U64(n) => output.push_str(&n.to_string()),
+                            SchemaValue::F64(n) => output.push_str(&n.to_string()),
+                            SchemaValue::Bool(b) => output.push_str(&b.to_string()),
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(output)
+}
+
+/// Serialize IR to inline markdown-like format
+///
+/// Format: `#1 Title;#2 Heading;p Text;-1 Item;-2 Nested;```lang code```;>1 Quote`
+///
+/// Uses markdown-familiar syntax but inline (semicolon-separated):
+/// - `#1`-`#6` for heading levels (not `##`)
+/// - `-1`-`-9` for unordered list depth
+/// - `+1`-`+9` for ordered list depth
+/// - `p` for paragraphs
+/// - `` ```lang ``` `` for code blocks
+/// - `>1`-`>9` for blockquote depth
+/// - `---` for horizontal rule
+/// - `[text](url)` for links
+/// - `![alt](url)` for images
+pub fn serialize_markdown(ir: &IntermediateRepresentation) -> Result<String, SchemaError> {
+    let mut output = String::new();
+    let field_count = ir.header.fields.len();
+
+    // Expected fields for markdown doc: type, content, meta
+    if field_count < 2 {
+        return Err(SchemaError::InvalidInput(
+            "Markdown IR requires at least type and content fields".to_string(),
+        ));
+    }
+
+    for row in 0..ir.header.row_count {
+        if row > 0 {
+            output.push(';');
+        }
+
+        // Get type (field 0)
+        let type_idx = row * field_count;
+        let block_type = match &ir.values[type_idx] {
+            SchemaValue::String(s) => s.as_str(),
+            _ => continue,
+        };
+
+        // Get content (field 1)
+        let content_idx = row * field_count + 1;
+        let content = if ir.is_null(row, 1) {
+            ""
+        } else {
+            match &ir.values[content_idx] {
+                SchemaValue::String(s) => s.as_str(),
+                _ => "",
+            }
+        };
+
+        // Get meta (field 2) if present
+        let meta = if field_count > 2 && !ir.is_null(row, 2) {
+            let meta_idx = row * field_count + 2;
+            match &ir.values[meta_idx] {
+                SchemaValue::String(s) => Some(s.as_str()),
+                _ => None,
+            }
+        } else {
+            None
+        };
+
+        // Convert block type to markdown-like format
+        match block_type {
+            "h1" => {
+                output.push_str("#1 ");
+                output.push_str(content);
+            }
+            "h2" => {
+                output.push_str("#2 ");
+                output.push_str(content);
+            }
+            "h3" => {
+                output.push_str("#3 ");
+                output.push_str(content);
+            }
+            "h4" => {
+                output.push_str("#4 ");
+                output.push_str(content);
+            }
+            "h5" => {
+                output.push_str("#5 ");
+                output.push_str(content);
+            }
+            "h6" => {
+                output.push_str("#6 ");
+                output.push_str(content);
+            }
+            "p" => {
+                output.push_str("p ");
+                // Replace newlines with spaces for inline format
+                output.push_str(&content.replace('\n', " "));
+            }
+            "ul" => {
+                // Unordered list items
+                // Format: semicolons separate same-level items, newlines indicate nesting
+                // Example: "Item 1;Item 2\n  Nested;Item 3"
+                let mut first = true;
+                for line in content.split('\n') {
+                    if line.is_empty() {
+                        continue;
+                    }
+                    // Detect nesting level from leading spaces
+                    let trimmed = line.trim_start();
+                    let indent = line.len() - trimmed.len();
+                    let level = (indent / 2) + 1;
+
+                    // Split line by semicolons for multiple items at same level
+                    for item in trimmed.split(';') {
+                        if item.is_empty() {
+                            continue;
+                        }
+                        if !first {
+                            output.push(';');
+                        }
+                        first = false;
+                        output.push('-');
+                        output.push_str(&level.to_string());
+                        output.push(' ');
+                        output.push_str(item.trim());
+                    }
+                }
+            }
+            "ol" => {
+                // Ordered list items - same logic as ul
+                let mut first = true;
+                for line in content.split('\n') {
+                    if line.is_empty() {
+                        continue;
+                    }
+                    let trimmed = line.trim_start();
+                    let indent = line.len() - trimmed.len();
+                    let level = (indent / 2) + 1;
+
+                    for item in trimmed.split(';') {
+                        if item.is_empty() {
+                            continue;
+                        }
+                        if !first {
+                            output.push(';');
+                        }
+                        first = false;
+                        output.push('+');
+                        output.push_str(&level.to_string());
+                        output.push(' ');
+                        output.push_str(item.trim());
+                    }
+                }
+            }
+            "code" => {
+                output.push_str("```");
+                if let Some(lang) = meta {
+                    output.push_str(lang);
+                }
+                output.push(' ');
+                // Replace newlines with a marker that won't conflict
+                output.push_str(&content.replace('\n', "↵"));
+                output.push_str("```");
+            }
+            "quote" => {
+                output.push_str(">1 ");
+                output.push_str(&content.replace('\n', "↵"));
+            }
+            "hr" => {
+                output.push_str("---");
+            }
+            "link" => {
+                output.push('[');
+                output.push_str(content);
+                output.push_str("](");
+                if let Some(url) = meta {
+                    output.push_str(url);
+                }
+                output.push(')');
+            }
+            "image" => {
+                output.push_str("![");
+                output.push_str(content);
+                output.push_str("](");
+                if let Some(url) = meta {
+                    output.push_str(url);
+                }
+                output.push(')');
+            }
+            "table" => {
+                // Keep table as-is for now, it's already compact
+                output.push_str("T ");
+                output.push_str(content);
+                if let Some(dims) = meta {
+                    output.push(' ');
+                    output.push_str(dims);
+                }
+            }
+            _ => {
+                // Unknown type - output as-is
+                output.push_str(block_type);
+                output.push(' ');
+                output.push_str(content);
+            }
+        }
+    }
+
+    Ok(output)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1922,5 +2274,72 @@ mod tests {
         let original: serde_json::Value = serde_json::from_str(json).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
         assert_eq!(original, parsed);
+    }
+
+    #[test]
+    fn test_ascii_mode_simple() {
+        use crate::encoders::algorithms::schema::parsers::{InputParser, JsonParser};
+
+        let json = r#"{"users":[{"id":1,"name":"Alice","score":95,"active":true},{"id":2,"name":"Bob","score":87,"active":false}]}"#;
+        let ir = JsonParser::parse(json).unwrap();
+        let ascii = serialize_ascii(&ir).unwrap();
+
+        // Verify format: schema;row;row
+        assert!(ascii.contains(';'));
+        assert!(ascii.contains(','));
+
+        // Verify ASCII only
+        assert!(ascii.is_ascii());
+
+        // Verify no Unicode symbols
+        assert!(!ascii.contains('◉'));
+        assert!(!ascii.contains('┃'));
+        assert!(!ascii.contains('▓'));
+    }
+
+    #[test]
+    fn test_ascii_mode_with_dictionary() {
+        use crate::encoders::algorithms::schema::parsers::{InputParser, JsonParser};
+
+        // Repeated values should trigger dictionary
+        let json = r#"{"logs":[{"level":"info","msg":"start"},{"level":"error","msg":"fail"},{"level":"info","msg":"retry"}]}"#;
+        let ir = JsonParser::parse(json).unwrap();
+        let ascii = serialize_ascii(&ir).unwrap();
+
+        // Verify dictionary section present
+        assert!(ascii.contains("V1="));
+
+        // "info" appears twice, should be in dictionary
+        assert!(ascii.contains("info") || ascii.contains("V1"));
+    }
+
+    #[test]
+    fn test_ascii_mode_null_handling() {
+        use crate::encoders::algorithms::schema::parsers::{InputParser, JsonParser};
+
+        let json = r#"{"data":[{"a":1,"b":null},{"a":2,"b":"value"}]}"#;
+        let ir = JsonParser::parse(json).unwrap();
+        let ascii = serialize_ascii(&ir).unwrap();
+
+        // Verify empty field for null
+        // Format should be: a:i,b:s;1,;2,value
+        let rows: Vec<&str> = ascii.split(';').collect();
+        assert!(rows.len() >= 2);
+
+        // Second row (index 1) should have empty field
+        assert!(rows[1].contains("1,"));
+    }
+
+    #[test]
+    fn test_ascii_mode_space_preservation() {
+        use crate::encoders::algorithms::schema::parsers::{InputParser, JsonParser};
+
+        let json = r#"{"people":[{"name":"Alice Smith","title":"Senior Engineer"}]}"#;
+        let ir = JsonParser::parse(json).unwrap();
+        let ascii = serialize_ascii(&ir).unwrap();
+
+        // Spaces should be preserved (not escaped) for better tokenization
+        assert!(ascii.contains("Alice Smith"));
+        assert!(ascii.contains("Senior Engineer"));
     }
 }
