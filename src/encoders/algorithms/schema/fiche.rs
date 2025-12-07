@@ -63,6 +63,8 @@ pub const TRUE_MARKER: &str = "⊤"; // U+22A4 down tack
 pub const FALSE_MARKER: &str = "⊥"; // U+22A5 up tack
 pub const EMPTY_ARRAY_MARKER: &str = "⟦⟧"; // U+27E6, U+27E7 mathematical white square brackets
 pub const EMPTY_OBJECT_MARKER: &str = "⟨⟩"; // U+27E8, U+27E9 mathematical angle brackets
+pub const OBJECT_KEY_PREFIX: char = '#'; // Marks numeric-looking object keys (vs array indices)
+pub const STRING_PREFIX: char = '"'; // Marks string values that look like numbers
 
 /// Field name tokenization alphabet (spec 1.5+)
 /// Priority: Runic (89 chars) → Hieroglyphs (1072) → Cuneiform (1024)
@@ -1113,6 +1115,12 @@ fn collect_paths(value: &serde_json::Value, path: String, output: &mut Vec<(Stri
         }
         Value::String(s) => {
             let val = s.replace(' ', &SPACE_MARKER.to_string());
+            // Mark string values that look like numbers for round-trip fidelity
+            let val = if looks_like_number(&val) {
+                format!("{}{}", STRING_PREFIX, val)
+            } else {
+                val
+            };
             output.push((path, val));
         }
         Value::Array(arr) => {
@@ -1134,16 +1142,31 @@ fn collect_paths(value: &serde_json::Value, path: String, output: &mut Vec<(Stri
                 output.push((path, EMPTY_OBJECT_MARKER.to_string()));
             } else {
                 for (key, val) in obj {
-                    let key_path = if path.is_empty() {
-                        key.clone()
+                    // Mark numeric-looking keys to distinguish from array indices
+                    let marked_key = if key.parse::<usize>().is_ok() {
+                        format!("{}{}", OBJECT_KEY_PREFIX, key)
                     } else {
-                        format!("{}{}{}", path, NEST_SEP, key)
+                        key.clone()
+                    };
+                    let key_path = if path.is_empty() {
+                        marked_key
+                    } else {
+                        format!("{}{}{}", path, NEST_SEP, marked_key)
                     };
                     collect_paths(val, key_path, output);
                 }
             }
         }
     }
+}
+
+/// Check if a string looks like a number (integer or float)
+fn looks_like_number(s: &str) -> bool {
+    if s.is_empty() {
+        return false;
+    }
+    // Try to parse as integer or float
+    s.parse::<i64>().is_ok() || s.parse::<f64>().is_ok()
 }
 
 /// Parse path mode format back to JSON
@@ -1286,6 +1309,11 @@ fn parse_path_value(s: &str) -> Result<serde_json::Value, SchemaError> {
         EMPTY_ARRAY_MARKER => Ok(json!([])),
         EMPTY_OBJECT_MARKER => Ok(json!({})),
         _ => {
+            // Check for string prefix marker (preserves numeric strings)
+            if s.starts_with(STRING_PREFIX) {
+                let inner = &s[STRING_PREFIX.len_utf8()..];
+                return Ok(json!(inner.replace(SPACE_MARKER, " ")));
+            }
             // Try number
             if let Ok(n) = s.parse::<i64>() {
                 return Ok(json!(n));
@@ -1348,8 +1376,16 @@ fn insert_at_path(
         let part = parts[0];
         let is_last = parts.len() == 1;
 
-        // Check if this part is an array index
-        if let Ok(index) = part.parse::<usize>() {
+        // Check for object key prefix (marks numeric-looking object keys)
+        let is_object_key = part.starts_with(OBJECT_KEY_PREFIX);
+        let actual_key = if is_object_key {
+            &part[OBJECT_KEY_PREFIX.len_utf8()..]
+        } else {
+            part
+        };
+
+        // Check if this part is an array index (only if not marked as object key)
+        if !is_object_key && let Ok(index) = part.parse::<usize>() {
             // Ensure current is an array
             if !current.is_array() {
                 *current = json!([]);
@@ -1377,7 +1413,7 @@ fn insert_at_path(
                 insert_recursive(&mut arr[index], &parts[1..], value)?;
             }
         } else {
-            // Object key
+            // Object key - use actual_key (with prefix stripped if present)
             if !current.is_object() {
                 *current = json!({});
             }
@@ -1386,19 +1422,22 @@ fn insert_at_path(
                 current
                     .as_object_mut()
                     .unwrap()
-                    .insert(part.to_string(), value.clone());
+                    .insert(actual_key.to_string(), value.clone());
             } else {
-                // Prepare next container
+                // Prepare next container - check if next part is array index (without # prefix)
                 let next_part = parts[1];
+                let next_is_object_key = next_part.starts_with(OBJECT_KEY_PREFIX);
                 let obj = current.as_object_mut().unwrap();
 
-                if next_part.parse::<usize>().is_ok() {
-                    obj.entry(part.to_string()).or_insert_with(|| json!([]));
+                if !next_is_object_key && next_part.parse::<usize>().is_ok() {
+                    obj.entry(actual_key.to_string())
+                        .or_insert_with(|| json!([]));
                 } else {
-                    obj.entry(part.to_string()).or_insert_with(|| json!({}));
+                    obj.entry(actual_key.to_string())
+                        .or_insert_with(|| json!({}));
                 }
 
-                let next = obj.get_mut(part).unwrap();
+                let next = obj.get_mut(actual_key).unwrap();
                 insert_recursive(next, &parts[1..], value)?;
             }
         }
@@ -2341,5 +2380,61 @@ mod tests {
         // Spaces should be preserved (not escaped) for better tokenization
         assert!(ascii.contains("Alice Smith"));
         assert!(ascii.contains("Senior Engineer"));
+    }
+
+    #[test]
+    fn test_path_mode_numeric_object_keys_roundtrip() {
+        // Issue #143: Sparse objects with numeric keys should roundtrip correctly
+        let json = r#"{"values":{"0":"a","5":"b","10":"c"}}"#;
+        let fiche = serialize_path_mode(json).unwrap();
+
+        // Should contain # prefix for numeric object keys
+        assert!(fiche.contains("#0"), "Expected #0 marker for object key");
+        assert!(fiche.contains("#5"), "Expected #5 marker for object key");
+        assert!(fiche.contains("#10"), "Expected #10 marker for object key");
+
+        let result = parse_path_mode(&fiche).unwrap();
+
+        let original: serde_json::Value = serde_json::from_str(json).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(
+            original, parsed,
+            "Sparse object keys should roundtrip correctly"
+        );
+    }
+
+    #[test]
+    fn test_path_mode_string_numbers_roundtrip() {
+        // Issue #143: String numbers should not be coerced to numeric types
+        let json = r#"{"id":"1579231263","phone":"5551234567"}"#;
+        let fiche = serialize_path_mode(json).unwrap();
+
+        // Should contain " prefix for string values that look like numbers
+        assert!(fiche.contains('"'), "Expected \" marker for string numbers");
+
+        let result = parse_path_mode(&fiche).unwrap();
+
+        let original: serde_json::Value = serde_json::from_str(json).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(
+            original, parsed,
+            "String numbers should roundtrip correctly"
+        );
+    }
+
+    #[test]
+    fn test_path_mode_mixed_array_and_object() {
+        // Verify arrays and objects with numeric keys coexist correctly
+        let json = r#"{"items":[{"0":"first","1":"second"}],"map":{"0":"zero","1":"one"}}"#;
+        let fiche = serialize_path_mode(json).unwrap();
+
+        let result = parse_path_mode(&fiche).unwrap();
+
+        let original: serde_json::Value = serde_json::from_str(json).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(
+            original, parsed,
+            "Mixed arrays and numeric-keyed objects should roundtrip"
+        );
     }
 }

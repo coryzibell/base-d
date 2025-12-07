@@ -1,0 +1,951 @@
+{
+  "type": "root",
+  "children": [
+    {
+      "type": "heading",
+      "children": [
+        {
+          "type": "text",
+          "value": "Complex Markdown Test"
+        }
+      ],
+      "depth": 1
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "This document tests the markdown table parser against "
+        },
+        {
+          "type": "strong",
+          "children": [
+            {
+              "type": "text",
+              "value": "real-world markdown"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "value": " with all the bells and whistles."
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "children": [
+        {
+          "type": "text",
+          "value": "Introduction"
+        }
+      ],
+      "depth": 2
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "Here's some introductory text with "
+        },
+        {
+          "type": "emphasis",
+          "children": [
+            {
+              "type": "text",
+              "value": "italics"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "value": ", "
+        },
+        {
+          "type": "strong",
+          "children": [
+            {
+              "type": "text",
+              "value": "bold"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "value": ", and "
+        },
+        {
+          "type": "emphasis",
+          "children": [
+            {
+              "type": "strong",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "bold italics"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "value": ". We also have "
+        },
+        {
+          "type": "inlineCode",
+          "value": "inline code"
+        },
+        {
+          "type": "text",
+          "value": " and "
+        },
+        {
+          "type": "delete",
+          "children": [
+            {
+              "type": "text",
+              "value": "strikethrough"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "value": "."
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "children": [
+        {
+          "type": "text",
+          "value": "Bullet Lists"
+        }
+      ],
+      "depth": 3
+    },
+    {
+      "type": "list",
+      "children": [
+        {
+          "type": "listItem",
+          "children": [
+            {
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Item one"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "listItem",
+          "children": [
+            {
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Item two"
+                }
+              ]
+            },
+            {
+              "type": "list",
+              "children": [
+                {
+                  "type": "listItem",
+                  "children": [
+                    {
+                      "type": "paragraph",
+                      "children": [
+                        {
+                          "type": "text",
+                          "value": "Nested item"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "listItem",
+                  "children": [
+                    {
+                      "type": "paragraph",
+                      "children": [
+                        {
+                          "type": "text",
+                          "value": "Another nested"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "ordered": false
+            }
+          ]
+        },
+        {
+          "type": "listItem",
+          "children": [
+            {
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Item three"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "ordered": false
+    },
+    {
+      "type": "heading",
+      "children": [
+        {
+          "type": "text",
+          "value": "Numbered Lists"
+        }
+      ],
+      "depth": 3
+    },
+    {
+      "type": "list",
+      "children": [
+        {
+          "type": "listItem",
+          "children": [
+            {
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "First thing"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "listItem",
+          "children": [
+            {
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Second thing"
+                }
+              ]
+            },
+            {
+              "type": "list",
+              "children": [
+                {
+                  "type": "listItem",
+                  "children": [
+                    {
+                      "type": "paragraph",
+                      "children": [
+                        {
+                          "type": "text",
+                          "value": "Sub-item A"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "listItem",
+                  "children": [
+                    {
+                      "type": "paragraph",
+                      "children": [
+                        {
+                          "type": "text",
+                          "value": "Sub-item B"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "ordered": true,
+              "start": 1
+            }
+          ]
+        },
+        {
+          "type": "listItem",
+          "children": [
+            {
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Third thing"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "ordered": true,
+      "start": 1
+    },
+    {
+      "type": "heading",
+      "children": [
+        {
+          "type": "text",
+          "value": "The Data Table"
+        }
+      ],
+      "depth": 2
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "Here's the actual table we want to parse:"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "children": [
+        {
+          "type": "tableRow",
+          "children": [
+            {
+              "type": "tableCell",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "id"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "name"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "score"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "active"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "rate"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "notes"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "tableRow",
+          "children": [
+            {
+              "type": "tableCell",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "A1"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Alice"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "95"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "true"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "3.14"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Top performer"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "tableRow",
+          "children": [
+            {
+              "type": "tableCell",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "B2"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Bob"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "-12"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "false"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "2.718"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Needs improvement"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "tableRow",
+          "children": [
+            {
+              "type": "tableCell",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "C3"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Charlie"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "100"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "TRUE"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "0.5"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "children": []
+            }
+          ]
+        },
+        {
+          "type": "tableRow",
+          "children": [
+            {
+              "type": "tableCell",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "D4"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "children": []
+            },
+            {
+              "type": "tableCell",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "42"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "False"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "-1.5"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Missing name"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "align": [
+        "left",
+        "center",
+        "right",
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "type": "heading",
+      "children": [
+        {
+          "type": "text",
+          "value": "Analysis"
+        }
+      ],
+      "depth": 3
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "The table above contains:"
+        }
+      ]
+    },
+    {
+      "type": "list",
+      "children": [
+        {
+          "type": "listItem",
+          "children": [
+            {
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "strong",
+                  "children": [
+                    {
+                      "type": "text",
+                      "value": "Strings"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "value": ": id, name, notes"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "listItem",
+          "children": [
+            {
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "strong",
+                  "children": [
+                    {
+                      "type": "text",
+                      "value": "Integers"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "value": ": score (mixed positive/negative → I64)"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "listItem",
+          "children": [
+            {
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "strong",
+                  "children": [
+                    {
+                      "type": "text",
+                      "value": "Booleans"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "value": ": active (case variations)"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "listItem",
+          "children": [
+            {
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "strong",
+                  "children": [
+                    {
+                      "type": "text",
+                      "value": "Floats"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "value": ": rate (including negative)"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "listItem",
+          "children": [
+            {
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "strong",
+                  "children": [
+                    {
+                      "type": "text",
+                      "value": "Nulls"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "value": ": empty cells"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "ordered": false
+    },
+    {
+      "type": "heading",
+      "children": [
+        {
+          "type": "text",
+          "value": "Code Block"
+        }
+      ],
+      "depth": 2
+    },
+    {
+      "type": "code",
+      "value": "fn main() {\n    println!(\"This should be ignored\");\n}",
+      "lang": "rust"
+    },
+    {
+      "type": "heading",
+      "children": [
+        {
+          "type": "text",
+          "value": "Another Table (Should Be Ignored If We Only Parse First)"
+        }
+      ],
+      "depth": 2
+    },
+    {
+      "type": "table",
+      "children": [
+        {
+          "type": "tableRow",
+          "children": [
+            {
+              "type": "tableCell",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "ignore"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "this"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "tableRow",
+          "children": [
+            {
+              "type": "tableCell",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "x"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "y"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "align": [
+        null,
+        null
+      ]
+    },
+    {
+      "type": "heading",
+      "children": [
+        {
+          "type": "text",
+          "value": "Blockquote"
+        }
+      ],
+      "depth": 2
+    },
+    {
+      "type": "blockquote",
+      "children": [
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "This is a blockquote.\nIt spans multiple lines."
+            }
+          ]
+        },
+        {
+          "type": "blockquote",
+          "children": [
+            {
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Nested blockquote"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "children": [
+        {
+          "type": "text",
+          "value": "Links and Images"
+        }
+      ],
+      "depth": 2
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "link",
+          "children": [
+            {
+              "type": "text",
+              "value": "Link text"
+            }
+          ],
+          "url": "https://example.com"
+        },
+        {
+          "type": "text",
+          "value": "\n"
+        },
+        {
+          "type": "image",
+          "alt": "Alt text",
+          "url": "image.png"
+        }
+      ]
+    },
+    {
+      "type": "thematicBreak"
+    },
+    {
+      "type": "heading",
+      "children": [
+        {
+          "type": "text",
+          "value": "Conclusion"
+        }
+      ],
+      "depth": 2
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "That's all folks! The parser should extract the "
+        },
+        {
+          "type": "strong",
+          "children": [
+            {
+              "type": "text",
+              "value": "first valid table"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "value": " and ignore everything else."
+        }
+      ]
+    }
+  ]
+}
