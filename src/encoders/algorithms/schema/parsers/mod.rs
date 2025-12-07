@@ -1,4 +1,7 @@
 pub mod json;
+#[allow(dead_code)]
+pub mod markdown;
+pub mod markdown_doc;
 
 use crate::encoders::algorithms::schema::types::IntermediateRepresentation;
 
@@ -11,3 +14,4 @@ pub trait InputParser {
 }
 
 pub use json::JsonParser;
+pub use markdown_doc::MarkdownDocParser;

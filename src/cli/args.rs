@@ -208,10 +208,10 @@ pub enum ConfigCategory {
     Hashes,
 }
 
-/// Tokenization levels for fiche encoding
+/// Fiche encoding modes
 #[derive(Debug, Clone, Copy, Default, ValueEnum)]
-pub enum FicheLevel {
-    /// Auto-detect best mode based on JSON structure
+pub enum FicheMode {
+    /// Auto-detect best mode based on input structure
     #[default]
     Auto,
     /// No tokenization - human readable field names
@@ -222,6 +222,10 @@ pub enum FicheLevel {
     Full,
     /// Path mode - one line per leaf value with full path
     Path,
+    /// ASCII mode - inline CSV-like format with value dictionary (best for JSON)
+    Ascii,
+    /// Markdown-like inline format (best for markdown input)
+    Markdown,
 }
 
 /// Arguments for fiche encoding/decoding (model-readable format)
@@ -231,9 +235,9 @@ pub struct FicheArgs {
     pub command: Option<FicheCommand>,
 
     // Top-level args for implicit encode
-    /// Tokenization level
+    /// Encoding mode
     #[arg(short, long)]
-    pub level: Option<FicheLevel>,
+    pub mode: Option<FicheMode>,
 
     /// Output file (writes to stdout if not provided)
     #[arg(short, long)]
@@ -245,6 +249,10 @@ pub struct FicheArgs {
     /// Use multiline output format
     #[arg(long)]
     pub multiline: bool,
+
+    /// Parse input as markdown document instead of JSON
+    #[arg(long)]
+    pub markdown: bool,
 }
 
 /// Fiche subcommands
@@ -259,9 +267,9 @@ pub enum FicheCommand {
 /// Arguments for fiche encoding
 #[derive(Args, Debug)]
 pub struct FicheEncodeArgs {
-    /// Tokenization level
+    /// Encoding mode
     #[arg(short, long, default_value = "auto")]
-    pub level: FicheLevel,
+    pub mode: FicheMode,
 
     /// Output file (writes to stdout if not provided)
     #[arg(short, long)]
@@ -273,6 +281,10 @@ pub struct FicheEncodeArgs {
     /// Use multiline output format
     #[arg(long)]
     pub multiline: bool,
+
+    /// Parse input as markdown document instead of JSON
+    #[arg(long)]
+    pub markdown: bool,
 }
 
 /// Arguments for fiche decoding

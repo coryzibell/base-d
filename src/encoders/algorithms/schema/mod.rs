@@ -18,6 +18,7 @@ pub use binary_unpacker::unpack;
 pub use compression::SchemaCompressionAlgo;
 pub use frame::{decode_framed, encode_framed};
 pub use parsers::{InputParser, JsonParser};
+// MarkdownDocParser used internally by encode_markdown_fiche_* functions
 pub use serializers::{JsonSerializer, OutputSerializer};
 pub use types::{
     FieldDef, FieldType, IntermediateRepresentation, SchemaError, SchemaHeader, SchemaValue,
@@ -182,6 +183,66 @@ pub fn encode_fiche_path(json: &str) -> Result<String, SchemaError> {
 /// Decode fiche path mode to JSON
 pub fn decode_fiche_path(path_input: &str) -> Result<String, SchemaError> {
     fiche::parse_path_mode(path_input)
+}
+
+/// Encode JSON to ASCII inline fiche format
+pub fn encode_fiche_ascii(json: &str) -> Result<String, SchemaError> {
+    use parsers::{InputParser, JsonParser};
+    let ir = JsonParser::parse(json)?;
+    fiche::serialize_ascii(&ir)
+}
+
+/// Encode markdown document to ASCII inline fiche format
+pub fn encode_markdown_fiche_ascii(markdown: &str) -> Result<String, SchemaError> {
+    use parsers::{InputParser, MarkdownDocParser};
+    let ir = MarkdownDocParser::parse(markdown)?;
+    fiche::serialize_ascii(&ir)
+}
+
+/// Encode markdown document to markdown-like inline fiche format
+/// Uses #1-#6 for headers, -1/-2 for lists, preserves markdown syntax patterns
+pub fn encode_markdown_fiche_markdown(markdown: &str) -> Result<String, SchemaError> {
+    use parsers::{InputParser, MarkdownDocParser};
+    let ir = MarkdownDocParser::parse(markdown)?;
+    fiche::serialize_markdown(&ir)
+}
+
+/// Encode markdown document to fiche format: markdown → IR → fiche
+///
+/// Parses a full markdown document into a simplified block-based representation,
+/// then encodes to fiche format for model-readable output.
+pub fn encode_markdown_fiche(markdown: &str, minify: bool) -> Result<String, SchemaError> {
+    encode_markdown_fiche_with_options(markdown, minify, true, true)
+}
+
+/// Encode markdown to fiche without tokenization (human-readable)
+pub fn encode_markdown_fiche_readable(markdown: &str, minify: bool) -> Result<String, SchemaError> {
+    encode_markdown_fiche_with_options(markdown, minify, false, false)
+}
+
+/// Encode markdown to fiche with field tokenization only (no value dictionary)
+pub fn encode_markdown_fiche_light(markdown: &str, minify: bool) -> Result<String, SchemaError> {
+    encode_markdown_fiche_with_options(markdown, minify, true, false)
+}
+
+fn encode_markdown_fiche_with_options(
+    markdown: &str,
+    minify: bool,
+    tokenize_fields: bool,
+    tokenize_values: bool,
+) -> Result<String, SchemaError> {
+    use parsers::{InputParser, MarkdownDocParser};
+
+    let ir = MarkdownDocParser::parse(markdown)?;
+    match (tokenize_fields, tokenize_values) {
+        (true, true) => fiche::serialize(&ir, minify),
+        (true, false) => fiche::serialize_light(&ir, minify),
+        (false, false) => fiche::serialize_readable(&ir, minify),
+        (false, true) => {
+            // Invalid: can't tokenize values without tokenizing fields
+            fiche::serialize_readable(&ir, minify)
+        }
+    }
 }
 
 fn encode_fiche_with_options(

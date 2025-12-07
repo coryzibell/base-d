@@ -166,7 +166,9 @@ pub use encoders::streaming::{StreamingDecoder, StreamingEncoder};
 // Expose schema encoding functions for CLI
 pub use encoders::algorithms::schema::{
     SchemaCompressionAlgo, decode_fiche, decode_fiche_path, decode_schema, encode_fiche,
-    encode_fiche_light, encode_fiche_minified, encode_fiche_path, encode_fiche_readable,
+    encode_fiche_ascii, encode_fiche_light, encode_fiche_minified, encode_fiche_path,
+    encode_fiche_readable, encode_markdown_fiche, encode_markdown_fiche_ascii,
+    encode_markdown_fiche_light, encode_markdown_fiche_markdown, encode_markdown_fiche_readable,
     encode_schema,
 };
 
