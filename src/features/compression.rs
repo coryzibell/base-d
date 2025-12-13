@@ -1,5 +1,8 @@
 use std::io::{Read, Write};
 
+/// Maximum size for decompressed output (100MB) to prevent decompression bombs
+const MAX_DECOMPRESS_SIZE: usize = 100 * 1024 * 1024;
+
 /// Supported compression algorithms.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CompressionAlgorithm {
@@ -112,9 +115,15 @@ fn compress_gzip(data: &[u8], level: u32) -> Result<Vec<u8>, Box<dyn std::error:
 fn decompress_gzip(data: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     use flate2::read::GzDecoder;
 
-    let mut decoder = GzDecoder::new(data);
+    let mut decoder = GzDecoder::new(data).take(MAX_DECOMPRESS_SIZE as u64);
     let mut result = Vec::new();
-    decoder.read_to_end(&mut result)?;
+    let bytes_read = decoder.read_to_end(&mut result)?;
+
+    // Check if we hit the limit (possible decompression bomb)
+    if bytes_read == MAX_DECOMPRESS_SIZE {
+        return Err("Decompressed output exceeds 100MB limit (possible decompression bomb)".into());
+    }
+
     Ok(result)
 }
 
@@ -123,7 +132,18 @@ fn compress_zstd(data: &[u8], level: u32) -> Result<Vec<u8>, Box<dyn std::error:
 }
 
 fn decompress_zstd(data: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    Ok(zstd::decode_all(data)?)
+    use std::io::Cursor;
+
+    let mut decoder = zstd::Decoder::new(Cursor::new(data))?.take(MAX_DECOMPRESS_SIZE as u64);
+    let mut result = Vec::new();
+    let bytes_read = decoder.read_to_end(&mut result)?;
+
+    // Check if we hit the limit (possible decompression bomb)
+    if bytes_read == MAX_DECOMPRESS_SIZE {
+        return Err("Decompressed output exceeds 100MB limit (possible decompression bomb)".into());
+    }
+
+    Ok(result)
 }
 
 fn compress_brotli(data: &[u8], level: u32) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
@@ -135,8 +155,14 @@ fn compress_brotli(data: &[u8], level: u32) -> Result<Vec<u8>, Box<dyn std::erro
 
 fn decompress_brotli(data: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let mut result = Vec::new();
-    let mut reader = brotli::Decompressor::new(data, 4096);
-    reader.read_to_end(&mut result)?;
+    let mut reader = brotli::Decompressor::new(data, 4096).take(MAX_DECOMPRESS_SIZE as u64);
+    let bytes_read = reader.read_to_end(&mut result)?;
+
+    // Check if we hit the limit (possible decompression bomb)
+    if bytes_read == MAX_DECOMPRESS_SIZE {
+        return Err("Decompressed output exceeds 100MB limit (possible decompression bomb)".into());
+    }
+
     Ok(result)
 }
 
@@ -159,7 +185,14 @@ fn compress_snappy(data: &[u8], _level: u32) -> Result<Vec<u8>, Box<dyn std::err
 
 fn decompress_snappy(data: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let mut decoder = snap::raw::Decoder::new();
-    Ok(decoder.decompress_vec(data)?)
+    let result = decoder.decompress_vec(data)?;
+
+    // Check if output exceeds limit (possible decompression bomb)
+    if result.len() > MAX_DECOMPRESS_SIZE {
+        return Err("Decompressed output exceeds 100MB limit (possible decompression bomb)".into());
+    }
+
+    Ok(result)
 }
 
 fn compress_lzma(data: &[u8], level: u32) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
@@ -173,9 +206,15 @@ fn compress_lzma(data: &[u8], level: u32) -> Result<Vec<u8>, Box<dyn std::error:
 fn decompress_lzma(data: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     use xz2::read::XzDecoder;
 
-    let mut decoder = XzDecoder::new(data);
+    let mut decoder = XzDecoder::new(data).take(MAX_DECOMPRESS_SIZE as u64);
     let mut result = Vec::new();
-    decoder.read_to_end(&mut result)?;
+    let bytes_read = decoder.read_to_end(&mut result)?;
+
+    // Check if we hit the limit (possible decompression bomb)
+    if bytes_read == MAX_DECOMPRESS_SIZE {
+        return Err("Decompressed output exceeds 100MB limit (possible decompression bomb)".into());
+    }
+
     Ok(result)
 }
 
