@@ -1352,7 +1352,7 @@ fn insert_at_path(
     path: &str,
     value: serde_json::Value,
 ) -> Result<(), SchemaError> {
-    use serde_json::{Value, json};
+    use serde_json::Value;
 
     if path.is_empty() {
         *root = value;
