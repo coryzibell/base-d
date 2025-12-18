@@ -279,9 +279,7 @@ mod tests {
 
     #[test]
     fn test_empty_word_list_error() {
-        let result = WordDictionary::builder()
-            .words(Vec::<String>::new())
-            .build();
+        let result = WordDictionary::builder().words(Vec::<String>::new()).build();
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("empty"));
     }
