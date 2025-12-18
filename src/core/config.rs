@@ -385,7 +385,10 @@ impl DictionaryRegistry {
         let common_names: Vec<&String> = self
             .dictionaries
             .iter()
-            .filter(|(_, config)| config.common)
+            .filter(|(_, config)| {
+                // Only include common, character-based dictionaries
+                config.common && config.dictionary_type == DictionaryType::Char
+            })
             .map(|(name, _)| name)
             .collect();
 
