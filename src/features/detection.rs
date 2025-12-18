@@ -1,4 +1,4 @@
-use crate::core::config::{DictionaryRegistry, EncodingMode};
+use crate::core::config::{DictionaryRegistry, DictionaryType, EncodingMode};
 use crate::core::dictionary::Dictionary;
 use crate::decode;
 use std::collections::HashSet;
@@ -21,10 +21,17 @@ pub struct DictionaryDetector {
 
 impl DictionaryDetector {
     /// Creates a new detector from a configuration.
+    ///
+    /// Note: Word-based dictionaries are skipped as they require different detection logic.
     pub fn new(config: &DictionaryRegistry) -> Result<Self, Box<dyn std::error::Error>> {
         let mut dictionaries = Vec::new();
 
         for (name, dict_config) in &config.dictionaries {
+            // Skip word-based dictionaries - they use different encoding
+            if dict_config.dictionary_type == DictionaryType::Word {
+                continue;
+            }
+
             let effective_mode = dict_config.effective_mode();
             let dictionary = match effective_mode {
                 EncodingMode::ByteRange => {

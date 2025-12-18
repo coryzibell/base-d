@@ -1,7 +1,7 @@
 use crate::cli::{
     args::DecodeArgs,
     commands::streaming_decode,
-    config::{create_dictionary, load_xxhash_config},
+    config::{create_any_dictionary, load_xxhash_config, BuiltDictionary},
     global::GlobalArgs,
 };
 use base_d::DictionaryRegistry;
@@ -74,8 +74,11 @@ pub fn handle(
     };
 
     // Step 1: Decode using specified dictionary
-    let decode_dictionary = create_dictionary(config, &args.dictionary)?;
-    let mut data = base_d::decode(input_text.trim(), &decode_dictionary)?;
+    let built_dict = create_any_dictionary(config, &args.dictionary)?;
+    let mut data = match &built_dict {
+        BuiltDictionary::Char(dict) => base_d::decode(input_text.trim(), dict)?,
+        BuiltDictionary::Word(dict) => base_d::word::decode(input_text.trim(), dict)?,
+    };
 
     // Step 2: Decompress if requested
     if let Some(decompress_name) = &args.decompress {

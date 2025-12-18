@@ -325,3 +325,15 @@ padding = "="
 # Box Drawing dictionary (base-128)
 # 7 bits per character (2^7 = 128) - highly efficient
 # Perfect for creating ASCII-art style encoded data
+
+# ============================================================================
+# Word-based Dictionaries
+
+[dictionaries.bip39]
+type = "word"
+words_file = "builtin:bip39"
+delimiter = " "
+case_sensitive = false
+# BIP-39 English word list (2048 words)
+# Used for cryptocurrency seed phrases
+# Each word encodes 11 bits of data

@@ -1,6 +1,17 @@
 use serde::Deserialize;
 use std::collections::HashMap;
 
+/// Dictionary type: character-based or word-based.
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum DictionaryType {
+    /// Character-based dictionary (traditional encoding)
+    #[default]
+    Char,
+    /// Word-based dictionary (BIP-39, Diceware, etc.)
+    Word,
+}
+
 /// Encoding strategy for converting binary data to text.
 ///
 /// Different modes offer different tradeoffs between efficiency, compatibility,
@@ -26,6 +37,12 @@ pub enum EncodingMode {
 /// Configuration for a single dictionary loaded from TOML.
 #[derive(Debug, Deserialize, Clone)]
 pub struct DictionaryConfig {
+    // === Type discriminant ===
+    /// Dictionary type: "char" (default) or "word"
+    #[serde(default, rename = "type")]
+    pub dictionary_type: DictionaryType,
+
+    // === Character-based fields ===
     /// The characters comprising the dictionary (explicit list)
     #[serde(default)]
     pub chars: String,
@@ -37,19 +54,54 @@ pub struct DictionaryConfig {
     /// Use with `start` to define sequential Unicode ranges
     #[serde(default)]
     pub length: Option<usize>,
+    /// Starting Unicode codepoint for ByteRange mode (256 chars)
+    #[serde(default)]
+    pub start_codepoint: Option<u32>,
+
+    // === Word-based fields ===
+    /// Inline word list for word-based dictionaries
+    #[serde(default)]
+    pub words: Option<Vec<String>>,
+    /// Path to external word list file (one word per line)
+    #[serde(default)]
+    pub words_file: Option<String>,
+    /// Delimiter between words in encoded output (default: " ")
+    #[serde(default)]
+    pub delimiter: Option<String>,
+    /// Whether word matching is case-sensitive (default: false)
+    #[serde(default)]
+    pub case_sensitive: Option<bool>,
+
+    // === Common fields ===
     /// The encoding mode to use (auto-detected if not specified)
     #[serde(default)]
     pub mode: Option<EncodingMode>,
     /// Optional padding character (e.g., "=" for base64)
     #[serde(default)]
     pub padding: Option<String>,
-    /// Starting Unicode codepoint for ByteRange mode (256 chars)
-    #[serde(default)]
-    pub start_codepoint: Option<u32>,
     /// Whether this dictionary renders consistently across platforms (default: true)
     /// Dictionaries with common=false are excluded from random selection (--dejavu)
     #[serde(default = "default_true")]
     pub common: bool,
+}
+
+impl Default for DictionaryConfig {
+    fn default() -> Self {
+        Self {
+            dictionary_type: DictionaryType::default(),
+            chars: String::new(),
+            start: None,
+            length: None,
+            start_codepoint: None,
+            words: None,
+            words_file: None,
+            delimiter: None,
+            case_sensitive: None,
+            mode: None,
+            padding: None,
+            common: true, // default to common for random selection
+        }
+    }
 }
 
 impl DictionaryConfig {
@@ -392,6 +444,106 @@ impl DictionaryRegistry {
 
         builder.build()
     }
+
+    /// Builds a WordDictionary from a named configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if:
+    /// - Dictionary not found
+    /// - Dictionary is not word-type
+    /// - Word list file cannot be read
+    /// - Word dictionary building fails
+    ///
+    /// # Example
+    /// ```
+    /// # use base_d::DictionaryRegistry;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let registry = DictionaryRegistry::load_default()?;
+    /// // Would work if bip39 is defined as a word dictionary
+    /// // let dict = registry.word_dictionary("bip39")?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn word_dictionary(
+        &self,
+        name: &str,
+    ) -> Result<crate::WordDictionary, crate::encoders::algorithms::errors::DictionaryNotFoundError>
+    {
+        let config = self.get_dictionary(name).ok_or_else(|| {
+            crate::encoders::algorithms::errors::DictionaryNotFoundError::new(name)
+        })?;
+
+        // Verify it's a word dictionary
+        if config.dictionary_type != DictionaryType::Word {
+            return Err(
+                crate::encoders::algorithms::errors::DictionaryNotFoundError::with_cause(
+                    name,
+                    format!(
+                        "Dictionary '{}' is not a word dictionary (type is {:?})",
+                        name, config.dictionary_type
+                    ),
+                ),
+            );
+        }
+
+        self.build_word_dictionary(config).map_err(|e| {
+            crate::encoders::algorithms::errors::DictionaryNotFoundError::with_cause(name, e)
+        })
+    }
+
+    /// Internal helper to build a WordDictionary from a DictionaryConfig.
+    fn build_word_dictionary(
+        &self,
+        config: &DictionaryConfig,
+    ) -> Result<crate::WordDictionary, String> {
+        let mut builder = crate::WordDictionary::builder();
+
+        // Get words from inline list, file, or builtin
+        if let Some(ref words) = config.words {
+            builder = builder.words(words.clone());
+        } else if let Some(ref words_file) = config.words_file {
+            // Check for builtin word lists
+            let content = match words_file.as_str() {
+                "builtin:bip39" | "builtin:bip39-english" => {
+                    crate::wordlists::BIP39_ENGLISH.to_string()
+                }
+                _ => {
+                    // Resolve path (support ~ expansion)
+                    let expanded = shellexpand::tilde(words_file);
+                    std::fs::read_to_string(expanded.as_ref())
+                        .map_err(|e| format!("Failed to read words file '{}': {}", words_file, e))?
+                }
+            };
+            builder = builder.words_from_str(&content);
+        } else {
+            return Err("Word dictionary must have 'words' or 'words_file'".to_string());
+        }
+
+        // Set optional delimiter
+        if let Some(ref delimiter) = config.delimiter {
+            builder = builder.delimiter(delimiter.clone());
+        }
+
+        // Set case sensitivity
+        if let Some(case_sensitive) = config.case_sensitive {
+            builder = builder.case_sensitive(case_sensitive);
+        }
+
+        builder.build()
+    }
+
+    /// Returns the dictionary type for a named dictionary.
+    ///
+    /// Returns `None` if the dictionary is not found.
+    pub fn dictionary_type(&self, name: &str) -> Option<DictionaryType> {
+        self.get_dictionary(name).map(|c| c.dictionary_type.clone())
+    }
+
+    /// Checks if a dictionary is word-based.
+    pub fn is_word_dictionary(&self, name: &str) -> bool {
+        self.dictionary_type(name) == Some(DictionaryType::Word)
+    }
 }
 
 #[cfg(test)]
@@ -431,24 +583,14 @@ mod tests {
         // Power of 2 → Chunked
         let config = DictionaryConfig {
             chars: "ABCD".to_string(), // 4 = 2^2
-            mode: None,
-            padding: None,
-            start_codepoint: None,
-            start: None,
-            length: None,
-            common: true,
+            ..Default::default()
         };
         assert_eq!(config.effective_mode(), EncodingMode::Chunked);
 
         // Not power of 2 → Radix
         let config = DictionaryConfig {
             chars: "ABC".to_string(), // 3 ≠ 2^n
-            mode: None,
-            padding: None,
-            start_codepoint: None,
-            start: None,
-            length: None,
-            common: true,
+            ..Default::default()
         };
         assert_eq!(config.effective_mode(), EncodingMode::Radix);
     }
@@ -459,11 +601,7 @@ mod tests {
         let config = DictionaryConfig {
             chars: "ABCD".to_string(),       // Would be Chunked
             mode: Some(EncodingMode::Radix), // But explicitly set to Radix
-            padding: None,
-            start_codepoint: None,
-            start: None,
-            length: None,
-            common: true,
+            ..Default::default()
         };
         assert_eq!(config.effective_mode(), EncodingMode::Radix);
     }
@@ -480,11 +618,7 @@ mod tests {
             DictionaryConfig {
                 chars: "ABC".to_string(),
                 mode: Some(EncodingMode::Radix),
-                padding: None,
-                start_codepoint: None,
-                start: None,
-                length: None,
-                common: true,
+                ..Default::default()
             },
         );
 
@@ -498,11 +632,7 @@ mod tests {
             DictionaryConfig {
                 chars: "XYZ".to_string(),
                 mode: Some(EncodingMode::Radix),
-                padding: None,
-                start_codepoint: None,
-                start: None,
-                length: None,
-                common: true,
+                ..Default::default()
             },
         );
         config2.dictionaries.insert(
@@ -510,11 +640,7 @@ mod tests {
             DictionaryConfig {
                 chars: "DEF".to_string(),
                 mode: Some(EncodingMode::Radix),
-                padding: None,
-                start_codepoint: None,
-                start: None,
-                length: None,
-                common: true,
+                ..Default::default()
             },
         );
 
@@ -541,12 +667,7 @@ mode = "base_conversion"
     fn test_effective_chars_from_explicit() {
         let config = DictionaryConfig {
             chars: "ABCD".to_string(),
-            mode: None,
-            padding: None,
-            start_codepoint: None,
-            start: None,
-            length: None,
-            common: true,
+            ..Default::default()
         };
         assert_eq!(config.effective_chars().unwrap(), "ABCD");
     }
@@ -554,13 +675,9 @@ mode = "base_conversion"
     #[test]
     fn test_effective_chars_from_range() {
         let config = DictionaryConfig {
-            chars: String::new(),
-            mode: None,
-            padding: None,
-            start_codepoint: None,
             start: Some("A".to_string()),
             length: Some(4),
-            common: true,
+            ..Default::default()
         };
         assert_eq!(config.effective_chars().unwrap(), "ABCD");
     }
@@ -570,12 +687,9 @@ mode = "base_conversion"
         // Explicit chars should override start+length
         let config = DictionaryConfig {
             chars: "XYZ".to_string(),
-            mode: None,
-            padding: None,
-            start_codepoint: None,
             start: Some("A".to_string()),
             length: Some(4),
-            common: true,
+            ..Default::default()
         };
         assert_eq!(config.effective_chars().unwrap(), "XYZ");
     }
@@ -584,13 +698,9 @@ mode = "base_conversion"
     fn test_effective_chars_unicode_range() {
         // Test generating a range starting from a Unicode character
         let config = DictionaryConfig {
-            chars: String::new(),
-            mode: None,
-            padding: None,
-            start_codepoint: None,
             start: Some("가".to_string()), // Korean Hangul U+AC00
             length: Some(4),
-            common: true,
+            ..Default::default()
         };
         let result = config.effective_chars().unwrap();
         assert_eq!(result.chars().count(), 4);
@@ -601,13 +711,9 @@ mode = "base_conversion"
     fn test_effective_chars_surrogate_gap_error() {
         // Range crossing surrogate gap should error
         let config = DictionaryConfig {
-            chars: String::new(),
-            mode: None,
-            padding: None,
-            start_codepoint: None,
             start: Some("\u{D700}".to_string()), // Just before surrogates
             length: Some(512),                   // Would cross into surrogate range
-            common: true,
+            ..Default::default()
         };
         assert!(config.effective_chars().is_err());
     }
@@ -616,13 +722,9 @@ mode = "base_conversion"
     fn test_effective_chars_exceeds_unicode_max() {
         // Range exceeding max Unicode should error
         let config = DictionaryConfig {
-            chars: String::new(),
-            mode: None,
-            padding: None,
-            start_codepoint: None,
             start: Some("\u{10FFFE}".to_string()), // Near end of Unicode
             length: Some(10),                      // Would exceed U+10FFFF
-            common: true,
+            ..Default::default()
         };
         assert!(config.effective_chars().is_err());
     }
@@ -631,24 +733,16 @@ mode = "base_conversion"
     fn test_effective_mode_with_length_field() {
         // Auto-detect should use length field when chars is empty
         let config = DictionaryConfig {
-            chars: String::new(),
-            mode: None,
-            padding: None,
-            start_codepoint: None,
             start: Some("A".to_string()),
             length: Some(64), // 64 = 2^6 → Chunked
-            common: true,
+            ..Default::default()
         };
         assert_eq!(config.effective_mode(), EncodingMode::Chunked);
 
         let config = DictionaryConfig {
-            chars: String::new(),
-            mode: None,
-            padding: None,
-            start_codepoint: None,
             start: Some("A".to_string()),
             length: Some(52), // 52 ≠ 2^n → Radix
-            common: true,
+            ..Default::default()
         };
         assert_eq!(config.effective_mode(), EncodingMode::Radix);
     }

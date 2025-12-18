@@ -1,7 +1,13 @@
-use base_d::{Dictionary, DictionaryRegistry};
+use base_d::{Dictionary, DictionaryRegistry, DictionaryType, WordDictionary};
 use std::fs;
 use std::io::{self, Read};
 use std::path::PathBuf;
+
+/// Result of building a dictionary - either character-based or word-based.
+pub enum BuiltDictionary {
+    Char(Dictionary),
+    Word(WordDictionary),
+}
 
 /// Validates that a file path is within the allowed base-d config directory.
 ///
@@ -72,6 +78,32 @@ pub fn create_dictionary(
         }
     };
     Ok(dictionary)
+}
+
+/// Helper function to create either a character or word dictionary from config.
+///
+/// Automatically selects the appropriate dictionary type based on the config.
+pub fn create_any_dictionary(
+    config: &DictionaryRegistry,
+    name: &str,
+) -> Result<BuiltDictionary, Box<dyn std::error::Error>> {
+    // Check dictionary type
+    let dict_type = config.dictionary_type(name).ok_or_else(|| {
+        let available: Vec<String> = config.dictionaries.keys().cloned().collect();
+        let suggestion = base_d::find_closest_dictionary(name, &available);
+        base_d::DictionaryNotFoundError::with_suggestion(name, suggestion)
+    })?;
+
+    match dict_type {
+        DictionaryType::Word => {
+            let word_dict = config.word_dictionary(name)?;
+            Ok(BuiltDictionary::Word(word_dict))
+        }
+        DictionaryType::Char => {
+            let char_dict = create_dictionary(config, name)?;
+            Ok(BuiltDictionary::Char(char_dict))
+        }
+    }
 }
 
 /// Determine compression level from CLI args or config
