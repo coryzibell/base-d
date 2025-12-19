@@ -39,8 +39,7 @@ pub fn encode(data: &[u8], dictionary: &WordDictionary) -> String {
     // If all zeros, return early
     if leading_zeros == data.len() {
         let zero_word = dictionary.encode_word(0).unwrap();
-        return std::iter::repeat(zero_word)
-            .take(data.len())
+        return std::iter::repeat_n(zero_word, data.len())
             .collect::<Vec<_>>()
             .join(dictionary.delimiter());
     }
