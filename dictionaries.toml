@@ -391,3 +391,37 @@ case_sensitive = false
 # PGP 3-syllable words (256 words)
 # 8 bits per word
 # Used for odd-position bytes in fingerprints
+
+# Fun word dictionaries
+
+[dictionaries.nato]
+type = "word"
+words_file = "builtin:nato"
+delimiter = "-"
+case_sensitive = false
+# NATO Phonetic Alphabet (26 words)
+# Alfa, Bravo, Charlie... base-26
+
+[dictionaries.buzzwords]
+type = "word"
+words_file = "builtin:buzzwords"
+delimiter = " "
+case_sensitive = false
+# Corporate Buzzwords (61 words)
+# Synergy your paradigm shifts
+
+[dictionaries.klingon]
+type = "word"
+words_file = "builtin:klingon"
+delimiter = " "
+case_sensitive = true
+# Klingon / tlhIngan Hol (3838 words)
+# Qapla'!
+
+[dictionaries.pokemon]
+type = "word"
+words_file = "builtin:pokemon"
+delimiter = " "
+case_sensitive = false
+# Pokemon names (1092 words)
+# Gotta encode 'em all

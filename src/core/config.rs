@@ -521,6 +521,10 @@ impl DictionaryRegistry {
                 "builtin:diceware" => crate::wordlists::DICEWARE.to_string(),
                 "builtin:pgp_even" | "builtin:pgp-even" => crate::wordlists::PGP_EVEN.to_string(),
                 "builtin:pgp_odd" | "builtin:pgp-odd" => crate::wordlists::PGP_ODD.to_string(),
+                "builtin:nato" => crate::wordlists::NATO.to_string(),
+                "builtin:buzzwords" => crate::wordlists::BUZZWORDS.to_string(),
+                "builtin:klingon" => crate::wordlists::KLINGON.to_string(),
+                "builtin:pokemon" => crate::wordlists::POKEMON.to_string(),
                 _ => {
                     // Resolve path (support ~ expansion)
                     let expanded = shellexpand::tilde(words_file);
