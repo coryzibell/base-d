@@ -147,7 +147,10 @@ impl fmt::Display for DecodeError {
                 writeln!(f, "  {}", input)?;
                 writeln!(f)?;
                 if use_color {
-                    write!(f, "\x1b[1;36mhint:\x1b[0m check spelling or verify word is in dictionary")?;
+                    write!(
+                        f,
+                        "\x1b[1;36mhint:\x1b[0m check spelling or verify word is in dictionary"
+                    )?;
                 } else {
                     write!(f, "hint: check spelling or verify word is in dictionary")?;
                 }
