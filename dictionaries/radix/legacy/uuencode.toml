@@ -1,0 +1,4 @@
+# UUencode (1980)
+# ASCII 32-95
+
+chars = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_"

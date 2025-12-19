@@ -1,0 +1,8 @@
+# Klingon / tlhIngan Hol
+# 3838 words
+# Qapla'!
+
+type = "word"
+delimiter = " "
+case_sensitive = true  # Klingon has case-sensitive orthography
+words_file = "klingon.txt"

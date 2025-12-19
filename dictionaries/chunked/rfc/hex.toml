@@ -1,0 +1,5 @@
+# Lowercase Hexadecimal
+# Standard lowercase hex encoding
+
+mode = "chunked"
+chars = "0123456789abcdef"

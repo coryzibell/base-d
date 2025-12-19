@@ -1,0 +1,7 @@
+# Matrix-style Base256
+# Terminal-optimized 256-character dictionary
+# Uses: Half-width Katakana, Greek, Math symbols, Box drawing, Block elements, Arrows, Geometric shapes
+# Special: chunked and mathematical modes produce identical output (8 bits = log2(256))
+
+mode = "chunked"
+chars = "｡｢｣､･ｦｧｨｩｪｫｬｭｮｯｰｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝﾞﾟαβγδεζηθικλμνξοπρστυφχψωΑΒΓΔΕΖΗΘ+-×÷=≠≤≥∑∏√∫∂∞∈∉∪∩⊂⊃⊆⊇∧∨¬─│┌┐└┘├┤┬┴┼═║╔╗╚╝╠╣╦╩╬┏┓┗┛┣┫┳┻╋▀▁▂▃▄▅▆▇█▉▊▋▌▍▎▏▐░▒▓▔▕▖▗▘▙▚▛▜▝▞▟←↑→↓↔↕↖↗↘↙↚↛↜↝↞↟↠↡↢↣↤↥↦↧↨↩↪↫↬↭↮↯○●◌◍◎◐◑◒◓◔◕◖◗◘◙◚◛◜◝◞◟◠◡◢◣◤◥◦◧◨◩♠♥♦♣★☆◆◇■□"

@@ -1,0 +1,6 @@
+# Weather Symbols
+# 1:1 byte-to-symbol mapping using weather/misc symbols
+
+mode = "byte_range"
+start_codepoint = 9728  # U+2600 (☀)
+length = 256

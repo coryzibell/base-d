@@ -1,0 +1,4 @@
+# Base62
+# URL-safe alphanumeric (URL shorteners, unique IDs)
+
+chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"

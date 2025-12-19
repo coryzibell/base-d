@@ -1,0 +1,4 @@
+# Geohash Base32
+# Geographic coordinate encoding (excludes a, i, l, o)
+
+chars = "0123456789bcdefghjkmnpqrstuvwxyz"

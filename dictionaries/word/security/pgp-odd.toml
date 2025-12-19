@@ -1,0 +1,8 @@
+# PGP Odd Word List
+# 256 three-syllable words (8 bits per word)
+# Used for odd-position bytes in fingerprints
+
+type = "word"
+delimiter = "-"
+case_sensitive = false
+words_file = "pgp-odd.txt"

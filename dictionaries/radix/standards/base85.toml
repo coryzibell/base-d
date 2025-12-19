@@ -1,0 +1,4 @@
+# Base85
+# High-density ASCII encoding
+
+chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!#$%&()*+-;<=>?@^_`{|}~"

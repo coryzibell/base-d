@@ -1,0 +1,5 @@
+# basE91 by Joachim Henke
+# More efficient than Base64
+# Excludes: - (dash), \ (backslash), ' (apostrophe)
+
+chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!#$%&()*+,./:;<=>?@[]^_`{|}~\""

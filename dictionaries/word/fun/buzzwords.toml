@@ -1,0 +1,8 @@
+# Corporate Buzzwords
+# 61 words
+# Synergy your paradigm shifts
+
+type = "word"
+delimiter = " "
+case_sensitive = false
+words_file = "buzzwords.txt"

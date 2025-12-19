@@ -1,0 +1,8 @@
+# NATO Phonetic Alphabet
+# 26 words (Alfa, Bravo, Charlie...)
+# Used for radio communication
+
+type = "word"
+delimiter = "-"
+case_sensitive = false
+words_file = "nato.txt"

@@ -1,0 +1,6 @@
+# RFC 4648 Base64URL
+# URL and filename safe variant (- and _ instead of + and /)
+
+mode = "chunked"
+padding = "="
+chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"

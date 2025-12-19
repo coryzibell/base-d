@@ -1,0 +1,4 @@
+# Ripple/XRP Base58
+# r=0, so addresses start with 'r'
+
+chars = "rpshnaf39wBUDNEGHJKLM4PQRST7VWXYZ2bcdeCg65jkm8oFqi1tuvAxyz"

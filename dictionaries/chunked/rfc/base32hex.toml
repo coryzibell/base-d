@@ -1,0 +1,6 @@
+# RFC 4648 Base32hex
+# Extended hex alphabet variant
+
+mode = "chunked"
+padding = "="
+chars = "0123456789ABCDEFGHIJKLMNOPQRSTUV"

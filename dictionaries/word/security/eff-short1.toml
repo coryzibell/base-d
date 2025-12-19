@@ -1,0 +1,8 @@
+# EFF Short Word List #1
+# 1296 words (~10.3 bits per word)
+# Shorter words for faster typing
+
+type = "word"
+delimiter = " "
+case_sensitive = false
+words_file = "eff-short1.txt"

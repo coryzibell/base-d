@@ -1,0 +1,6 @@
+# RFC 9226 Bioctal
+# Cognitive-optimized hex for easier mental binary conversion
+# 0-7 use Arabic numerals, 8-F use shaped letters
+
+mode = "chunked"
+chars = "01234567cjzwfsbv"

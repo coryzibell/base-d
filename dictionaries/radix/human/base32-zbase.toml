@@ -1,0 +1,4 @@
+# z-base-32 (Phil Zimmermann)
+# Optimized for pronounceability
+
+chars = "ybndrfg8ejkmcpqxot1uwisza345h769"

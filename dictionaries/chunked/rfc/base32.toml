@@ -1,0 +1,6 @@
+# RFC 4648 Base32
+# Case-insensitive encoding, 5 bits per character
+
+mode = "chunked"
+padding = "="
+chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"

@@ -1,0 +1,7 @@
+# Block Elements (Base32)
+# 5 bits per character - perfect bit alignment
+# Great for visual block-based encoding
+
+mode = "chunked"
+padding = "="
+chars = "▀▁▂▃▄▅▆▇█▉▊▋▌▍▎▏▐░▒▓▔▕▖▗▘▙▚▛▜▝▞▟"

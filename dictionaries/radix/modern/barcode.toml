@@ -1,0 +1,4 @@
+# Barcode Style (Base8)
+# Varying width bars for barcode aesthetics
+
+chars = "▉▊▋▌▍▎▏▐"

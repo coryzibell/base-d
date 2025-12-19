@@ -1,0 +1,4 @@
+# BinHex 4.0 (RFC 1741)
+# Classic Mac OS encoding
+
+chars = "!\"#$%&'()*+,-012345689@ABCDEFGHIJKLMNPQRSTUVXYZ[`abcdefhijklmpqr"
