@@ -115,16 +115,24 @@ bytes → [dictionary] → symbols
 
 ### Dictionaries
 
-45+ built-in dictionaries across categories:
+45+ built-in dictionaries organized by encoding type:
 
-| Category | Examples |
+```
+dictionaries/
+├── word/           # Whole words as symbols (BIP-39, Pokemon, NATO...)
+├── chunked/        # RFC 4648 style (base64, base32, base16...)
+├── byterange/      # 1:1 byte mapping (base100, weather symbols)
+└── radix/          # Mathematical conversion (cards, hieroglyphs, emoji...)
+```
+
+| Encoding | Examples |
 |----------|----------|
-| **Standards** | base64, base32, base16, base58, base85 |
-| **Ancient scripts** | Hieroglyphics, cuneiform, Elder Futhark |
-| **Games** | Playing cards, mahjong, chess pieces, dominos |
-| **Esoteric** | Alchemy symbols, zodiac, weather, musical notation |
-| **Modern** | Emoji, Matrix-style katakana, CJK base1024 |
-| **Word lists** | BIP-39, Diceware, EFF, PGP, NATO, Pokemon, Klingon |
+| **word/** | bip39, diceware, eff-long, pgp, nato, pokemon, klingon |
+| **chunked/** | base64, base32, base16, base256-matrix, boxdraw |
+| **byterange/** | base100, weather |
+| **radix/** | cards, hieroglyphs, chess, emoji, base58, base85 |
+
+Browse the [`dictionaries/`](dictionaries/) folder to explore — the structure teaches you what the tool can do.
 
 [Full dictionary list →](docs/DICTIONARIES.md) | [Create your own →](docs/CUSTOM_DICTIONARIES.md)
 
