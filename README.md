@@ -13,7 +13,7 @@
 
 You probably have `base64`, `sha256sum`, `crc32` as separate tools. base-d does all of it:
 
-- **Encode** with 35+ dictionaries (or define your own)
+- **Encode** with 45+ dictionaries (or define your own)
 - **Hash** with 26 algorithms — SHA-256, BLAKE3, CRC32, xxHash3
 - **Compress** with gzip, zstd, brotli, lz4, snappy, lzma
 - **Stream** multi-GB files with constant 4KB memory
@@ -51,6 +51,10 @@ echo "hello" | base-d encode base64
 
 # Hieroglyphics, because why not
 echo "pharaoh" | base-d encode hieroglyphics
+
+# Word-based encoding (BIP-39 seed phrases)
+echo "secret" | base-d encode bip39
+# abandon absorb morning...
 
 # Hash a file
 base-d hash sha256 myfile.bin
@@ -111,7 +115,7 @@ bytes → [dictionary] → symbols
 
 ### Dictionaries
 
-35+ built-in dictionaries across categories:
+45+ built-in dictionaries across categories:
 
 | Category | Examples |
 |----------|----------|
@@ -120,6 +124,7 @@ bytes → [dictionary] → symbols
 | **Games** | Playing cards, mahjong, chess pieces, dominos |
 | **Esoteric** | Alchemy symbols, zodiac, weather, musical notation |
 | **Modern** | Emoji, Matrix-style katakana, CJK base1024 |
+| **Word lists** | BIP-39, Diceware, EFF, PGP, NATO, Pokemon, Klingon |
 
 [Full dictionary list →](docs/DICTIONARIES.md) | [Create your own →](docs/CUSTOM_DICTIONARIES.md)
 

@@ -45,6 +45,16 @@ echo "vikings" | base-d encode runes
 # Emoji
 echo "mood" | base-d encode emoji_faces
 
+# Word-based encoding
+echo "secret" | base-d encode bip39
+# abandon absorb morning random...
+
+echo "hello" | base-d encode pokemon
+# bulbasaur charmander squirtle...
+
+echo "data" | base-d encode nato
+# alfa-bravo-charlie-delta
+
 # Output to file
 echo "data" | base-d encode base64 -o encoded.txt
 ```
@@ -402,6 +412,23 @@ echo "filename" | base-d encode base58
 
 # Copy-paste friendly (no ambiguous chars)
 echo "token" | base-d encode base32
+```
+
+### Word-based encoding
+
+```bash
+# BIP-39 seed phrase style
+echo "my secret key" | base-d encode bip39
+# abandon absorb morning random throw...
+
+# Fun encodings
+echo "hello" | base-d encode pokemon
+echo "hello" | base-d encode klingon
+echo "message" | base-d encode nato
+
+# Security-focused word lists
+echo "data" | base-d encode diceware
+echo "data" | base-d encode eff_long
 ```
 
 ### Process large files efficiently
