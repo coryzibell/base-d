@@ -1,7 +1,7 @@
 use crate::cli::{
     args::EncodeArgs,
     commands::{select_random_compress, streaming_encode},
-    config::{create_any_dictionary, get_compression_level, load_xxhash_config, BuiltDictionary},
+    config::{BuiltDictionary, create_any_dictionary, get_compression_level, load_xxhash_config},
     global::GlobalArgs,
 };
 use base_d::DictionaryRegistry;

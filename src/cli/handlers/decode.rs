@@ -1,7 +1,7 @@
 use crate::cli::{
     args::DecodeArgs,
     commands::streaming_decode,
-    config::{create_any_dictionary, load_xxhash_config, BuiltDictionary},
+    config::{BuiltDictionary, create_any_dictionary, load_xxhash_config},
     global::GlobalArgs,
 };
 use base_d::DictionaryRegistry;

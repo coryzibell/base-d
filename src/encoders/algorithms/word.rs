@@ -103,9 +103,9 @@ pub fn decode(encoded: &str, dictionary: &WordDictionary) -> Result<Vec<u8>, Dec
     // Track position for error reporting
     let mut char_position = 0;
     for word in &words {
-        let digit = dictionary.decode_word(word).ok_or_else(|| {
-            DecodeError::invalid_word(word, char_position, encoded)
-        })?;
+        let digit = dictionary
+            .decode_word(word)
+            .ok_or_else(|| DecodeError::invalid_word(word, char_position, encoded))?;
 
         if num.is_zero() && digit == 0 {
             leading_zeros += 1;
@@ -150,10 +150,8 @@ mod tests {
         // Larger dictionary mimicking BIP-39 structure (base 16 for easier testing)
         WordDictionary::builder()
             .words(vec![
-                "abandon", "ability", "able", "about",
-                "above", "absent", "absorb", "abstract",
-                "absurd", "abuse", "access", "accident",
-                "account", "accuse", "achieve", "acid",
+                "abandon", "ability", "able", "about", "above", "absent", "absorb", "abstract",
+                "absurd", "abuse", "access", "accident", "account", "accuse", "achieve", "acid",
             ])
             .delimiter(" ")
             .build()
