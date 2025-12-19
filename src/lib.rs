@@ -151,16 +151,26 @@ mod simd;
 pub mod bench;
 pub mod convenience;
 pub mod prelude;
+pub mod wordlists;
 
 pub use convenience::{
     CompressEncodeResult, HashEncodeResult, compress_encode, compress_encode_with, hash_encode,
     hash_encode_with,
 };
 pub use core::config::{
-    CompressionConfig, DictionaryConfig, DictionaryRegistry, EncodingMode, Settings,
+    CompressionConfig, DictionaryConfig, DictionaryRegistry, DictionaryType, EncodingMode, Settings,
 };
 pub use core::dictionary::{Dictionary, DictionaryBuilder};
+pub use core::word_dictionary::{WordDictionary, WordDictionaryBuilder};
 pub use encoders::algorithms::{DecodeError, DictionaryNotFoundError, find_closest_dictionary};
+
+/// Word-based encoding using radix conversion.
+///
+/// Same mathematical approach as character-based radix encoding,
+/// but outputs words joined by a delimiter instead of concatenated characters.
+pub mod word {
+    pub use crate::encoders::algorithms::word::{decode, encode};
+}
 pub use encoders::streaming::{StreamingDecoder, StreamingEncoder};
 
 // Expose schema encoding functions for CLI

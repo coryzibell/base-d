@@ -1,7 +1,7 @@
 use crate::cli::{
     args::EncodeArgs,
     commands::{select_random_compress, streaming_encode},
-    config::{create_dictionary, get_compression_level, load_xxhash_config},
+    config::{BuiltDictionary, create_any_dictionary, get_compression_level, load_xxhash_config},
     global::GlobalArgs,
 };
 use base_d::DictionaryRegistry;
@@ -110,8 +110,11 @@ pub fn handle(
     }
 
     // Step 3: Encode using specified dictionary
-    let encode_dictionary = create_dictionary(config, &args.dictionary)?;
-    let encoded = base_d::encode(&data, &encode_dictionary);
+    let built_dict = create_any_dictionary(config, &args.dictionary)?;
+    let encoded = match &built_dict {
+        BuiltDictionary::Char(dict) => base_d::encode(&data, dict),
+        BuiltDictionary::Word(dict) => base_d::word::encode(&data, dict),
+    };
 
     // Step 4: Output encoded result
     if let Some(output_path) = &args.output {

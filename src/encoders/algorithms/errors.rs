@@ -10,6 +10,12 @@ pub enum DecodeError {
         input: String,
         valid_chars: String,
     },
+    /// The input contains a word not in the word dictionary
+    InvalidWord {
+        word: String,
+        position: usize,
+        input: String,
+    },
     /// The input string is empty
     EmptyInput,
     /// The padding is malformed or incorrect
@@ -50,6 +56,22 @@ impl DecodeError {
             actual,
             expected: expected.into(),
             hint: hint.into(),
+        }
+    }
+
+    /// Create an InvalidWord error for word-based decoding
+    pub fn invalid_word(word: &str, position: usize, input: &str) -> Self {
+        // Truncate long inputs
+        let display_input = if input.len() > 80 {
+            format!("{}...", &input[..80])
+        } else {
+            input.to_string()
+        };
+
+        DecodeError::InvalidWord {
+            word: word.to_string(),
+            position,
+            input: display_input,
         }
     }
 }
@@ -104,6 +126,33 @@ impl fmt::Display for DecodeError {
                     write!(f, "\x1b[1;36mhint:\x1b[0m valid characters: {}", hint_chars)?;
                 } else {
                     write!(f, "hint: valid characters: {}", hint_chars)?;
+                }
+                Ok(())
+            }
+            DecodeError::InvalidWord {
+                word,
+                position,
+                input,
+            } => {
+                if use_color {
+                    writeln!(
+                        f,
+                        "\x1b[1;31merror:\x1b[0m unknown word '{}' at position {}",
+                        word, position
+                    )?;
+                } else {
+                    writeln!(f, "error: unknown word '{}' at position {}", word, position)?;
+                }
+                writeln!(f)?;
+                writeln!(f, "  {}", input)?;
+                writeln!(f)?;
+                if use_color {
+                    write!(
+                        f,
+                        "\x1b[1;36mhint:\x1b[0m check spelling or verify word is in dictionary"
+                    )?;
+                } else {
+                    write!(f, "hint: check spelling or verify word is in dictionary")?;
                 }
                 Ok(())
             }
