@@ -31,11 +31,10 @@
 //! let dict = AlternatingWordDictionary::new(
 //!     vec![even, odd],
 //!     "-".to_string(),
-//!     false,
 //! );
 //!
 //! let data = vec![0x42, 0xAB];
-//! let encoded = word_alternating::encode(&data, &dict);
+//! let encoded = word_alternating::encode(&data, &dict).unwrap();
 //! // "even66-odd171" (0x42 = 66, 0xAB = 171)
 //!
 //! let decoded = word_alternating::decode(&encoded, &dict).unwrap();
@@ -57,7 +56,13 @@ use crate::core::alternating_dictionary::AlternatingWordDictionary;
 ///
 /// # Returns
 ///
-/// A string with words joined by the dictionary's delimiter.
+/// A string with words joined by the dictionary's delimiter, or an error
+/// if any byte cannot be encoded (e.g., byte value exceeds dictionary size).
+///
+/// # Errors
+///
+/// Returns `DecodeError::InvalidCharacter` if a byte value exceeds the
+/// dictionary size at that position.
 ///
 /// # Example
 ///
@@ -70,24 +75,33 @@ use crate::core::alternating_dictionary::AlternatingWordDictionary;
 /// let even = WordDictionary::builder().words(even_words).build().unwrap();
 /// let odd = WordDictionary::builder().words(odd_words).build().unwrap();
 ///
-/// let dict = AlternatingWordDictionary::new(vec![even, odd], " ".to_string(), false);
+/// let dict = AlternatingWordDictionary::new(vec![even, odd], " ".to_string());
 ///
 /// let data = vec![0x00, 0x01, 0x02];
-/// let encoded = word_alternating::encode(&data, &dict);
+/// let encoded = word_alternating::encode(&data, &dict).unwrap();
 /// assert_eq!(encoded, "e0 o1 e2");
 /// ```
-pub fn encode(data: &[u8], dictionary: &AlternatingWordDictionary) -> String {
+pub fn encode(data: &[u8], dictionary: &AlternatingWordDictionary) -> Result<String, DecodeError> {
     if data.is_empty() {
-        return String::new();
+        return Ok(String::new());
     }
 
-    let words: Vec<&str> = data
-        .iter()
-        .enumerate()
-        .filter_map(|(pos, &byte)| dictionary.encode_byte(byte, pos))
-        .collect();
+    let mut words: Vec<&str> = Vec::with_capacity(data.len());
 
-    words.join(dictionary.delimiter())
+    for (pos, &byte) in data.iter().enumerate() {
+        let word =
+            dictionary
+                .encode_byte(byte, pos)
+                .ok_or_else(|| DecodeError::InvalidCharacter {
+                    char: byte as char,
+                    position: pos,
+                    input: format!("byte {} at position {}", byte, pos),
+                    valid_chars: "bytes 0-255".to_string(),
+                })?;
+        words.push(word);
+    }
+
+    Ok(words.join(dictionary.delimiter()))
 }
 
 /// Decodes an alternating word sequence back to binary data.
@@ -120,7 +134,7 @@ pub fn encode(data: &[u8], dictionary: &AlternatingWordDictionary) -> String {
 /// let even = WordDictionary::builder().words(even_words).build().unwrap();
 /// let odd = WordDictionary::builder().words(odd_words).build().unwrap();
 ///
-/// let dict = AlternatingWordDictionary::new(vec![even, odd], " ".to_string(), false);
+/// let dict = AlternatingWordDictionary::new(vec![even, odd], " ".to_string());
 ///
 /// let encoded = "e0 o1 e2";
 /// let decoded = word_alternating::decode(encoded, &dict).unwrap();
@@ -172,34 +186,47 @@ mod tests {
 
         let odd = WordDictionary::builder().words(odd_words).build().unwrap();
 
-        AlternatingWordDictionary::new(vec![even, odd], "-".to_string(), false)
+        AlternatingWordDictionary::new(vec![even, odd], "-".to_string())
     }
 
     fn create_small_dictionaries() -> AlternatingWordDictionary {
-        let even = WordDictionary::builder()
-            .words(vec!["aardvark", "absurd", "accrue", "acme"])
-            .build()
-            .unwrap();
+        // Use named words for first few entries to make tests readable
+        let mut even_words: Vec<String> = vec![
+            "aardvark".to_string(),
+            "absurd".to_string(),
+            "accrue".to_string(),
+            "acme".to_string(),
+        ];
+        // Fill remaining entries to reach 256
+        even_words.extend((even_words.len()..256).map(|i| format!("even{}", i)));
 
-        let odd = WordDictionary::builder()
-            .words(vec!["adroitness", "adviser", "aftermath", "aggregate"])
-            .build()
-            .unwrap();
+        let mut odd_words: Vec<String> = vec![
+            "adroitness".to_string(),
+            "adviser".to_string(),
+            "aftermath".to_string(),
+            "aggregate".to_string(),
+        ];
+        // Fill remaining entries to reach 256
+        odd_words.extend((odd_words.len()..256).map(|i| format!("odd{}", i)));
 
-        AlternatingWordDictionary::new(vec![even, odd], "-".to_string(), false)
+        let even = WordDictionary::builder().words(even_words).build().unwrap();
+
+        let odd = WordDictionary::builder().words(odd_words).build().unwrap();
+
+        AlternatingWordDictionary::new(vec![even, odd], "-".to_string())
     }
 
     #[test]
     fn test_encode_empty() {
         let dict = create_full_dictionaries();
-        assert_eq!(encode(&[], &dict), "");
+        assert_eq!(encode(&[], &dict).unwrap(), "");
     }
 
     #[test]
     fn test_encode_single_byte() {
         let dict = create_full_dictionaries();
         let data = vec![0x42];
-        let encoded = encode(&data, &dict);
+        let encoded = encode(&data, &dict).unwrap();
         assert_eq!(encoded, "even66"); // 0x42 = 66
     }
 
@@ -207,7 +234,7 @@ mod tests {
     fn test_encode_two_bytes() {
         let dict = create_full_dictionaries();
         let data = vec![0x42, 0xAB];
-        let encoded = encode(&data, &dict);
+        let encoded = encode(&data, &dict).unwrap();
         assert_eq!(encoded, "even66-odd171"); // 0x42 = 66, 0xAB = 171
     }
 
@@ -215,7 +242,7 @@ mod tests {
     fn test_encode_decode_roundtrip() {
         let dict = create_full_dictionaries();
         let data = vec![0x00, 0x01, 0x42, 0xAB, 0xFF];
-        let encoded = encode(&data, &dict);
+        let encoded = encode(&data, &dict).unwrap();
         let decoded = decode(&encoded, &dict).unwrap();
         assert_eq!(decoded, data);
     }
@@ -245,7 +272,7 @@ mod tests {
     fn test_decode_case_insensitive() {
         let dict = create_small_dictionaries();
         let data = vec![0, 1];
-        let encoded = encode(&data, &dict);
+        let encoded = encode(&data, &dict).unwrap();
 
         // Should decode regardless of case
         let decoded_upper = decode(&encoded.to_uppercase(), &dict).unwrap();
@@ -274,7 +301,7 @@ mod tests {
     fn test_alternating_pattern() {
         let dict = create_small_dictionaries();
         let data = vec![0, 1, 2, 3];
-        let encoded = encode(&data, &dict);
+        let encoded = encode(&data, &dict).unwrap();
 
         // Position 0 (even): aardvark (0)
         // Position 1 (odd): adviser (1)
@@ -298,10 +325,10 @@ mod tests {
             .build()
             .unwrap();
 
-        let dict = AlternatingWordDictionary::new(vec![even, odd], " ".to_string(), false);
+        let dict = AlternatingWordDictionary::new(vec![even, odd], " ".to_string());
 
         let data = vec![0, 1, 2];
-        let encoded = encode(&data, &dict);
+        let encoded = encode(&data, &dict).unwrap();
         assert_eq!(encoded, "e0 o1 e2");
 
         let decoded = decode(&encoded, &dict).unwrap();
@@ -321,8 +348,46 @@ mod tests {
         let dict = create_full_dictionaries();
         // Test encoding all possible byte values
         let data: Vec<u8> = (0..=255).collect();
-        let encoded = encode(&data, &dict);
+        let encoded = encode(&data, &dict).unwrap();
         let decoded = decode(&encoded, &dict).unwrap();
         assert_eq!(decoded, data);
+    }
+
+    #[test]
+    fn test_pgp_wordlists_roundtrip() {
+        use crate::wordlists;
+
+        // Load the real PGP wordlists
+        let pgp_even = wordlists::pgp_even();
+        let pgp_odd = wordlists::pgp_odd();
+
+        // Create alternating dictionary
+        let dict = AlternatingWordDictionary::new(vec![pgp_even, pgp_odd], "-".to_string());
+
+        // Test encoding all possible byte values (0-255)
+        let all_bytes: Vec<u8> = (0..=255).collect();
+        let encoded = encode(&all_bytes, &dict).unwrap();
+
+        // Decode and verify roundtrip
+        let decoded = decode(&encoded, &dict).unwrap();
+        assert_eq!(decoded, all_bytes);
+
+        // Test a specific pattern
+        let test_data = vec![0x42, 0xAB, 0xCD, 0xEF];
+        let encoded_test = encode(&test_data, &dict).unwrap();
+        let decoded_test = decode(&encoded_test, &dict).unwrap();
+        assert_eq!(decoded_test, test_data);
+    }
+
+    #[test]
+    fn test_pgp_wordlists_have_256_words() {
+        use crate::wordlists;
+
+        let pgp_even = wordlists::pgp_even();
+        let pgp_odd = wordlists::pgp_odd();
+
+        // Verify both dictionaries have exactly 256 words
+        assert_eq!(pgp_even.base(), 256);
+        assert_eq!(pgp_odd.base(), 256);
     }
 }

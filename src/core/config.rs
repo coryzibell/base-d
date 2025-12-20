@@ -652,14 +652,13 @@ impl DictionaryRegistry {
             dictionaries.push(sub_dict);
         }
 
-        // Get delimiter and case sensitivity from parent config
+        // Get delimiter from parent config
         let delimiter = config.delimiter.clone().unwrap_or_else(|| " ".to_string());
-        let case_sensitive = config.case_sensitive.unwrap_or(false);
+        // Note: case_sensitive is now handled by individual sub-dictionaries
 
         Ok(crate::AlternatingWordDictionary::new(
             dictionaries,
             delimiter,
-            case_sensitive,
         ))
     }
 
