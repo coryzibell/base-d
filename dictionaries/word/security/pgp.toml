@@ -1,0 +1,9 @@
+# PGP Biometric Word List (Alternating)
+# Uses different word lists for even/odd byte positions
+# 256 words per list (8 bits per word)
+# Designed for reading/verifying cryptographic fingerprints
+
+type = "word"
+alternating = ["pgp_even", "pgp_odd"]
+delimiter = "-"
+case_sensitive = false

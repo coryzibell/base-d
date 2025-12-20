@@ -74,6 +74,9 @@ pub struct DictionaryConfig {
     /// Whether word matching is case-sensitive (default: false)
     #[serde(default)]
     pub case_sensitive: Option<bool>,
+    /// Names of sub-dictionaries for alternating word encoding (e.g., ["pgp_even", "pgp_odd"])
+    #[serde(default)]
+    pub alternating: Option<Vec<String>>,
 
     // === Common fields ===
     /// The encoding mode to use (auto-detected if not specified)
@@ -100,6 +103,7 @@ impl Default for DictionaryConfig {
             words_file: None,
             delimiter: None,
             case_sensitive: None,
+            alternating: None,
             mode: None,
             padding: None,
             common: true, // default to common for random selection
@@ -564,6 +568,100 @@ impl DictionaryRegistry {
         }
 
         builder.build()
+    }
+
+    /// Builds an AlternatingWordDictionary from a named configuration.
+    ///
+    /// This is used for PGP-style biometric word lists where even/odd bytes
+    /// use different dictionaries.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if:
+    /// - Dictionary not found
+    /// - Dictionary is not word-type
+    /// - Dictionary does not have alternating field set
+    /// - Any of the sub-dictionaries cannot be loaded
+    ///
+    /// # Example
+    /// ```ignore
+    /// # use base_d::DictionaryRegistry;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let registry = DictionaryRegistry::load_default()?;
+    /// let dict = registry.alternating_word_dictionary("pgp")?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn alternating_word_dictionary(
+        &self,
+        name: &str,
+    ) -> Result<crate::AlternatingWordDictionary, crate::encoders::algorithms::errors::DictionaryNotFoundError>
+    {
+        let config = self.get_dictionary(name).ok_or_else(|| {
+            crate::encoders::algorithms::errors::DictionaryNotFoundError::new(name)
+        })?;
+
+        // Verify it's a word dictionary
+        if config.dictionary_type != DictionaryType::Word {
+            return Err(
+                crate::encoders::algorithms::errors::DictionaryNotFoundError::with_cause(
+                    name,
+                    format!(
+                        "Dictionary '{}' is not a word dictionary (type is {:?})",
+                        name, config.dictionary_type
+                    ),
+                ),
+            );
+        }
+
+        // Verify it has alternating field
+        let alternating_names = config.alternating.as_ref().ok_or_else(|| {
+            crate::encoders::algorithms::errors::DictionaryNotFoundError::with_cause(
+                name,
+                format!(
+                    "Dictionary '{}' is not an alternating dictionary (missing 'alternating' field)",
+                    name
+                ),
+            )
+        })?;
+
+        self.build_alternating_word_dictionary(config, alternating_names)
+            .map_err(|e| {
+                crate::encoders::algorithms::errors::DictionaryNotFoundError::with_cause(name, e)
+            })
+    }
+
+    /// Internal helper to build an AlternatingWordDictionary from a DictionaryConfig.
+    fn build_alternating_word_dictionary(
+        &self,
+        config: &DictionaryConfig,
+        alternating_names: &[String],
+    ) -> Result<crate::AlternatingWordDictionary, String> {
+        if alternating_names.is_empty() {
+            return Err("Alternating dictionary must have at least one sub-dictionary".to_string());
+        }
+
+        // Load all sub-dictionaries
+        let mut dictionaries = Vec::with_capacity(alternating_names.len());
+        for dict_name in alternating_names {
+            let sub_dict = self
+                .word_dictionary(dict_name)
+                .map_err(|e| format!("Failed to load sub-dictionary '{}': {}", dict_name, e))?;
+            dictionaries.push(sub_dict);
+        }
+
+        // Get delimiter and case sensitivity from parent config
+        let delimiter = config
+            .delimiter
+            .clone()
+            .unwrap_or_else(|| " ".to_string());
+        let case_sensitive = config.case_sensitive.unwrap_or(false);
+
+        Ok(crate::AlternatingWordDictionary::new(
+            dictionaries,
+            delimiter,
+            case_sensitive,
+        ))
     }
 
     /// Returns the dictionary type for a named dictionary.
