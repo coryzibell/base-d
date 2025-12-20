@@ -103,7 +103,7 @@ fn process_toml_file(base_dir: &Path, toml_path: &Path, output: &mut fs::File) {
     writeln!(
         output,
         "        let toml_content = include_str!(concat!(env!(\"CARGO_MANIFEST_DIR\"), \"/dictionaries/{}\"));",
-        rel_path
+        rel_path.replace('\\', "/")
     ).unwrap();
     writeln!(
         output,
@@ -143,7 +143,7 @@ fn embed_wordlists(base_dir: &Path, output: &mut fs::File) {
                 output,
                 "        \"{}\" => Some(include_str!(concat!(env!(\"CARGO_MANIFEST_DIR\"), \"/dictionaries/{}\"))),",
                 filename,
-                rel_path
+                rel_path.replace('\\', "/")
             ).unwrap();
         }
     }).expect("Failed to walk word directory");
