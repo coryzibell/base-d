@@ -13,8 +13,10 @@ keywords = ["encoding", "base64", "cli", "unicode", "converter"]
 categories = ["command-line-utilities", "encoding", "text-processing"]
 
 [features]
-default = ["simd"]
+default = ["simd", "native-compression"]
 simd = []  # Enable SIMD acceleration (AVX2/SSSE3 on x86_64, NEON on aarch64)
+native-compression = ["dep:lz4", "dep:xz2", "dep:zstd"]
+wasm = ["lz4_flex", "lzma-rs", "ruzstd"]
 
 [dependencies]
 num-bigint = "0.4"
@@ -30,10 +32,14 @@ terminal_size = "0.4"
 crossterm = "0.29"
 flate2 = "1.0"
 brotli = "8.0"
-zstd = "0.13"
-lz4 = "1.28"
+zstd = { version = "0.13", optional = true }
+lz4 = { version = "1.28", optional = true }
 snap = "1.1.1"
-xz2 = "0.1.7"
+xz2 = { version = "0.1.7", optional = true }
+# Pure-Rust compression alternatives for WASM
+lz4_flex = { version = "0.11", optional = true }
+lzma-rs = { version = "0.3", optional = true }
+ruzstd = { version = "0.7", optional = true }
 sha2 = "0.10.9"
 sha3 = "0.10.8"
 blake2 = "0.10.6"

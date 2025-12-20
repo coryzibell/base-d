@@ -127,16 +127,42 @@ fn decompress_gzip(data: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     Ok(result)
 }
 
+#[cfg(feature = "native-compression")]
 fn compress_zstd(data: &[u8], level: u32) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     Ok(zstd::encode_all(data, level as i32)?)
 }
 
+#[cfg(feature = "native-compression")]
 fn decompress_zstd(data: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     use std::io::Cursor;
 
     let mut decoder = zstd::Decoder::new(Cursor::new(data))?.take(MAX_DECOMPRESS_SIZE as u64);
     let mut result = Vec::new();
     let bytes_read = decoder.read_to_end(&mut result)?;
+
+    // Check if we hit the limit (possible decompression bomb)
+    if bytes_read == MAX_DECOMPRESS_SIZE {
+        return Err("Decompressed output exceeds 100MB limit (possible decompression bomb)".into());
+    }
+
+    Ok(result)
+}
+
+#[cfg(all(feature = "wasm", not(feature = "native-compression")))]
+fn compress_zstd(_data: &[u8], _level: u32) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    // ruzstd is decode-only, no encoding support in WASM
+    Err("Zstd compression not supported in WASM (ruzstd is decode-only)".into())
+}
+
+#[cfg(all(feature = "wasm", not(feature = "native-compression")))]
+fn decompress_zstd(data: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    use std::io::Cursor;
+
+    let decoder = ruzstd::StreamingDecoder::new(Cursor::new(data))?;
+    let mut result = Vec::new();
+    let bytes_read = decoder
+        .take(MAX_DECOMPRESS_SIZE as u64)
+        .read_to_end(&mut result)?;
 
     // Check if we hit the limit (possible decompression bomb)
     if bytes_read == MAX_DECOMPRESS_SIZE {
@@ -166,15 +192,29 @@ fn decompress_brotli(data: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>>
     Ok(result)
 }
 
+#[cfg(feature = "native-compression")]
 fn compress_lz4(data: &[u8], _level: u32) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     // LZ4 doesn't use compression levels in the same way
     Ok(lz4::block::compress(data, None, false)?)
 }
 
+#[cfg(feature = "native-compression")]
 fn decompress_lz4(data: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     // We need to know the uncompressed size for LZ4, but we don't have it
     // Use a reasonable max size (100MB)
     Ok(lz4::block::decompress(data, Some(100 * 1024 * 1024))?)
+}
+
+#[cfg(all(feature = "wasm", not(feature = "native-compression")))]
+fn compress_lz4(data: &[u8], _level: u32) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    // lz4_flex prepends the size automatically
+    Ok(lz4_flex::compress_prepend_size(data))
+}
+
+#[cfg(all(feature = "wasm", not(feature = "native-compression")))]
+fn decompress_lz4(data: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    // lz4_flex reads the prepended size automatically
+    Ok(lz4_flex::decompress_size_prepended(data)?)
 }
 
 fn compress_snappy(data: &[u8], _level: u32) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
@@ -195,6 +235,7 @@ fn decompress_snappy(data: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>>
     Ok(result)
 }
 
+#[cfg(feature = "native-compression")]
 fn compress_lzma(data: &[u8], level: u32) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     use xz2::write::XzEncoder;
 
@@ -203,6 +244,7 @@ fn compress_lzma(data: &[u8], level: u32) -> Result<Vec<u8>, Box<dyn std::error:
     Ok(encoder.finish()?)
 }
 
+#[cfg(feature = "native-compression")]
 fn decompress_lzma(data: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     use xz2::read::XzDecoder;
 
@@ -212,6 +254,30 @@ fn decompress_lzma(data: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
 
     // Check if we hit the limit (possible decompression bomb)
     if bytes_read == MAX_DECOMPRESS_SIZE {
+        return Err("Decompressed output exceeds 100MB limit (possible decompression bomb)".into());
+    }
+
+    Ok(result)
+}
+
+#[cfg(all(feature = "wasm", not(feature = "native-compression")))]
+fn compress_lzma(data: &[u8], _level: u32) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    use std::io::Cursor;
+
+    let mut output = Vec::new();
+    lzma_rs::lzma_compress(&mut Cursor::new(data), &mut output)?;
+    Ok(output)
+}
+
+#[cfg(all(feature = "wasm", not(feature = "native-compression")))]
+fn decompress_lzma(data: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    use std::io::Cursor;
+
+    let mut result = Vec::new();
+    lzma_rs::lzma_decompress(&mut Cursor::new(data), &mut result)?;
+
+    // Check if we hit the limit (possible decompression bomb)
+    if result.len() > MAX_DECOMPRESS_SIZE {
         return Err("Decompressed output exceeds 100MB limit (possible decompression bomb)".into());
     }
 

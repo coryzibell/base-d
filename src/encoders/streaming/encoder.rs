@@ -132,7 +132,6 @@ impl<'a, W: Write> StreamingEncoder<'a, W> {
         algo: CompressionAlgorithm,
     ) -> std::io::Result<Option<Vec<u8>>> {
         use flate2::write::GzEncoder;
-        use xz2::write::XzEncoder;
 
         let hasher = self
             .hash_algo
@@ -146,6 +145,7 @@ impl<'a, W: Write> StreamingEncoder<'a, W> {
                 encoder.finish()?;
                 Ok(hash)
             }
+            #[cfg(feature = "native-compression")]
             CompressionAlgorithm::Zstd => {
                 let mut encoder =
                     zstd::stream::write::Encoder::new(output, self.compress_level as i32)
@@ -154,16 +154,40 @@ impl<'a, W: Write> StreamingEncoder<'a, W> {
                 encoder.finish()?;
                 Ok(hash)
             }
+            #[cfg(all(feature = "wasm", not(feature = "native-compression")))]
+            CompressionAlgorithm::Zstd => {
+                // ruzstd is decode-only, buffer and use block compression
+                Err(std::io::Error::other(
+                    "Zstd compression not supported in WASM (ruzstd is decode-only)",
+                ))
+            }
             CompressionAlgorithm::Brotli => {
                 let mut encoder =
                     brotli::CompressorWriter::new(output, 4096, self.compress_level, 22);
                 let hash = Self::copy_with_hash(reader, &mut encoder, hasher)?;
                 Ok(hash)
             }
+            #[cfg(feature = "native-compression")]
             CompressionAlgorithm::Lzma => {
+                use xz2::write::XzEncoder;
                 let mut encoder = XzEncoder::new(output, self.compress_level);
                 let hash = Self::copy_with_hash(reader, &mut encoder, hasher)?;
                 encoder.finish()?;
+                Ok(hash)
+            }
+            #[cfg(all(feature = "wasm", not(feature = "native-compression")))]
+            CompressionAlgorithm::Lzma => {
+                // lzma-rs doesn't have streaming writer, buffer all
+                let mut buffer = Vec::new();
+                reader.read_to_end(&mut buffer)?;
+
+                let hash = self
+                    .hash_algo
+                    .map(|algo| crate::features::hashing::hash(&buffer, algo));
+
+                use std::io::Cursor;
+                lzma_rs::lzma_compress(&mut Cursor::new(&buffer), output)
+                    .map_err(std::io::Error::other)?;
                 Ok(hash)
             }
             CompressionAlgorithm::Lz4 | CompressionAlgorithm::Snappy => {
@@ -177,9 +201,12 @@ impl<'a, W: Write> StreamingEncoder<'a, W> {
                     .map(|algo| crate::features::hashing::hash(&buffer, algo));
 
                 let compressed = match algo {
+                    #[cfg(feature = "native-compression")]
                     CompressionAlgorithm::Lz4 => {
                         lz4::block::compress(&buffer, None, false).map_err(std::io::Error::other)?
                     }
+                    #[cfg(all(feature = "wasm", not(feature = "native-compression")))]
+                    CompressionAlgorithm::Lz4 => lz4_flex::compress_prepend_size(&buffer),
                     CompressionAlgorithm::Snappy => {
                         let mut encoder = snap::raw::Encoder::new();
                         encoder
