@@ -1,0 +1,5 @@
+# Standard Base64 (RFC 4648) - Radix mode
+# Standard alphabet for base64 encoding
+
+chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+mode = "radix"
