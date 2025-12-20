@@ -42,8 +42,8 @@
 //! assert_eq!(decoded, data);
 //! ```
 
-use crate::core::alternating_dictionary::AlternatingWordDictionary;
 use super::errors::DecodeError;
+use crate::core::alternating_dictionary::AlternatingWordDictionary;
 
 /// Encodes binary data using alternating word dictionaries.
 ///
@@ -126,7 +126,10 @@ pub fn encode(data: &[u8], dictionary: &AlternatingWordDictionary) -> String {
 /// let decoded = word_alternating::decode(encoded, &dict).unwrap();
 /// assert_eq!(decoded, vec![0x00, 0x01, 0x02]);
 /// ```
-pub fn decode(encoded: &str, dictionary: &AlternatingWordDictionary) -> Result<Vec<u8>, DecodeError> {
+pub fn decode(
+    encoded: &str,
+    dictionary: &AlternatingWordDictionary,
+) -> Result<Vec<u8>, DecodeError> {
     if encoded.is_empty() {
         return Ok(Vec::new());
     }
@@ -141,13 +144,14 @@ pub fn decode(encoded: &str, dictionary: &AlternatingWordDictionary) -> Result<V
     let mut result = Vec::with_capacity(words.len());
 
     for (pos, word) in words.iter().enumerate() {
-        let byte = dictionary
-            .decode_word(word.trim(), pos)
-            .ok_or_else(|| DecodeError::InvalidWord {
-                word: word.to_string(),
-                position: pos,
-                input: encoded.to_string(),
-            })?;
+        let byte =
+            dictionary
+                .decode_word(word.trim(), pos)
+                .ok_or_else(|| DecodeError::InvalidWord {
+                    word: word.to_string(),
+                    position: pos,
+                    input: encoded.to_string(),
+                })?;
         result.push(byte);
     }
 
@@ -164,15 +168,9 @@ mod tests {
         let even_words: Vec<String> = (0..256).map(|i| format!("even{}", i)).collect();
         let odd_words: Vec<String> = (0..256).map(|i| format!("odd{}", i)).collect();
 
-        let even = WordDictionary::builder()
-            .words(even_words)
-            .build()
-            .unwrap();
+        let even = WordDictionary::builder().words(even_words).build().unwrap();
 
-        let odd = WordDictionary::builder()
-            .words(odd_words)
-            .build()
-            .unwrap();
+        let odd = WordDictionary::builder().words(odd_words).build().unwrap();
 
         AlternatingWordDictionary::new(vec![even, odd], "-".to_string(), false)
     }

@@ -78,7 +78,9 @@ pub fn handle(
     let mut data = match &built_dict {
         BuiltDictionary::Char(dict) => base_d::decode(input_text.trim(), dict)?,
         BuiltDictionary::Word(dict) => base_d::word::decode(input_text.trim(), dict)?,
-        BuiltDictionary::Alternating(dict) => base_d::word_alternating::decode(input_text.trim(), dict)?,
+        BuiltDictionary::Alternating(dict) => {
+            base_d::word_alternating::decode(input_text.trim(), dict)?
+        }
     };
 
     // Step 2: Decompress if requested

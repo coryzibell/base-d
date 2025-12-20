@@ -280,8 +280,7 @@ mod tests {
             .build()
             .unwrap();
 
-        let alternating =
-            AlternatingWordDictionary::new(vec![even, odd], "-".to_string(), true);
+        let alternating = AlternatingWordDictionary::new(vec![even, odd], "-".to_string(), true);
 
         assert_eq!(alternating.decode_word("Aardvark", 0), Some(0));
         assert_eq!(alternating.decode_word("aardvark", 0), None);

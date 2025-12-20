@@ -595,8 +595,10 @@ impl DictionaryRegistry {
     pub fn alternating_word_dictionary(
         &self,
         name: &str,
-    ) -> Result<crate::AlternatingWordDictionary, crate::encoders::algorithms::errors::DictionaryNotFoundError>
-    {
+    ) -> Result<
+        crate::AlternatingWordDictionary,
+        crate::encoders::algorithms::errors::DictionaryNotFoundError,
+    > {
         let config = self.get_dictionary(name).ok_or_else(|| {
             crate::encoders::algorithms::errors::DictionaryNotFoundError::new(name)
         })?;
@@ -651,10 +653,7 @@ impl DictionaryRegistry {
         }
 
         // Get delimiter and case sensitivity from parent config
-        let delimiter = config
-            .delimiter
-            .clone()
-            .unwrap_or_else(|| " ".to_string());
+        let delimiter = config.delimiter.clone().unwrap_or_else(|| " ".to_string());
         let case_sensitive = config.case_sensitive.unwrap_or(false);
 
         Ok(crate::AlternatingWordDictionary::new(

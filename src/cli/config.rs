@@ -1,4 +1,6 @@
-use base_d::{AlternatingWordDictionary, Dictionary, DictionaryRegistry, DictionaryType, WordDictionary};
+use base_d::{
+    AlternatingWordDictionary, Dictionary, DictionaryRegistry, DictionaryType, WordDictionary,
+};
 use std::fs;
 use std::io::{self, Read};
 use std::path::PathBuf;

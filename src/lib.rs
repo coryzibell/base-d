@@ -157,10 +157,10 @@ pub use convenience::{
     CompressEncodeResult, HashEncodeResult, compress_encode, compress_encode_with, hash_encode,
     hash_encode_with,
 };
+pub use core::alternating_dictionary::AlternatingWordDictionary;
 pub use core::config::{
     CompressionConfig, DictionaryConfig, DictionaryRegistry, DictionaryType, EncodingMode, Settings,
 };
-pub use core::alternating_dictionary::AlternatingWordDictionary;
 pub use core::dictionary::{Dictionary, DictionaryBuilder};
 pub use core::word_dictionary::{WordDictionary, WordDictionaryBuilder};
 pub use encoders::algorithms::{DecodeError, DictionaryNotFoundError, find_closest_dictionary};
