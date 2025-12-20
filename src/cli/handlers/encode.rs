@@ -114,6 +114,7 @@ pub fn handle(
     let encoded = match &built_dict {
         BuiltDictionary::Char(dict) => base_d::encode(&data, dict),
         BuiltDictionary::Word(dict) => base_d::word::encode(&data, dict),
+        BuiltDictionary::Alternating(dict) => base_d::word_alternating::encode(&data, dict)?,
     };
 
     // Step 4: Output encoded result

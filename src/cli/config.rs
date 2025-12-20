@@ -1,12 +1,15 @@
-use base_d::{Dictionary, DictionaryRegistry, DictionaryType, WordDictionary};
+use base_d::{
+    AlternatingWordDictionary, Dictionary, DictionaryRegistry, DictionaryType, WordDictionary,
+};
 use std::fs;
 use std::io::{self, Read};
 use std::path::PathBuf;
 
-/// Result of building a dictionary - either character-based or word-based.
+/// Result of building a dictionary - either character-based, word-based, or alternating word-based.
 pub enum BuiltDictionary {
     Char(Dictionary),
     Word(WordDictionary),
+    Alternating(AlternatingWordDictionary),
 }
 
 /// Validates that a file path is within the allowed base-d config directory.
@@ -96,8 +99,15 @@ pub fn create_any_dictionary(
 
     match dict_type {
         DictionaryType::Word => {
-            let word_dict = config.word_dictionary(name)?;
-            Ok(BuiltDictionary::Word(word_dict))
+            // Check if this is an alternating dictionary
+            let dict_config = config.get_dictionary(name).unwrap();
+            if dict_config.alternating.is_some() {
+                let alternating_dict = config.alternating_word_dictionary(name)?;
+                Ok(BuiltDictionary::Alternating(alternating_dict))
+            } else {
+                let word_dict = config.word_dictionary(name)?;
+                Ok(BuiltDictionary::Word(word_dict))
+            }
         }
         DictionaryType::Char => {
             let char_dict = create_dictionary(config, name)?;

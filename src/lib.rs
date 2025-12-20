@@ -157,6 +157,7 @@ pub use convenience::{
     CompressEncodeResult, HashEncodeResult, compress_encode, compress_encode_with, hash_encode,
     hash_encode_with,
 };
+pub use core::alternating_dictionary::AlternatingWordDictionary;
 pub use core::config::{
     CompressionConfig, DictionaryConfig, DictionaryRegistry, DictionaryType, EncodingMode, Settings,
 };
@@ -170,6 +171,14 @@ pub use encoders::algorithms::{DecodeError, DictionaryNotFoundError, find_closes
 /// but outputs words joined by a delimiter instead of concatenated characters.
 pub mod word {
     pub use crate::encoders::algorithms::word::{decode, encode};
+}
+
+/// Alternating word-based encoding for PGP-style biometric word lists.
+///
+/// Provides direct 1:1 byte-to-word mapping where the dictionary selection
+/// alternates based on byte position (e.g., even/odd bytes use different dictionaries).
+pub mod word_alternating {
+    pub use crate::encoders::algorithms::word_alternating::{decode, encode};
 }
 pub use encoders::streaming::{StreamingDecoder, StreamingEncoder};
 
