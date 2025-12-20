@@ -11,7 +11,7 @@ base-d's command line interface. Encode, decode, hash, compress — all in one t
 | `detect` | — | Auto-detect dictionary and decode |
 | `hash` | — | Compute hash of data |
 | `schema` | — | Compact binary encoding (carrier98) |
-| `fiche` | — | Model-readable structured format |
+| `stele` | — | Model-readable structured format |
 | `config` | — | List dictionaries, algorithms, hashes |
 | `neo` | — | Matrix mode (the fun one) |
 
@@ -230,27 +230,27 @@ echo '{"data": [...]}' | base-d schema --compress zstd
 
 ---
 
-## fiche
+## stele
 
 Model-readable structured format. Designed for LLM context windows.
 
 ```bash
-base-d fiche [encode|decode] [OPTIONS] [INPUT]
+base-d stele [encode|decode] [OPTIONS] [INPUT]
 ```
 
 ### Examples
 
 ```bash
 # Encode JSON
-echo '{"user": "neo", "role": "admin"}' | base-d fiche encode
+echo '{"user": "neo", "role": "admin"}' | base-d stele encode
 # ᚠuser᛬neo᛫ᚠrole᛬admin
 
 # Decode back
-echo 'ᚠuser᛬neo᛫ᚠrole᛬admin' | base-d fiche decode
+echo 'ᚠuser᛬neo᛫ᚠrole᛬admin' | base-d stele decode
 # {"user": "neo", "role": "admin"}
 
 # Pretty output
-base-d fiche decode --pretty < encoded.fiche
+base-d stele decode --pretty < encoded.stele
 ```
 
 ### Modes
@@ -272,10 +272,10 @@ base-d fiche decode --pretty < encoded.fiche
 
 ```bash
 # Explicit mode
-echo '{"a": 1}' | base-d fiche encode --mode ascii
+echo '{"a": 1}' | base-d stele encode --mode ascii
 ```
 
-[More on fiche encoding →](SCHEMA.md)
+[More on stele encoding →](SCHEMA.md)
 
 ---
 

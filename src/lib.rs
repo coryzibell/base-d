@@ -184,15 +184,14 @@ pub use encoders::streaming::{StreamingDecoder, StreamingEncoder};
 
 // Expose schema encoding functions for CLI
 pub use encoders::algorithms::schema::{
-    SchemaCompressionAlgo, decode_fiche, decode_fiche_path, decode_schema, encode_fiche,
-    encode_fiche_ascii, encode_fiche_light, encode_fiche_minified, encode_fiche_path,
-    encode_fiche_readable, encode_markdown_fiche, encode_markdown_fiche_ascii,
-    encode_markdown_fiche_light, encode_markdown_fiche_markdown, encode_markdown_fiche_readable,
-    encode_schema,
+    SchemaCompressionAlgo, decode_schema, decode_stele, decode_stele_path, encode_markdown_stele,
+    encode_markdown_stele_ascii, encode_markdown_stele_light, encode_markdown_stele_markdown,
+    encode_markdown_stele_readable, encode_schema, encode_stele, encode_stele_ascii,
+    encode_stele_light, encode_stele_minified, encode_stele_path, encode_stele_readable,
 };
 
-// Expose fiche auto-detection
-pub use encoders::algorithms::schema::fiche_analyzer::{DetectedMode, detect_fiche_mode};
+// Expose stele auto-detection
+pub use encoders::algorithms::schema::stele_analyzer::{DetectedMode, detect_stele_mode};
 
 /// Schema encoding types and traits for building custom frontends
 ///

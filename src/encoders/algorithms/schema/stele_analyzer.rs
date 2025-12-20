@@ -1,14 +1,14 @@
 use serde_json::Value;
 
-/// Detected fiche mode based on JSON structure
+/// Detected stele mode based on JSON structure
 #[derive(Debug, Clone, Copy)]
 pub enum DetectedMode {
     Full,
     Path,
 }
 
-/// Auto-detect the best fiche mode for the given JSON structure
-pub fn detect_fiche_mode(json: &str) -> DetectedMode {
+/// Auto-detect the best stele mode for the given JSON structure
+pub fn detect_stele_mode(json: &str) -> DetectedMode {
     let value: Value = match serde_json::from_str(json) {
         Ok(v) => v,
         Err(_) => return DetectedMode::Full, // Default on parse failure
@@ -216,7 +216,7 @@ mod tests {
     #[test]
     fn test_detect_homogeneous_array() {
         let json = r#"[{"name":"alice"},{"name":"bob"}]"#;
-        let mode = detect_fiche_mode(json);
+        let mode = detect_stele_mode(json);
         assert!(matches!(mode, DetectedMode::Full));
     }
 
@@ -225,14 +225,14 @@ mod tests {
         // Depth: a(1) → b(2) → c(3) → d(4) → e(5) → array items(6)
         // Should trigger path mode due to depth > 4 + indexed arrays
         let json = r#"{"a":{"b":{"c":{"d":{"e":[{"f":1},{"f":2}]}}}}}"#;
-        let mode = detect_fiche_mode(json);
+        let mode = detect_stele_mode(json);
         assert!(matches!(mode, DetectedMode::Path));
     }
 
     #[test]
     fn test_detect_varying_structure() {
         let json = r#"{"items":[{"type":"a","x":1},{"type":"b","y":2}]}"#;
-        let mode = detect_fiche_mode(json);
+        let mode = detect_stele_mode(json);
         // Should detect varying structure
         assert!(matches!(mode, DetectedMode::Path));
     }
@@ -240,14 +240,14 @@ mod tests {
     #[test]
     fn test_detect_simple_object() {
         let json = r#"{"id":1,"name":"alice"}"#;
-        let mode = detect_fiche_mode(json);
+        let mode = detect_stele_mode(json);
         assert!(matches!(mode, DetectedMode::Full));
     }
 
     #[test]
     fn test_detect_wrapper_key() {
         let json = r#"{"results":[{"id":1},{"id":2}]}"#;
-        let mode = detect_fiche_mode(json);
+        let mode = detect_stele_mode(json);
         assert!(matches!(mode, DetectedMode::Full));
     }
 }

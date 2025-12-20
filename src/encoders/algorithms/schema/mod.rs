@@ -2,11 +2,11 @@ pub mod binary_packer;
 pub mod binary_unpacker;
 pub mod compression;
 pub mod display96;
-pub mod fiche;
-pub mod fiche_analyzer;
 pub mod frame;
 pub mod parsers;
 pub mod serializers;
+pub mod stele;
+pub mod stele_analyzer;
 pub mod types;
 
 #[cfg(test)]
@@ -24,9 +24,9 @@ pub use types::{
     FieldDef, FieldType, IntermediateRepresentation, SchemaError, SchemaHeader, SchemaValue,
 };
 
-// Re-export fiche functions for library users
+// Re-export stele functions for library users
 #[allow(unused_imports)]
-pub use fiche::{parse as parse_fiche, serialize as serialize_fiche};
+pub use stele::{parse as parse_stele, serialize as serialize_stele};
 
 /// Encode JSON to schema format: JSON → IR → binary → \[compress\] → display96 → framed
 ///
@@ -135,10 +135,10 @@ pub fn decode_schema(encoded: &str, pretty: bool) -> Result<String, SchemaError>
     JsonSerializer::serialize(&ir, pretty)
 }
 
-/// Encode JSON to fiche format: JSON → IR → fiche
+/// Encode JSON to stele format: JSON → IR → stele
 ///
 /// Transforms JSON into a model-readable structured format using Unicode delimiters.
-/// Unlike carrier98 (opaque binary), fiche is designed for models to parse directly.
+/// Unlike carrier98 (opaque binary), stele is designed for models to parse directly.
 ///
 /// # Format
 ///
@@ -150,82 +150,82 @@ pub fn decode_schema(encoded: &str, pretty: bool) -> Result<String, SchemaError>
 /// # Example
 ///
 /// ```ignore
-/// use base_d::encode_fiche;
+/// use base_d::encode_stele;
 ///
 /// let json = r#"{"users":[{"id":1,"name":"alice"}]}"#;
-/// let fiche = encode_fiche(json)?;
+/// let stele = encode_stele(json)?;
 /// // @users┃id:int┃name:str
 /// // ◉1┃alice
 /// ```
-pub fn encode_fiche(json: &str, minify: bool) -> Result<String, SchemaError> {
-    encode_fiche_with_options(json, minify, true, true)
+pub fn encode_stele(json: &str, minify: bool) -> Result<String, SchemaError> {
+    encode_stele_with_options(json, minify, true, true)
 }
 
-pub fn encode_fiche_minified(json: &str) -> Result<String, SchemaError> {
-    encode_fiche_with_options(json, true, true, true)
+pub fn encode_stele_minified(json: &str) -> Result<String, SchemaError> {
+    encode_stele_with_options(json, true, true, true)
 }
 
-/// Encode JSON to fiche without tokenization (human-readable field names)
-pub fn encode_fiche_readable(json: &str, minify: bool) -> Result<String, SchemaError> {
-    encode_fiche_with_options(json, minify, false, false)
+/// Encode JSON to stele without tokenization (human-readable field names)
+pub fn encode_stele_readable(json: &str, minify: bool) -> Result<String, SchemaError> {
+    encode_stele_with_options(json, minify, false, false)
 }
 
-/// Encode JSON to fiche with field tokenization only (no value dictionary)
-pub fn encode_fiche_light(json: &str, minify: bool) -> Result<String, SchemaError> {
-    encode_fiche_with_options(json, minify, true, false)
+/// Encode JSON to stele with field tokenization only (no value dictionary)
+pub fn encode_stele_light(json: &str, minify: bool) -> Result<String, SchemaError> {
+    encode_stele_with_options(json, minify, true, false)
 }
 
-/// Encode JSON to fiche path mode (one line per leaf value)
-pub fn encode_fiche_path(json: &str) -> Result<String, SchemaError> {
-    fiche::serialize_path_mode(json)
+/// Encode JSON to stele path mode (one line per leaf value)
+pub fn encode_stele_path(json: &str) -> Result<String, SchemaError> {
+    stele::serialize_path_mode(json)
 }
 
-/// Decode fiche path mode to JSON
-pub fn decode_fiche_path(path_input: &str) -> Result<String, SchemaError> {
-    fiche::parse_path_mode(path_input)
+/// Decode stele path mode to JSON
+pub fn decode_stele_path(path_input: &str) -> Result<String, SchemaError> {
+    stele::parse_path_mode(path_input)
 }
 
-/// Encode JSON to ASCII inline fiche format
-pub fn encode_fiche_ascii(json: &str) -> Result<String, SchemaError> {
+/// Encode JSON to ASCII inline stele format
+pub fn encode_stele_ascii(json: &str) -> Result<String, SchemaError> {
     use parsers::{InputParser, JsonParser};
     let ir = JsonParser::parse(json)?;
-    fiche::serialize_ascii(&ir)
+    stele::serialize_ascii(&ir)
 }
 
-/// Encode markdown document to ASCII inline fiche format
-pub fn encode_markdown_fiche_ascii(markdown: &str) -> Result<String, SchemaError> {
+/// Encode markdown document to ASCII inline stele format
+pub fn encode_markdown_stele_ascii(markdown: &str) -> Result<String, SchemaError> {
     use parsers::{InputParser, MarkdownDocParser};
     let ir = MarkdownDocParser::parse(markdown)?;
-    fiche::serialize_ascii(&ir)
+    stele::serialize_ascii(&ir)
 }
 
-/// Encode markdown document to markdown-like inline fiche format
+/// Encode markdown document to markdown-like inline stele format
 /// Uses #1-#6 for headers, -1/-2 for lists, preserves markdown syntax patterns
-pub fn encode_markdown_fiche_markdown(markdown: &str) -> Result<String, SchemaError> {
+pub fn encode_markdown_stele_markdown(markdown: &str) -> Result<String, SchemaError> {
     use parsers::{InputParser, MarkdownDocParser};
     let ir = MarkdownDocParser::parse(markdown)?;
-    fiche::serialize_markdown(&ir)
+    stele::serialize_markdown(&ir)
 }
 
-/// Encode markdown document to fiche format: markdown → IR → fiche
+/// Encode markdown document to stele format: markdown → IR → stele
 ///
 /// Parses a full markdown document into a simplified block-based representation,
-/// then encodes to fiche format for model-readable output.
-pub fn encode_markdown_fiche(markdown: &str, minify: bool) -> Result<String, SchemaError> {
-    encode_markdown_fiche_with_options(markdown, minify, true, true)
+/// then encodes to stele format for model-readable output.
+pub fn encode_markdown_stele(markdown: &str, minify: bool) -> Result<String, SchemaError> {
+    encode_markdown_stele_with_options(markdown, minify, true, true)
 }
 
-/// Encode markdown to fiche without tokenization (human-readable)
-pub fn encode_markdown_fiche_readable(markdown: &str, minify: bool) -> Result<String, SchemaError> {
-    encode_markdown_fiche_with_options(markdown, minify, false, false)
+/// Encode markdown to stele without tokenization (human-readable)
+pub fn encode_markdown_stele_readable(markdown: &str, minify: bool) -> Result<String, SchemaError> {
+    encode_markdown_stele_with_options(markdown, minify, false, false)
 }
 
-/// Encode markdown to fiche with field tokenization only (no value dictionary)
-pub fn encode_markdown_fiche_light(markdown: &str, minify: bool) -> Result<String, SchemaError> {
-    encode_markdown_fiche_with_options(markdown, minify, true, false)
+/// Encode markdown to stele with field tokenization only (no value dictionary)
+pub fn encode_markdown_stele_light(markdown: &str, minify: bool) -> Result<String, SchemaError> {
+    encode_markdown_stele_with_options(markdown, minify, true, false)
 }
 
-fn encode_markdown_fiche_with_options(
+fn encode_markdown_stele_with_options(
     markdown: &str,
     minify: bool,
     tokenize_fields: bool,
@@ -235,17 +235,17 @@ fn encode_markdown_fiche_with_options(
 
     let ir = MarkdownDocParser::parse(markdown)?;
     match (tokenize_fields, tokenize_values) {
-        (true, true) => fiche::serialize(&ir, minify),
-        (true, false) => fiche::serialize_light(&ir, minify),
-        (false, false) => fiche::serialize_readable(&ir, minify),
+        (true, true) => stele::serialize(&ir, minify),
+        (true, false) => stele::serialize_light(&ir, minify),
+        (false, false) => stele::serialize_readable(&ir, minify),
         (false, true) => {
             // Invalid: can't tokenize values without tokenizing fields
-            fiche::serialize_readable(&ir, minify)
+            stele::serialize_readable(&ir, minify)
         }
     }
 }
 
-fn encode_fiche_with_options(
+fn encode_stele_with_options(
     json: &str,
     minify: bool,
     tokenize_fields: bool,
@@ -255,33 +255,33 @@ fn encode_fiche_with_options(
 
     let ir = JsonParser::parse(json)?;
     match (tokenize_fields, tokenize_values) {
-        (true, true) => fiche::serialize(&ir, minify),
-        (true, false) => fiche::serialize_light(&ir, minify),
-        (false, false) => fiche::serialize_readable(&ir, minify),
+        (true, true) => stele::serialize(&ir, minify),
+        (true, false) => stele::serialize_light(&ir, minify),
+        (false, false) => stele::serialize_readable(&ir, minify),
         (false, true) => {
             // Invalid: can't tokenize values without tokenizing fields
-            fiche::serialize_readable(&ir, minify)
+            stele::serialize_readable(&ir, minify)
         }
     }
 }
 
-/// Decode fiche format to JSON: fiche → IR → JSON
+/// Decode stele format to JSON: stele → IR → JSON
 ///
-/// Reverses the fiche encoding to reconstruct JSON from the model-readable format.
+/// Reverses the stele encoding to reconstruct JSON from the model-readable format.
 ///
 /// # Example
 ///
 /// ```ignore
-/// use base_d::decode_fiche;
+/// use base_d::decode_stele;
 ///
-/// let fiche = "@users┃id:int┃name:str\n◉1┃alice";
-/// let json = decode_fiche(fiche, false)?;
+/// let stele = "@users┃id:int┃name:str\n◉1┃alice";
+/// let json = decode_stele(stele, false)?;
 /// // {"users":[{"id":1,"name":"alice"}]}
 /// ```
-pub fn decode_fiche(fiche_input: &str, pretty: bool) -> Result<String, SchemaError> {
+pub fn decode_stele(stele_input: &str, pretty: bool) -> Result<String, SchemaError> {
     use serializers::{JsonSerializer, OutputSerializer};
 
-    let ir = fiche::parse(fiche_input)?;
+    let ir = stele::parse(stele_input)?;
     JsonSerializer::serialize(&ir, pretty)
 }
 
@@ -529,14 +529,14 @@ mod integration_tests {
         let input = r#"{"people":[{"name":"Luke","height":"172","films":["film/1","film/2"],"vehicles":[]},{"name":"C-3PO","height":"167","films":["film/1","film/2","film/3"],"vehicles":[]}]}"#;
         let ir = JsonParser::parse(input).unwrap();
 
-        // Verify fiche representation (readable mode for string matching)
-        let fiche_output = fiche::serialize_readable(&ir, false).unwrap();
+        // Verify stele representation (readable mode for string matching)
+        let stele_output = stele::serialize_readable(&ir, false).unwrap();
 
         // Should have @people root key
-        assert!(fiche_output.starts_with("@people"));
+        assert!(stele_output.starts_with("@people"));
         // Primitive arrays now inline with superscript + ⟦⟧ syntax
-        assert!(fiche_output.contains("filmsˢ⟦⟧"));
-        assert!(fiche_output.contains("vehiclesˢ⟦⟧"));
+        assert!(stele_output.contains("filmsˢ⟦⟧"));
+        assert!(stele_output.contains("vehiclesˢ⟦⟧"));
 
         // Verify round trip - arrays become indexed objects
         let binary = pack(&ir);
@@ -811,18 +811,18 @@ mod integration_tests {
     fn test_nested_object_roundtrip_single_level() {
         let input = r#"{"id":"A1","name":"Jim","grade":{"math":60,"physics":66,"chemistry":61}}"#;
 
-        // JSON → IR → fiche (readable for string matching)
+        // JSON → IR → stele (readable for string matching)
         let ir = JsonParser::parse(input).unwrap();
-        let fiche = fiche::serialize_readable(&ir, false).unwrap();
+        let stele = stele::serialize_readable(&ir, false).unwrap();
 
         // Verify flattened field names with ჻ and superscript types
-        assert!(fiche.contains("grade჻mathⁱ"));
-        assert!(fiche.contains("grade჻physicsⁱ"));
-        assert!(fiche.contains("grade჻chemistryⁱ"));
+        assert!(stele.contains("grade჻mathⁱ"));
+        assert!(stele.contains("grade჻physicsⁱ"));
+        assert!(stele.contains("grade჻chemistryⁱ"));
 
-        // fiche → IR → JSON (using tokenized format for roundtrip)
-        let tokenized = fiche::serialize(&ir, false).unwrap();
-        let ir2 = fiche::parse(&tokenized).unwrap();
+        // stele → IR → JSON (using tokenized format for roundtrip)
+        let tokenized = stele::serialize(&ir, false).unwrap();
+        let ir2 = stele::parse(&tokenized).unwrap();
         let output = JsonSerializer::serialize(&ir2, false).unwrap();
 
         // Compare JSON
@@ -836,14 +836,14 @@ mod integration_tests {
         let input = r#"{"a":{"b":{"c":{"d":42}}}}"#;
 
         let ir = JsonParser::parse(input).unwrap();
-        let fiche = fiche::serialize_readable(&ir, false).unwrap();
+        let stele = stele::serialize_readable(&ir, false).unwrap();
 
         // Verify deep nesting with ჻ and superscript type
-        assert!(fiche.contains("a჻b჻c჻dⁱ"));
+        assert!(stele.contains("a჻b჻c჻dⁱ"));
 
         // Roundtrip with tokenized format
-        let tokenized = fiche::serialize(&ir, false).unwrap();
-        let ir2 = fiche::parse(&tokenized).unwrap();
+        let tokenized = stele::serialize(&ir, false).unwrap();
+        let ir2 = stele::parse(&tokenized).unwrap();
         let output = JsonSerializer::serialize(&ir2, false).unwrap();
 
         let input_value: serde_json::Value = serde_json::from_str(input).unwrap();
@@ -856,16 +856,16 @@ mod integration_tests {
         let input = r#"{"students":[{"id":"A1","name":"Jim","grade":{"math":60,"physics":66}},{"id":"B2","name":"Sara","grade":{"math":85,"physics":90}}]}"#;
 
         let ir = JsonParser::parse(input).unwrap();
-        let fiche = fiche::serialize_readable(&ir, false).unwrap();
+        let stele = stele::serialize_readable(&ir, false).unwrap();
 
         // Verify root key and flattened nested fields with superscript types
-        assert!(fiche.starts_with("@students"));
-        assert!(fiche.contains("grade჻mathⁱ"));
-        assert!(fiche.contains("grade჻physicsⁱ"));
+        assert!(stele.starts_with("@students"));
+        assert!(stele.contains("grade჻mathⁱ"));
+        assert!(stele.contains("grade჻physicsⁱ"));
 
         // Roundtrip with tokenized format
-        let tokenized = fiche::serialize(&ir, false).unwrap();
-        let ir2 = fiche::parse(&tokenized).unwrap();
+        let tokenized = stele::serialize(&ir, false).unwrap();
+        let ir2 = stele::parse(&tokenized).unwrap();
         let output = JsonSerializer::serialize(&ir2, false).unwrap();
 
         let input_value: serde_json::Value = serde_json::from_str(input).unwrap();
@@ -879,18 +879,18 @@ mod integration_tests {
         let input = r#"{"person":{"name":"Alice","tags":["admin","user"],"address":{"city":"Boston","zip":"02101"}}}"#;
 
         let ir = JsonParser::parse(input).unwrap();
-        let fiche = fiche::serialize_readable(&ir, false).unwrap();
+        let stele = stele::serialize_readable(&ir, false).unwrap();
 
         // Verify both object nesting and inline primitive arrays with superscript types
-        assert!(fiche.contains("person჻nameˢ"));
+        assert!(stele.contains("person჻nameˢ"));
         // Primitive arrays now inline with superscript + ⟦⟧ syntax
-        assert!(fiche.contains("person჻tagsˢ⟦⟧"));
-        assert!(fiche.contains("person჻address჻cityˢ"));
-        assert!(fiche.contains("person჻address჻zipˢ"));
+        assert!(stele.contains("person჻tagsˢ⟦⟧"));
+        assert!(stele.contains("person჻address჻cityˢ"));
+        assert!(stele.contains("person჻address჻zipˢ"));
 
         // Roundtrip with tokenized format
-        let tokenized = fiche::serialize(&ir, false).unwrap();
-        let ir2 = fiche::parse(&tokenized).unwrap();
+        let tokenized = stele::serialize(&ir, false).unwrap();
+        let ir2 = stele::parse(&tokenized).unwrap();
         let output = JsonSerializer::serialize(&ir2, false).unwrap();
 
         // Arrays are properly reconstructed
