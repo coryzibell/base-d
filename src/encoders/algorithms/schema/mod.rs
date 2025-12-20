@@ -18,7 +18,7 @@ pub use binary_unpacker::unpack;
 pub use compression::SchemaCompressionAlgo;
 pub use frame::{decode_framed, encode_framed};
 pub use parsers::{InputParser, JsonParser};
-// MarkdownDocParser used internally by encode_markdown_fiche_* functions
+// MarkdownDocParser used internally by encode_markdown_stele_* functions
 pub use serializers::{JsonSerializer, OutputSerializer};
 pub use types::{
     FieldDef, FieldType, IntermediateRepresentation, SchemaError, SchemaHeader, SchemaValue,

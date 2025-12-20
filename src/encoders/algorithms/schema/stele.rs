@@ -35,7 +35,7 @@ use super::types::{
     SchemaError, SchemaHeader, SchemaValue,
 };
 
-// Fiche delimiters
+// Stele delimiters
 pub const ROW_START: char = '◉'; // U+25C9 fisheye
 pub const FIELD_SEP: char = '┃'; // U+2503 heavy pipe
 pub const ARRAY_SEP: char = '◈'; // U+25C8 diamond in diamond
@@ -1807,28 +1807,28 @@ mod tests {
     #[test]
     fn test_simple_roundtrip() {
         // Superscript format (spec 1.7+), non-tokenized for clarity
-        let fiche = "@users┃idⁱ┃nameˢ┃activeᵇ
+        let stele = "@users┃idⁱ┃nameˢ┃activeᵇ
 ◉1┃alice┃true
 ◉2┃bob┃false";
 
-        let ir = parse(fiche).unwrap();
+        let ir = parse(stele).unwrap();
         assert_eq!(ir.header.row_count, 2);
         assert_eq!(ir.header.fields.len(), 3);
         assert_eq!(ir.header.root_key, Some("users".to_string()));
 
         // Use readable (non-tokenized) for roundtrip
         let output = serialize_readable(&ir, false).unwrap();
-        assert_eq!(output, fiche);
+        assert_eq!(output, stele);
     }
 
     #[test]
     fn test_tokenized_roundtrip() {
         // Non-tokenized input
-        let fiche = "@users┃idⁱ┃nameˢ┃activeᵇ
+        let stele = "@users┃idⁱ┃nameˢ┃activeᵇ
 ◉1┃alice┃true
 ◉2┃bob┃false";
 
-        let ir = parse(fiche).unwrap();
+        let ir = parse(stele).unwrap();
 
         // Tokenized output should have token map
         let tokenized = serialize(&ir, false).unwrap();
@@ -1849,11 +1849,11 @@ mod tests {
     #[test]
     fn test_legacy_type_format_parsing() {
         // Legacy format (pre 1.7) should still parse
-        let fiche = "@users┃id:int┃name:str┃active:bool
+        let stele = "@users┃id:int┃name:str┃active:bool
 ◉1┃alice┃true
 ◉2┃bob┃false";
 
-        let ir = parse(fiche).unwrap();
+        let ir = parse(stele).unwrap();
         assert_eq!(ir.header.row_count, 2);
         assert_eq!(ir.header.fields.len(), 3);
 
@@ -1867,11 +1867,11 @@ mod tests {
     #[test]
     fn test_arrays_legacy_syntax() {
         // Test backward compatibility with old str[] syntax
-        let fiche = "@users┃id:int┃tags:str[]
+        let stele = "@users┃id:int┃tags:str[]
 ◉1┃admin◈editor
 ◉2┃viewer";
 
-        let ir = parse(fiche).unwrap();
+        let ir = parse(stele).unwrap();
         assert_eq!(ir.header.row_count, 2);
 
         // Check first row's tags
@@ -1889,11 +1889,11 @@ mod tests {
     #[test]
     fn test_arrays_new_bracket_syntax() {
         // Test new superscript + ⟦⟧ syntax
-        let fiche = "@users┃idⁱ┃tagsˢ⟦⟧
+        let stele = "@users┃idⁱ┃tagsˢ⟦⟧
 ◉1┃admin◈editor
 ◉2┃viewer";
 
-        let ir = parse(fiche).unwrap();
+        let ir = parse(stele).unwrap();
         assert_eq!(ir.header.row_count, 2);
 
         // Check first row's tags
@@ -1905,29 +1905,29 @@ mod tests {
 
         // Roundtrip with superscript format (readable mode)
         let output = serialize_readable(&ir, false).unwrap();
-        assert_eq!(output, fiche);
+        assert_eq!(output, stele);
     }
 
     #[test]
     fn test_nulls() {
-        let fiche = "@records┃idⁱ┃scoreᶠ┃notesˢ
+        let stele = "@records┃idⁱ┃scoreᶠ┃notesˢ
 ◉1┃95.5┃∅
 ◉2┃∅┃pending";
 
-        let ir = parse(fiche).unwrap();
+        let ir = parse(stele).unwrap();
         assert!(ir.is_null(0, 2)); // notes is null for row 0
         assert!(ir.is_null(1, 1)); // score is null for row 1
 
         let output = serialize_readable(&ir, false).unwrap();
-        assert_eq!(output, fiche);
+        assert_eq!(output, stele);
     }
 
     #[test]
     fn test_embedded_json() {
-        let fiche = r#"@logs┃levelˢ┃msgˢ
+        let stele = r#"@logs┃levelˢ┃msgˢ
 ◉error┃Failed▓to▓parse▓{"key":▓"value"}"#;
 
-        let ir = parse(fiche).unwrap();
+        let ir = parse(stele).unwrap();
 
         if let Some(SchemaValue::String(msg)) = ir.get_value(0, 1) {
             assert_eq!(msg, r#"Failed to parse {"key": "value"}"#);
@@ -1936,15 +1936,15 @@ mod tests {
         }
 
         let output = serialize_readable(&ir, false).unwrap();
-        assert_eq!(output, fiche);
+        assert_eq!(output, stele);
     }
 
     #[test]
     fn test_no_root_key() {
-        let fiche = "@┃idⁱ┃nameˢ
+        let stele = "@┃idⁱ┃nameˢ
 ◉1┃alice";
 
-        let ir = parse(fiche).unwrap();
+        let ir = parse(stele).unwrap();
         assert_eq!(ir.header.root_key, None);
     }
 
@@ -1982,11 +1982,11 @@ mod tests {
     #[test]
     fn test_nested_arrays() {
         // Inline primitive arrays use ◈ separator
-        let fiche = "@people┃nameˢ┃heightˢ┃filmsˢ⟦⟧┃vehiclesˢ⟦⟧
+        let stele = "@people┃nameˢ┃heightˢ┃filmsˢ⟦⟧┃vehiclesˢ⟦⟧
 ◉Luke┃172┃film/1◈film/2┃∅
 ◉Leia┃150┃film/1┃vehicle/30";
 
-        let ir = parse(fiche).unwrap();
+        let ir = parse(stele).unwrap();
         assert_eq!(ir.header.row_count, 2);
         assert_eq!(ir.header.fields.len(), 4);
 
@@ -2036,16 +2036,16 @@ mod tests {
         }
 
         let output = serialize_readable(&ir, false).unwrap();
-        assert_eq!(output, fiche);
+        assert_eq!(output, stele);
     }
 
     #[test]
     fn test_space_preservation() {
-        let fiche = "@people┃nameˢ┃homeˢ
+        let stele = "@people┃nameˢ┃homeˢ
 ◉Luke▓Skywalker┃Tatooine▓Desert▓Planet
 ◉Leia▓Organa┃Alderaan";
 
-        let ir = parse(fiche).unwrap();
+        let ir = parse(stele).unwrap();
         assert_eq!(ir.header.row_count, 2);
 
         // Check decoded values have spaces
@@ -2065,17 +2065,17 @@ mod tests {
         let output = serialize_readable(&ir, false).unwrap();
         assert!(output.contains("Luke▓Skywalker"));
         assert!(output.contains("Tatooine▓Desert▓Planet"));
-        assert_eq!(output, fiche);
+        assert_eq!(output, stele);
     }
 
     #[test]
     fn test_minified_output() {
         // Test that minified output uses ▓ for line breaks and roundtrips correctly
-        let fiche_normal = "@users┃idⁱ┃nameˢ
+        let stele_normal = "@users┃idⁱ┃nameˢ
 ◉1┃alice
 ◉2┃bob";
 
-        let ir = parse(fiche_normal).unwrap();
+        let ir = parse(stele_normal).unwrap();
 
         // Serialize minified (tokenized) - check structure
         let minified = serialize_minified(&ir).unwrap();
@@ -2106,11 +2106,11 @@ mod tests {
 
     #[test]
     fn test_metadata_annotation() {
-        let fiche = "@students[class=Year▓1,school_name=Springfield▓High]┃idˢ
+        let stele = "@students[class=Year▓1,school_name=Springfield▓High]┃idˢ
 ◉A1
 ◉B2";
 
-        let ir = parse(fiche).unwrap();
+        let ir = parse(stele).unwrap();
         assert_eq!(ir.header.root_key, Some("students".to_string()));
         assert_eq!(ir.header.row_count, 2);
 
@@ -2126,16 +2126,16 @@ mod tests {
         // Check roundtrip (readable mode)
         let output = serialize_readable(&ir, false).unwrap();
         assert!(output.contains("[class=Year▓1,school_name=Springfield▓High]"));
-        assert_eq!(output, fiche);
+        assert_eq!(output, stele);
     }
 
     #[test]
     fn test_metadata_minified() {
-        let fiche = "@students[class=Year▓1,school_name=Springfield▓High]┃idˢ
+        let stele = "@students[class=Year▓1,school_name=Springfield▓High]┃idˢ
 ◉A1
 ◉B2";
 
-        let ir = parse(fiche).unwrap();
+        let ir = parse(stele).unwrap();
         assert_eq!(ir.header.row_count, 2);
 
         // Check metadata
@@ -2157,7 +2157,7 @@ mod tests {
     #[test]
     fn test_value_dictionary() {
         // Service logs with repeated levels and service names
-        let fiche = "@logs┃levelˢ┃messageˢ┃serviceˢ
+        let stele = "@logs┃levelˢ┃messageˢ┃serviceˢ
 ◉info┃Request▓received┃api
 ◉debug┃Parsing▓payload┃api
 ◉info┃Auth▓validated┃api
@@ -2165,7 +2165,7 @@ mod tests {
 ◉info┃Response▓sent┃api
 ◉error┃Query▓failed┃db";
 
-        let ir = parse(fiche).unwrap();
+        let ir = parse(stele).unwrap();
         assert_eq!(ir.header.row_count, 6);
 
         // Serialize with value dictionary (default for serialize)
@@ -2211,12 +2211,12 @@ mod tests {
     #[test]
     fn test_value_dictionary_no_duplicates() {
         // All unique values - should not generate value dictionary
-        let fiche = "@data┃idˢ┃nameˢ
+        let stele = "@data┃idˢ┃nameˢ
 ◉1┃alice
 ◉2┃bob
 ◉3┃carol";
 
-        let ir = parse(fiche).unwrap();
+        let ir = parse(stele).unwrap();
         let tokenized = serialize(&ir, false).unwrap();
 
         // Should have field dictionary
@@ -2232,8 +2232,8 @@ mod tests {
     fn test_path_mode_roundtrip_simple() {
         // Simple nested object
         let json = r#"{"a":1,"b":{"c":"hello","d":true}}"#;
-        let fiche = serialize_path_mode(json).unwrap();
-        let result = parse_path_mode(&fiche).unwrap();
+        let stele = serialize_path_mode(json).unwrap();
+        let result = parse_path_mode(&stele).unwrap();
 
         let original: serde_json::Value = serde_json::from_str(json).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
@@ -2244,8 +2244,8 @@ mod tests {
     fn test_path_mode_roundtrip_arrays() {
         // Arrays with indices
         let json = r#"{"users":[{"name":"alice"},{"name":"bob"}]}"#;
-        let fiche = serialize_path_mode(json).unwrap();
-        let result = parse_path_mode(&fiche).unwrap();
+        let stele = serialize_path_mode(json).unwrap();
+        let result = parse_path_mode(&stele).unwrap();
 
         let original: serde_json::Value = serde_json::from_str(json).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
@@ -2256,8 +2256,8 @@ mod tests {
     fn test_path_mode_roundtrip_nulls_bools() {
         // Null and boolean handling
         let json = r#"{"active":true,"deleted":false,"data":null}"#;
-        let fiche = serialize_path_mode(json).unwrap();
-        let result = parse_path_mode(&fiche).unwrap();
+        let stele = serialize_path_mode(json).unwrap();
+        let result = parse_path_mode(&stele).unwrap();
 
         let original: serde_json::Value = serde_json::from_str(json).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
@@ -2268,8 +2268,8 @@ mod tests {
     fn test_path_mode_roundtrip_empty_containers() {
         // Empty arrays and objects
         let json = r#"{"items":[],"meta":{}}"#;
-        let fiche = serialize_path_mode(json).unwrap();
-        let result = parse_path_mode(&fiche).unwrap();
+        let stele = serialize_path_mode(json).unwrap();
+        let result = parse_path_mode(&stele).unwrap();
 
         let original: serde_json::Value = serde_json::from_str(json).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
@@ -2280,8 +2280,8 @@ mod tests {
     fn test_path_mode_roundtrip_deep_nesting() {
         // Deep nesting (the use case path mode was built for)
         let json = r#"{"a":{"b":{"c":{"d":{"e":1}}}}}"#;
-        let fiche = serialize_path_mode(json).unwrap();
-        let result = parse_path_mode(&fiche).unwrap();
+        let stele = serialize_path_mode(json).unwrap();
+        let result = parse_path_mode(&stele).unwrap();
 
         let original: serde_json::Value = serde_json::from_str(json).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
@@ -2294,21 +2294,21 @@ mod tests {
         // "users", "name", "role" should be tokenized (runic) - appear 2+ times in paths
         // "admin" should be tokenized (hieroglyph) - appears 2x
         let json = r#"{"users":[{"name":"alice","role":"admin"},{"name":"bob","role":"admin"}]}"#;
-        let fiche = serialize_path_mode(json).unwrap();
+        let stele = serialize_path_mode(json).unwrap();
 
         // Verify path tokenization occurred (runic characters should be present)
         assert!(
-            fiche.chars().any(tokens::is_token),
+            stele.chars().any(tokens::is_token),
             "Expected runic tokens for path segments"
         );
 
         // Verify value tokenization occurred (hieroglyph for "admin")
         assert!(
-            fiche.chars().any(value_tokens::is_token),
+            stele.chars().any(value_tokens::is_token),
             "Expected hieroglyph token for repeated value"
         );
 
-        let result = parse_path_mode(&fiche).unwrap();
+        let result = parse_path_mode(&stele).unwrap();
 
         let original: serde_json::Value = serde_json::from_str(json).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
@@ -2386,14 +2386,14 @@ mod tests {
     fn test_path_mode_numeric_object_keys_roundtrip() {
         // Issue #143: Sparse objects with numeric keys should roundtrip correctly
         let json = r#"{"values":{"0":"a","5":"b","10":"c"}}"#;
-        let fiche = serialize_path_mode(json).unwrap();
+        let stele = serialize_path_mode(json).unwrap();
 
         // Should contain # prefix for numeric object keys
-        assert!(fiche.contains("#0"), "Expected #0 marker for object key");
-        assert!(fiche.contains("#5"), "Expected #5 marker for object key");
-        assert!(fiche.contains("#10"), "Expected #10 marker for object key");
+        assert!(stele.contains("#0"), "Expected #0 marker for object key");
+        assert!(stele.contains("#5"), "Expected #5 marker for object key");
+        assert!(stele.contains("#10"), "Expected #10 marker for object key");
 
-        let result = parse_path_mode(&fiche).unwrap();
+        let result = parse_path_mode(&stele).unwrap();
 
         let original: serde_json::Value = serde_json::from_str(json).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
@@ -2407,12 +2407,12 @@ mod tests {
     fn test_path_mode_string_numbers_roundtrip() {
         // Issue #143: String numbers should not be coerced to numeric types
         let json = r#"{"id":"1579231263","phone":"5551234567"}"#;
-        let fiche = serialize_path_mode(json).unwrap();
+        let stele = serialize_path_mode(json).unwrap();
 
         // Should contain " prefix for string values that look like numbers
-        assert!(fiche.contains('"'), "Expected \" marker for string numbers");
+        assert!(stele.contains('"'), "Expected \" marker for string numbers");
 
-        let result = parse_path_mode(&fiche).unwrap();
+        let result = parse_path_mode(&stele).unwrap();
 
         let original: serde_json::Value = serde_json::from_str(json).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
@@ -2426,9 +2426,9 @@ mod tests {
     fn test_path_mode_mixed_array_and_object() {
         // Verify arrays and objects with numeric keys coexist correctly
         let json = r#"{"items":[{"0":"first","1":"second"}],"map":{"0":"zero","1":"one"}}"#;
-        let fiche = serialize_path_mode(json).unwrap();
+        let stele = serialize_path_mode(json).unwrap();
 
-        let result = parse_path_mode(&fiche).unwrap();
+        let result = parse_path_mode(&stele).unwrap();
 
         let original: serde_json::Value = serde_json::from_str(json).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
