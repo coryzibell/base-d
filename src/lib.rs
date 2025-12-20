@@ -148,6 +148,9 @@ mod features;
 #[cfg(feature = "simd")]
 mod simd;
 
+#[cfg(feature = "wasm")]
+pub mod wasm;
+
 pub mod bench;
 pub mod convenience;
 pub mod prelude;
