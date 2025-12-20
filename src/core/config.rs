@@ -511,20 +511,6 @@ impl DictionaryRegistry {
                 "builtin:bip39" | "builtin:bip39-english" => {
                     crate::wordlists::BIP39_ENGLISH.to_string()
                 }
-                "builtin:eff_long" | "builtin:eff-long" => crate::wordlists::EFF_LONG.to_string(),
-                "builtin:eff_short1" | "builtin:eff-short1" => {
-                    crate::wordlists::EFF_SHORT1.to_string()
-                }
-                "builtin:eff_short2" | "builtin:eff-short2" => {
-                    crate::wordlists::EFF_SHORT2.to_string()
-                }
-                "builtin:diceware" => crate::wordlists::DICEWARE.to_string(),
-                "builtin:pgp_even" | "builtin:pgp-even" => crate::wordlists::PGP_EVEN.to_string(),
-                "builtin:pgp_odd" | "builtin:pgp-odd" => crate::wordlists::PGP_ODD.to_string(),
-                "builtin:nato" => crate::wordlists::NATO.to_string(),
-                "builtin:buzzwords" => crate::wordlists::BUZZWORDS.to_string(),
-                "builtin:klingon" => crate::wordlists::KLINGON.to_string(),
-                "builtin:pokemon" => crate::wordlists::POKEMON.to_string(),
                 _ => {
                     // Resolve path (support ~ expansion)
                     let expanded = shellexpand::tilde(words_file);

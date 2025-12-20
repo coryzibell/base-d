@@ -6,7 +6,7 @@ base-d supports loading custom dictionaries from configuration files, allowing y
 
 base-d loads dictionaries from multiple locations in this order:
 
-1. **Built-in dictionaries** - 33 pre-configured dictionaries
+1. **Built-in dictionaries** - 55 pre-configured dictionaries
 2. **User config** - `~/.config/base-d/dictionaries.toml` (Linux/macOS) or `%APPDATA%\base-d\dictionaries.toml` (Windows)
 3. **Local config** - `./dictionaries.toml` in the current directory
 
@@ -16,7 +16,12 @@ Later configurations override earlier ones, so you can:
 
 ## Configuration Format
 
-Custom dictionaries use the same TOML format as the built-in configuration:
+base-d supports two types of dictionaries:
+
+1. **Character-based** (default) - Each symbol is a single character
+2. **Word-based** - Each symbol is a whole word (like BIP-39 mnemonics)
+
+### Character-based Dictionaries
 
 ```toml
 [dictionaries.my_dictionary]
@@ -28,6 +33,23 @@ padding = "="  # optional, only for chunked mode
 mode = "byte_range"
 start_codepoint = 128000  # Unicode codepoint for first character
 ```
+
+### Word-based Dictionaries
+
+```toml
+[dictionaries.my_words]
+type = "word"
+words = ["alpha", "bravo", "charlie", "delta", "echo", "foxtrot"]
+delimiter = " "          # separator between words (default: space)
+case_sensitive = false   # match words case-insensitively (default: false)
+
+[dictionaries.from_file]
+type = "word"
+words_file = "/path/to/wordlist.txt"  # one word per line
+delimiter = "-"
+```
+
+Word dictionaries use radix (base) conversion, where each "digit" is a word from your list.
 
 ## Encoding Modes
 
@@ -118,14 +140,59 @@ mode = "byte_range"
 start_codepoint = 9728  # Weather symbols ☀☁☂...
 ```
 
+### Example 5: Custom Word Dictionary
+
+Create a NATO phonetic alphabet dictionary:
+
+```toml
+[dictionaries.nato]
+type = "word"
+words = [
+    "alfa", "bravo", "charlie", "delta", "echo", "foxtrot",
+    "golf", "hotel", "india", "juliet", "kilo", "lima",
+    "mike", "november", "oscar", "papa", "quebec", "romeo",
+    "sierra", "tango", "uniform", "victor", "whiskey", "xray",
+    "yankee", "zulu"
+]
+delimiter = "-"
+case_sensitive = false
+```
+
+Usage:
+```bash
+$ echo "Hi" | base-d encode nato
+bravo-bravo-lima-golf
+$ echo "bravo-bravo-lima-golf" | base-d decode nato
+Hi
+```
+
+### Example 6: Word Dictionary from File
+
+Use an external word list:
+
+```toml
+[dictionaries.diceware]
+type = "word"
+words_file = "~/.config/base-d/diceware.txt"
+delimiter = " "
+```
+
+The file should contain one word per line.
+
 ## Validation
 
 base-d automatically validates custom dictionaries:
 
+**Character-based:**
 - **Duplicate characters**: Each character must appear only once
 - **Empty dictionaries**: At least one character required (except byte_range mode)
 - **Chunked mode**: Dictionary size must be power of 2
 - **Byte range**: Start codepoint must allow 256 valid Unicode characters
+
+**Word-based:**
+- **Duplicate words**: Each word must be unique (respecting case_sensitive setting)
+- **Empty word lists**: At least one word required
+- **No empty words**: Each word must contain at least one character
 
 Errors are reported with helpful messages:
 
@@ -149,6 +216,8 @@ Error: Invalid dictionary: Duplicate character in dictionary: A
    - Byte range: Maximum efficiency, continuous Unicode blocks
 
 4. **Version control**: Check in project-specific `dictionaries.toml` files
+
+5. **Word dictionaries for humans**: Use word-based dictionaries when output needs to be read aloud, written down, or memorized (like seed phrases)
 
 ## Troubleshooting
 
