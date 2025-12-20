@@ -1,0 +1,4 @@
+# XXencode
+# More portable than uuencode (avoids problematic characters)
+
+chars = "+-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"

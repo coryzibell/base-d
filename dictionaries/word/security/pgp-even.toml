@@ -1,0 +1,8 @@
+# PGP Even Word List
+# 256 two-syllable words (8 bits per word)
+# Used for even-position bytes in fingerprints
+
+type = "word"
+delimiter = "-"
+case_sensitive = false
+words_file = "pgp-even.txt"

@@ -1,0 +1,4 @@
+# Quaternary (Base4)
+# 2 bits per character
+
+chars = "0123"

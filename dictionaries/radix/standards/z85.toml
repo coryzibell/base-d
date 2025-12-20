@@ -1,0 +1,4 @@
+# Z85 (ZeroMQ Base85)
+# Optimized for embedding in source code
+
+chars = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNPQRSTUVWXYZ.-:+=^!/*?&<>()[]{}@%$#"

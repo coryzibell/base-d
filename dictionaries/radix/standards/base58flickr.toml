@@ -1,0 +1,4 @@
+# Flickr Base58
+# Short URLs variant (lowercase before uppercase)
+
+chars = "123456789abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ"

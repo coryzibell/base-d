@@ -1,0 +1,6 @@
+# RFC 4648 Base64
+# Standard base64 encoding used in MIME, PEM, etc.
+
+mode = "chunked"
+padding = "="
+chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"

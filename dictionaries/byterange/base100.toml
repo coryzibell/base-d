@@ -1,0 +1,6 @@
+# Base100 Emoji
+# Direct 1:1 byte-to-emoji mapping
+# Each byte maps to a specific emoji with zero encoding overhead
+
+mode = "byte_range"
+start_codepoint = 127991  # U+1F3F7 (🏷️)

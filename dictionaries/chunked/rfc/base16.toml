@@ -1,0 +1,5 @@
+# RFC 4648 Base16
+# Uppercase hexadecimal
+
+mode = "chunked"
+chars = "0123456789ABCDEF"

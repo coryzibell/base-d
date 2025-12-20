@@ -1,0 +1,5 @@
+# RFC 9285 Base45
+# Optimized for QR code alphanumeric mode
+# Used in COVID certificates
+
+chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:"

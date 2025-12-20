@@ -1,0 +1,4 @@
+# Base36
+# Case-insensitive alphanumeric (Multibase spec)
+
+chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"

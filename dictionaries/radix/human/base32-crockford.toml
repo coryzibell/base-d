@@ -1,0 +1,4 @@
+# Crockford's Base32
+# Excludes I, L, O, U to avoid visual/profanity issues
+
+chars = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"

@@ -1,13 +1,13 @@
-# The Matrix Mode (--neo)
+# The Matrix Mode (neo)
 
 ## Overview
 
-The `--neo` flag transforms base-d into a Matrix-style terminal display, streaming random data encoded with the base256_matrix dictionary to create the iconic "falling code" effect.
+The `neo` command transforms base-d into a Matrix-style terminal display, streaming random data encoded with the base256_matrix dictionary to create the iconic "falling code" effect.
 
 ## Usage
 
 ```bash
-base-d --neo
+base-d neo
 ```
 
 Press `Ctrl+C` to exit.
@@ -132,7 +132,7 @@ terminal_size = "0.3"  # Terminal dimension detection
 
 ## Comparison with Other Matrix Tools
 
-| Feature | cmatrix | neo | base-d --neo |
+| Feature | cmatrix | neo | base-d neo |
 |---------|---------|-----|--------------|
 | Platform | Unix-like | Node.js | Cross-platform Rust |
 | Installation | apt/brew | npm | cargo |
@@ -163,21 +163,21 @@ Get in the mood for coding by entering The Matrix.
 ### Full Screen Effect
 ```bash
 # Clear screen first
-clear && base-d --neo
+clear && base-d neo
 ```
 
 ### Capture Output
 ```bash
 # Save 10 seconds of Matrix output
-timeout 10 base-d --neo > matrix_output.txt
+timeout 10 base-d neo > matrix_output.txt
 ```
 
 ### Customize Speed
 Currently fixed at 500ms. Future enhancement could add `--speed` flag:
 ```bash
 # Proposed feature
-base-d --neo --speed fast   # 100ms
-base-d --neo --speed slow   # 1000ms
+base-d neo --speed fast   # 100ms
+base-d neo --speed slow   # 1000ms
 ```
 
 ## Troubleshooting
@@ -196,19 +196,19 @@ base-d --neo --speed slow   # 1000ms
 
 ## Easter Eggs
 
-The feature is called `--neo` as a reference to the protagonist of The Matrix, who eventually learns to "see" the code. With base-d, you can now encode any data as Matrix-style falling code!
+The command is called `neo` as a reference to the protagonist of The Matrix, who eventually learns to "see" the code. With base-d, you can now encode any data as Matrix-style falling code!
 
 ## Future Enhancements
 
-1. **Color options**: `--neo-color green|red|blue`
-2. **Speed control**: `--neo-speed <ms>`
-3. **Column density**: `--neo-density <percent>`
-4. **Character sets**: `--neo-style matrix|katakana|hiragana|mixed`
-5. **Data source**: `--neo-input <file>` to encode specific data
+1. **Color options**: `base-d neo --color green|red|blue`
+2. **Speed control**: `base-d neo --speed <ms>`
+3. **Column density**: `base-d neo --density <percent>`
+4. **Character sets**: `base-d neo --style matrix|katakana|hiragana|mixed`
+5. **Data source**: `base-d neo --input <file>` to encode specific data
 6. **Animation**: Simulate actual "falling" effect with coordinate tracking
 
 ## Philosophy
 
-*"You take the blue pill, the story ends. You wake up in your bed and believe whatever you want to believe. You take the red pill, you stay in Wonderland, and I show you how deep the rabbit hole goes... or you use `--neo` and encode random data as Matrix-style falling code."*
+*"You take the blue pill, the story ends. You wake up in your bed and believe whatever you want to believe. You take the red pill, you stay in Wonderland, and I show you how deep the rabbit hole goes... or you run `base-d neo` and encode random data as Matrix-style falling code."*
 
 Welcome to the real world, Neo.

@@ -1,0 +1,4 @@
+# Bitcoin Base58
+# Excludes 0, O, I, l to avoid visual ambiguity
+
+chars = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"

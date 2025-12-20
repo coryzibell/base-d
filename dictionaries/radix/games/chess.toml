@@ -1,0 +1,4 @@
+# Chess Pieces
+# Game piece encoding (base-12)
+
+chars = "♔♕♖♗♘♙♚♛♜♝♞♟"

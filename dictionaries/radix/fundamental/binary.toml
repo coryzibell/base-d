@@ -1,0 +1,4 @@
+# Binary (Base2)
+# 1 bit per character
+
+chars = "01"

@@ -1,0 +1,8 @@
+# BIP-39 English Word List
+# 2048 words - used for cryptocurrency seed phrases
+# Each word encodes 11 bits of data
+
+type = "word"
+delimiter = " "
+case_sensitive = false
+words_file = "bip39-english.txt"

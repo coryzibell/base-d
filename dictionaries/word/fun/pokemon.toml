@@ -1,0 +1,8 @@
+# Pokemon Names
+# 1092 words
+# Gotta encode 'em all
+
+type = "word"
+delimiter = " "
+case_sensitive = false
+words_file = "pokemon.txt"

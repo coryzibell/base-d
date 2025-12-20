@@ -1,0 +1,5 @@
+# Octal (Base8)
+# 3 bits per character
+# Unix permissions, etc.
+
+chars = "01234567"
