@@ -1,0 +1,18 @@
+# the matrix has you.
+name: wasm
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+jobs:
+  wasm:
+    name: Build WASM
+    uses: coryzibell/nebuchadnezzar/.github/workflows/there-is-no-spoon.yml@main
+    with:
+      features: wasm
+      no-default-features: true
+      ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
