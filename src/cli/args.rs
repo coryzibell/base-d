@@ -208,9 +208,9 @@ pub enum ConfigCategory {
     Hashes,
 }
 
-/// Fiche encoding modes
+/// Stele encoding modes
 #[derive(Debug, Clone, Copy, Default, ValueEnum)]
-pub enum FicheMode {
+pub enum SteleMode {
     /// Auto-detect best mode based on input structure
     #[default]
     Auto,
@@ -228,16 +228,16 @@ pub enum FicheMode {
     Markdown,
 }
 
-/// Arguments for fiche encoding/decoding (model-readable format)
+/// Arguments for stele encoding/decoding (model-readable format)
 #[derive(Args, Debug)]
-pub struct FicheArgs {
+pub struct SteleArgs {
     #[command(subcommand)]
-    pub command: Option<FicheCommand>,
+    pub command: Option<SteleCommand>,
 
     // Top-level args for implicit encode
     /// Encoding mode
     #[arg(short, long)]
-    pub mode: Option<FicheMode>,
+    pub mode: Option<SteleMode>,
 
     /// Output file (writes to stdout if not provided)
     #[arg(short, long)]
@@ -255,21 +255,21 @@ pub struct FicheArgs {
     pub markdown: bool,
 }
 
-/// Fiche subcommands
+/// Stele subcommands
 #[derive(Subcommand, Debug)]
-pub enum FicheCommand {
-    /// Encode JSON to fiche format
-    Encode(FicheEncodeArgs),
-    /// Decode fiche to JSON
-    Decode(FicheDecodeArgs),
+pub enum SteleCommand {
+    /// Encode JSON to stele format
+    Encode(SteleEncodeArgs),
+    /// Decode stele to JSON
+    Decode(SteleDecodeArgs),
 }
 
-/// Arguments for fiche encoding
+/// Arguments for stele encoding
 #[derive(Args, Debug)]
-pub struct FicheEncodeArgs {
+pub struct SteleEncodeArgs {
     /// Encoding mode
     #[arg(short, long, default_value = "auto")]
-    pub mode: FicheMode,
+    pub mode: SteleMode,
 
     /// Output file (writes to stdout if not provided)
     #[arg(short, long)]
@@ -287,9 +287,9 @@ pub struct FicheEncodeArgs {
     pub markdown: bool,
 }
 
-/// Arguments for fiche decoding
+/// Arguments for stele decoding
 #[derive(Args, Debug)]
-pub struct FicheDecodeArgs {
+pub struct SteleDecodeArgs {
     /// Pretty-print JSON output
     #[arg(short, long)]
     pub pretty: bool,
