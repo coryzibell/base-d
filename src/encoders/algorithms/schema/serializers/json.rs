@@ -1,5 +1,5 @@
-use crate::encoders::algorithms::schema::fiche::NEST_SEP;
 use crate::encoders::algorithms::schema::serializers::OutputSerializer;
+use crate::encoders::algorithms::schema::stele::NEST_SEP;
 use crate::encoders::algorithms::schema::types::*;
 use serde_json::{Map, Value, json};
 use std::collections::HashMap;

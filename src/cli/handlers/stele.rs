@@ -1,28 +1,28 @@
 use crate::cli::{
-    args::{FicheArgs, FicheCommand, FicheDecodeArgs, FicheEncodeArgs, FicheMode},
+    args::{SteleArgs, SteleCommand, SteleDecodeArgs, SteleEncodeArgs, SteleMode},
     global::GlobalArgs,
 };
 use base_d::{
-    DetectedMode, DictionaryRegistry, decode_fiche, decode_fiche_path, detect_fiche_mode,
-    encode_fiche, encode_fiche_ascii, encode_fiche_light, encode_fiche_path, encode_fiche_readable,
-    encode_markdown_fiche, encode_markdown_fiche_ascii, encode_markdown_fiche_light,
-    encode_markdown_fiche_markdown, encode_markdown_fiche_readable,
+    DetectedMode, DictionaryRegistry, decode_stele, decode_stele_path, detect_stele_mode,
+    encode_markdown_stele, encode_markdown_stele_ascii, encode_markdown_stele_light,
+    encode_markdown_stele_markdown, encode_markdown_stele_readable, encode_stele,
+    encode_stele_ascii, encode_stele_light, encode_stele_path, encode_stele_readable,
 };
 use std::fs;
 use std::io::{self, Read};
 use std::path::PathBuf;
 
 pub fn handle(
-    args: FicheArgs,
+    args: SteleArgs,
     _global: &GlobalArgs,
     _config: &DictionaryRegistry,
 ) -> Result<(), Box<dyn std::error::Error>> {
     match args.command {
-        Some(FicheCommand::Encode(encode_args)) => handle_encode(encode_args),
-        Some(FicheCommand::Decode(decode_args)) => handle_decode(decode_args),
+        Some(SteleCommand::Encode(encode_args)) => handle_encode(encode_args),
+        Some(SteleCommand::Decode(decode_args)) => handle_decode(decode_args),
         None => {
             // Implicit encode mode with top-level args
-            let encode_args = FicheEncodeArgs {
+            let encode_args = SteleEncodeArgs {
                 mode: args.mode.unwrap_or_default(),
                 output: args.output,
                 input: args.input,
@@ -34,46 +34,46 @@ pub fn handle(
     }
 }
 
-fn handle_encode(args: FicheEncodeArgs) -> Result<(), Box<dyn std::error::Error>> {
+fn handle_encode(args: SteleEncodeArgs) -> Result<(), Box<dyn std::error::Error>> {
     let input_text = read_input(args.input.as_deref())?;
     let minify = !args.multiline;
 
     // Auto-detect mode if set to Auto (only for JSON, not markdown)
     let mode = match args.mode {
-        FicheMode::Auto if !args.markdown => {
-            let detected = detect_fiche_mode(input_text.trim());
+        SteleMode::Auto if !args.markdown => {
+            let detected = detect_stele_mode(input_text.trim());
             match detected {
-                DetectedMode::Full => FicheMode::Full,
-                DetectedMode::Path => FicheMode::Path,
+                DetectedMode::Full => SteleMode::Full,
+                DetectedMode::Path => SteleMode::Path,
             }
         }
-        FicheMode::Auto => FicheMode::None, // Default to readable for markdown
+        SteleMode::Auto => SteleMode::None, // Default to readable for markdown
         other => other,
     };
 
     let output = if args.markdown {
-        // Markdown document → fiche
+        // Markdown document → stele
         match mode {
-            FicheMode::Auto => unreachable!("Auto should be resolved by now"),
-            FicheMode::None => encode_markdown_fiche_readable(input_text.trim(), minify)?,
-            FicheMode::Light => encode_markdown_fiche_light(input_text.trim(), minify)?,
-            FicheMode::Full => encode_markdown_fiche(input_text.trim(), minify)?,
-            FicheMode::Path => {
+            SteleMode::Auto => unreachable!("Auto should be resolved by now"),
+            SteleMode::None => encode_markdown_stele_readable(input_text.trim(), minify)?,
+            SteleMode::Light => encode_markdown_stele_light(input_text.trim(), minify)?,
+            SteleMode::Full => encode_markdown_stele(input_text.trim(), minify)?,
+            SteleMode::Path => {
                 return Err("Path mode is not supported for markdown input".into());
             }
-            FicheMode::Ascii => encode_markdown_fiche_ascii(input_text.trim())?,
-            FicheMode::Markdown => encode_markdown_fiche_markdown(input_text.trim())?,
+            SteleMode::Ascii => encode_markdown_stele_ascii(input_text.trim())?,
+            SteleMode::Markdown => encode_markdown_stele_markdown(input_text.trim())?,
         }
     } else {
-        // JSON → fiche (existing behavior)
+        // JSON → stele (existing behavior)
         match mode {
-            FicheMode::Auto => unreachable!("Auto should be resolved by now"),
-            FicheMode::None => encode_fiche_readable(input_text.trim(), minify)?,
-            FicheMode::Light => encode_fiche_light(input_text.trim(), minify)?,
-            FicheMode::Full => encode_fiche(input_text.trim(), minify)?,
-            FicheMode::Path => encode_fiche_path(input_text.trim())?,
-            FicheMode::Ascii => encode_fiche_ascii(input_text.trim())?,
-            FicheMode::Markdown => {
+            SteleMode::Auto => unreachable!("Auto should be resolved by now"),
+            SteleMode::None => encode_stele_readable(input_text.trim(), minify)?,
+            SteleMode::Light => encode_stele_light(input_text.trim(), minify)?,
+            SteleMode::Full => encode_stele(input_text.trim(), minify)?,
+            SteleMode::Path => encode_stele_path(input_text.trim())?,
+            SteleMode::Ascii => encode_stele_ascii(input_text.trim())?,
+            SteleMode::Markdown => {
                 return Err("Markdown mode requires --markdown flag (markdown input only)".into());
             }
         }
@@ -83,7 +83,7 @@ fn handle_encode(args: FicheEncodeArgs) -> Result<(), Box<dyn std::error::Error>
     Ok(())
 }
 
-fn handle_decode(args: FicheDecodeArgs) -> Result<(), Box<dyn std::error::Error>> {
+fn handle_decode(args: SteleDecodeArgs) -> Result<(), Box<dyn std::error::Error>> {
     let input_text = read_input(args.input.as_deref())?;
     let trimmed = input_text.trim();
 
@@ -94,9 +94,9 @@ fn handle_decode(args: FicheDecodeArgs) -> Result<(), Box<dyn std::error::Error>
     let is_path_mode = has_field_sep && !has_row_marker;
 
     let output = if is_path_mode {
-        decode_fiche_path(trimmed)?
+        decode_stele_path(trimmed)?
     } else {
-        decode_fiche(trimmed, args.pretty)?
+        decode_stele(trimmed, args.pretty)?
     };
 
     write_output(&output, args.output.as_ref())?;

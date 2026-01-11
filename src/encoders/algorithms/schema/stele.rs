@@ -1,7 +1,7 @@
-//! fiche format: model-readable structured data
+//! stele format: model-readable structured data
 //!
-//! fiche is the model-readable sibling to carrier98. While carrier98 is opaque
-//! (maximum density, model shuttles without parsing), fiche uses Unicode delimiters
+//! stele is the model-readable sibling to carrier98. While carrier98 is opaque
+//! (maximum density, model shuttles without parsing), stele uses Unicode delimiters
 //! so models can parse structure with minimal tokens.
 //!
 //! # Delimiters
@@ -35,7 +35,7 @@ use super::types::{
     SchemaError, SchemaHeader, SchemaValue,
 };
 
-// Fiche delimiters
+// Stele delimiters
 pub const ROW_START: char = '◉'; // U+25C9 fisheye
 pub const FIELD_SEP: char = '┃'; // U+2503 heavy pipe
 pub const ARRAY_SEP: char = '◈'; // U+25C8 diamond in diamond
@@ -43,7 +43,7 @@ pub const NULL_VALUE: &str = "∅"; // U+2205 empty set
 pub const SPACE_MARKER: char = '▓'; // U+2593 Dark Shade
 pub const NEST_SEP: char = '჻'; // U+10FB Georgian paragraph separator
 
-// Type names in fiche schema (legacy)
+// Type names in stele schema (legacy)
 pub const TYPE_INT: &str = "int";
 pub const TYPE_STR: &str = "str";
 pub const TYPE_FLOAT: &str = "float";
@@ -138,12 +138,12 @@ pub mod value_tokens {
     }
 }
 
-/// Serialize IR to fiche format (with tokenization)
+/// Serialize IR to stele format (with tokenization)
 pub fn serialize(ir: &IntermediateRepresentation, minify: bool) -> Result<String, SchemaError> {
     serialize_full_options(ir, minify, true, true)
 }
 
-/// Serialize IR to fiche format without tokenization (human-readable field names)
+/// Serialize IR to stele format without tokenization (human-readable field names)
 pub fn serialize_readable(
     ir: &IntermediateRepresentation,
     minify: bool,
@@ -415,12 +415,12 @@ fn serialize_with_options(
     Ok(output)
 }
 
-/// Parse fiche format to IR
+/// Parse stele format to IR
 /// Supports both tokenized and non-tokenized formats
 pub fn parse(input: &str) -> Result<IntermediateRepresentation, SchemaError> {
     let input = input.trim();
     if input.is_empty() {
-        return Err(SchemaError::InvalidInput("Empty fiche input".to_string()));
+        return Err(SchemaError::InvalidInput("Empty stele input".to_string()));
     }
 
     // Split into schema line and data
@@ -733,7 +733,7 @@ pub fn parse(input: &str) -> Result<IntermediateRepresentation, SchemaError> {
     IntermediateRepresentation::new(header, values)
 }
 
-/// Convert FieldType to fiche type string (superscript format)
+/// Convert FieldType to stele type string (superscript format)
 fn field_type_to_str(ft: &FieldType) -> String {
     match ft {
         FieldType::U64 | FieldType::I64 => TYPE_INT_SUPER.to_string(),
@@ -750,7 +750,7 @@ fn field_type_to_str(ft: &FieldType) -> String {
     }
 }
 
-/// Parse fiche type string to FieldType
+/// Parse stele type string to FieldType
 /// Supports both legacy (int, str, float, bool) and superscript (ⁱ, ˢ, ᶠ, ᵇ) formats
 fn parse_type_str(s: &str) -> Result<FieldType, SchemaError> {
     // Support both old [] and new ⟦⟧ syntax for backward compatibility
@@ -862,7 +862,7 @@ fn parse_field_def(s: &str) -> Result<(String, FieldType), SchemaError> {
     )))
 }
 
-/// Convert SchemaValue to fiche string
+/// Convert SchemaValue to stele string
 fn value_to_str(value: &SchemaValue, field_type: &FieldType) -> String {
     match value {
         SchemaValue::U64(n) => n.to_string(),
@@ -1448,7 +1448,7 @@ fn insert_at_path(
     insert_recursive(root, &parts, &value)
 }
 
-/// Serialize IR to ASCII inline fiche format (no Unicode symbols)
+/// Serialize IR to ASCII inline stele format (no Unicode symbols)
 /// Format: schema;dictionary;row;row;row...
 /// Example: id,name,score,active;V1=true,V2=false;1,Alice,95,V1;2,Bob,87,V2
 pub fn serialize_ascii(ir: &IntermediateRepresentation) -> Result<String, SchemaError> {
