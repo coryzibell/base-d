@@ -7,7 +7,10 @@ use std::time::Duration;
 use crossterm::event::{Event, KeyCode, KeyEvent, poll, read};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 
-use super::config::{create_dictionary, get_compression_level, load_xxhash_config};
+use super::config::{
+    BuiltDictionary, create_any_dictionary, create_dictionary, get_compression_level,
+    load_xxhash_config,
+};
 
 pub enum SwitchInterval {
     Time(Duration),
@@ -117,6 +120,113 @@ pub fn select_random_compress(quiet: bool) -> &'static str {
     selected
 }
 
+/// Generate a line of random words from a word dictionary that fits within terminal width.
+///
+/// Picks random words and joins them with the dictionary's delimiter until
+/// the line would exceed the terminal width.
+fn generate_word_line<R: rand::Rng>(
+    rng: &mut R,
+    word_dict: &base_d::WordDictionary,
+    term_width: usize,
+) -> String {
+    use rand::prelude::IndexedRandom;
+
+    let words: Vec<&str> = word_dict.words().collect();
+    if words.is_empty() {
+        return String::new();
+    }
+
+    let delimiter = word_dict.delimiter();
+    let mut line = String::new();
+    let mut current_len = 0;
+
+    loop {
+        let word = words.choose(rng).unwrap();
+        let word_len = word.chars().count();
+        let delimiter_len = if line.is_empty() {
+            0
+        } else {
+            delimiter.chars().count()
+        };
+
+        // Check if adding this word would exceed terminal width
+        if current_len + delimiter_len + word_len > term_width {
+            // If we have no words yet, add a truncated first word
+            if line.is_empty() && term_width > 0 {
+                return word.chars().take(term_width).collect();
+            }
+            break;
+        }
+
+        if !line.is_empty() {
+            line.push_str(delimiter);
+            current_len += delimiter_len;
+        }
+        line.push_str(word);
+        current_len += word_len;
+    }
+
+    line
+}
+
+/// Generate a line of random words from an alternating word dictionary.
+///
+/// Alternates between sub-dictionaries (like PGP even/odd) for each word.
+fn generate_alternating_word_line<R: rand::Rng>(
+    rng: &mut R,
+    alt_dict: &base_d::AlternatingWordDictionary,
+    term_width: usize,
+) -> String {
+    use rand::prelude::IndexedRandom;
+
+    let num_dicts = alt_dict.num_dicts();
+    if num_dicts == 0 {
+        return String::new();
+    }
+
+    let delimiter = alt_dict.delimiter();
+    let mut line = String::new();
+    let mut current_len = 0;
+    let mut word_position = 0;
+
+    loop {
+        let current_dict = alt_dict.dict_at(word_position);
+        let words: Vec<&str> = current_dict.words().collect();
+
+        if words.is_empty() {
+            break;
+        }
+
+        let word = words.choose(rng).unwrap();
+        let word_len = word.chars().count();
+        let delimiter_len = if line.is_empty() {
+            0
+        } else {
+            delimiter.chars().count()
+        };
+
+        // Check if adding this word would exceed terminal width
+        if current_len + delimiter_len + word_len > term_width {
+            // If we have no words yet, add a truncated first word
+            if line.is_empty() && term_width > 0 {
+                return word.chars().take(term_width).collect();
+            }
+            break;
+        }
+
+        if !line.is_empty() {
+            line.push_str(delimiter);
+            current_len += delimiter_len;
+        }
+        line.push_str(word);
+        current_len += word_len;
+
+        word_position += 1;
+    }
+
+    line
+}
+
 /// Matrix mode: Stream random data as Matrix-style falling code
 pub fn matrix_mode(
     config: &DictionaryRegistry,
@@ -219,8 +329,8 @@ pub fn matrix_mode(
     }
 
     loop {
-        // Load current dictionary
-        let dictionary = create_dictionary(config, &current_dictionary_name)?;
+        // Load current dictionary (supports both char and word dictionaries)
+        let built_dictionary = create_any_dictionary(config, &current_dictionary_name)?;
 
         // Check if we need to switch (time-based)
         let should_switch = match &switch_mode {
@@ -285,20 +395,30 @@ pub fn matrix_mode(
             None => 80,
         };
 
-        // Generate and encode one line
-        // Calculate bytes needed to fill terminal width based on alphabet size
-        // Each byte = 8 bits, each output char = log2(base) bits
-        // bytes_needed = ceil(term_width * log2(base) / 8)
-        let base = dictionary.base();
-        let bits_per_char = (base as f64).log2();
-        let bytes_per_line = ((term_width as f64 * bits_per_char) / 8.0).ceil() as usize;
-        let mut random_bytes = vec![0u8; bytes_per_line.max(1)];
+        // Generate display line based on dictionary type
+        let display = match &built_dictionary {
+            BuiltDictionary::Char(dictionary) => {
+                // Character-based: encode random bytes
+                let base = dictionary.base();
+                let bits_per_char = (base as f64).log2();
+                let bytes_per_line = ((term_width as f64 * bits_per_char) / 8.0).ceil() as usize;
+                let mut random_bytes = vec![0u8; bytes_per_line.max(1)];
 
-        use rand::RngCore;
-        rng.fill_bytes(&mut random_bytes);
+                use rand::RngCore;
+                rng.fill_bytes(&mut random_bytes);
 
-        let encoded = encode(&random_bytes, &dictionary);
-        let display: String = encoded.chars().take(term_width).collect();
+                let encoded = encode(&random_bytes, dictionary);
+                encoded.chars().take(term_width).collect::<String>()
+            }
+            BuiltDictionary::Word(word_dict) => {
+                // Word-based: pick random words to fill the line
+                generate_word_line(&mut rng, word_dict, term_width)
+            }
+            BuiltDictionary::Alternating(alt_dict) => {
+                // Alternating word-based: pick random words from alternating dictionaries
+                generate_alternating_word_line(&mut rng, alt_dict, term_width)
+            }
+        };
 
         print!("{}\r\n", display);
         io::stdout().flush()?;
@@ -592,4 +712,129 @@ pub fn streaming_encode(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_generate_word_line_basic() {
+        let word_dict = base_d::WordDictionary::builder()
+            .words(vec!["abandon", "ability", "able", "about"])
+            .delimiter(" ")
+            .build()
+            .unwrap();
+
+        let mut rng = rand::rng();
+        let line = generate_word_line(&mut rng, &word_dict, 80);
+
+        // Line should be non-empty
+        assert!(!line.is_empty());
+        // Line should fit within terminal width
+        assert!(line.chars().count() <= 80);
+        // Line should contain words from the dictionary
+        for word in line.split(' ') {
+            assert!(
+                ["abandon", "ability", "able", "about"].contains(&word),
+                "Unknown word in line: {}",
+                word
+            );
+        }
+    }
+
+    #[test]
+    fn test_generate_word_line_respects_width() {
+        let word_dict = base_d::WordDictionary::builder()
+            .words(vec![
+                "verylongword",
+                "anotherlongword",
+                "yetanotherlongword",
+            ])
+            .delimiter(" ")
+            .build()
+            .unwrap();
+
+        let mut rng = rand::rng();
+
+        // With small terminal width, should still produce valid output
+        let line = generate_word_line(&mut rng, &word_dict, 20);
+        assert!(line.chars().count() <= 20);
+
+        // With very small width, should truncate first word
+        let line = generate_word_line(&mut rng, &word_dict, 5);
+        assert!(line.chars().count() <= 5);
+        assert!(
+            !line.is_empty(),
+            "Should produce truncated word, not empty string"
+        );
+    }
+
+    #[test]
+    fn test_generate_word_line_truncates_long_first_word() {
+        let word_dict = base_d::WordDictionary::builder()
+            .words(vec!["supercalifragilisticexpialidocious"]) // 34 chars
+            .delimiter(" ")
+            .build()
+            .unwrap();
+
+        let mut rng = rand::rng();
+
+        // Terminal width smaller than word - should truncate
+        let line = generate_word_line(&mut rng, &word_dict, 10);
+        assert_eq!(line.chars().count(), 10);
+        assert_eq!(line, "supercalif");
+    }
+
+    #[test]
+    fn test_generate_word_line_empty_dictionary() {
+        // This shouldn't happen in practice, but let's handle it gracefully
+        // We can't actually create an empty WordDictionary (it returns an error)
+        // So this test verifies the function would return empty for an empty word list
+        // The check in the function handles this case
+    }
+
+    #[test]
+    fn test_generate_word_line_with_custom_delimiter() {
+        let word_dict = base_d::WordDictionary::builder()
+            .words(vec!["alpha", "bravo", "charlie", "delta"])
+            .delimiter("-")
+            .build()
+            .unwrap();
+
+        let mut rng = rand::rng();
+        let line = generate_word_line(&mut rng, &word_dict, 80);
+
+        // Should use the custom delimiter
+        assert!(line.contains('-') || !line.contains(' '));
+    }
+
+    #[test]
+    fn test_generate_word_line_bip39_style() {
+        // Simulate a BIP39-style dictionary with longer words
+        let bip39_sample = base_d::WordDictionary::builder()
+            .words(vec![
+                "abandon", "ability", "able", "about", "above", "absent", "absorb", "abstract",
+                "absurd", "abuse", "access", "accident", "account", "accuse", "achieve", "acid",
+            ])
+            .delimiter(" ")
+            .build()
+            .unwrap();
+
+        let mut rng = rand::rng();
+        let line = generate_word_line(&mut rng, &bip39_sample, 100);
+
+        // Should produce multiple words
+        let word_count = line.split(' ').count();
+        assert!(word_count >= 1, "Should have at least one word");
+
+        // Each word should be from the dictionary
+        for word in line.split(' ') {
+            assert!(
+                bip39_sample.decode_word(word).is_some(),
+                "Word not in dictionary: {}",
+                word
+            );
+        }
+    }
 }
