@@ -23,8 +23,9 @@ fn pack_header(buffer: &mut Vec<u8>, ir: &IntermediateRepresentation) {
     buffer.push(header.flags);
 
     // Root key (if present)
-    if header.has_flag(FLAG_HAS_ROOT_KEY) && header.root_key.is_some() {
-        let key = header.root_key.as_ref().unwrap();
+    if header.has_flag(FLAG_HAS_ROOT_KEY)
+        && let Some(key) = header.root_key.as_ref()
+    {
         encode_varint(buffer, key.len() as u64);
         buffer.extend_from_slice(key.as_bytes());
     }
@@ -45,8 +46,9 @@ fn pack_header(buffer: &mut Vec<u8>, ir: &IntermediateRepresentation) {
     }
 
     // Null bitmap (if present)
-    if header.has_flag(FLAG_HAS_NULLS) && header.null_bitmap.is_some() {
-        let bitmap = header.null_bitmap.as_ref().unwrap();
+    if header.has_flag(FLAG_HAS_NULLS)
+        && let Some(bitmap) = header.null_bitmap.as_ref()
+    {
         buffer.extend_from_slice(bitmap);
     }
 }
