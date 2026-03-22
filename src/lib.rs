@@ -164,7 +164,7 @@ pub use core::alternating_dictionary::AlternatingWordDictionary;
 pub use core::config::{
     CompressionConfig, DictionaryConfig, DictionaryRegistry, DictionaryType, EncodingMode, Settings,
 };
-pub use core::dictionary::{Dictionary, DictionaryBuilder};
+pub use core::dictionary::{Dictionary, DictionaryBuilder, is_safe_byte_range};
 pub use core::word_dictionary::{WordDictionary, WordDictionaryBuilder};
 pub use encoders::algorithms::{DecodeError, DictionaryNotFoundError, find_closest_dictionary};
 

@@ -202,60 +202,34 @@ fn test_compress_encode_nul_safety() {
     }
 }
 
-/// Focused test: ByteRange with start_codepoint=0
+/// Focused test: ByteRange with start_codepoint=0 should be REJECTED
+///
+/// Previously this would succeed and produce strings containing NUL (U+0000)
+/// and C1 control characters, causing garbled git commit messages.
+/// After the fix, the Dictionary builder rejects unsafe start_codepoints.
 #[test]
 fn test_byte_range_start_zero() {
-    println!("\n=== Testing ByteRange with start_codepoint=0 ===\n");
+    println!("\n=== Testing ByteRange with start_codepoint=0 (should be rejected) ===\n");
 
     // Create ByteRange dictionary with start=0 (maps byte 0 -> U+0000)
-    let dict = Dictionary::builder()
+    // This MUST fail because the range U+0000..U+00FF includes NUL and C1 controls
+    let result = Dictionary::builder()
         .mode(EncodingMode::ByteRange)
         .start_codepoint(0)
-        .build()
-        .unwrap();
+        .build();
 
-    // Test data with nul bytes
-    let test_data = vec![0x48, 0x00, 0x65, 0x00, 0x6C, 0x6C, 0x6F]; // "H\0e\0llo"
+    assert!(
+        result.is_err(),
+        "ByteRange with start_codepoint=0 should be rejected (maps to NUL and C1 controls)"
+    );
 
-    println!("Input bytes: {:?}", test_data);
-    println!("Input length: {} bytes", test_data.len());
-
-    let encoded = encode(&test_data, &dict);
-
-    println!("\nEncoded: {:?}", encoded);
-    println!("Encoded length: {} chars", encoded.chars().count());
-    println!("Expected length: {} chars", test_data.len());
-
-    // Check if nul is in encoded string
-    if encoded.contains('\0') {
-        println!("\n❌ CRITICAL: Encoded string contains nul character!");
-        println!("This will cause 'nul byte found in provided data' error in git -m");
-
-        // Show where the nuls are
-        for (i, c) in encoded.chars().enumerate() {
-            if c == '\0' {
-                println!("  Nul at position {}", i);
-            }
-        }
-    }
-
-    // Try to decode
-    let decoded = decode(&encoded, &dict).unwrap();
-    println!("\nDecoded length: {} bytes", decoded.len());
-
-    if decoded.len() != test_data.len() {
-        println!(
-            "❌ BYTES LOST: {} -> {} bytes",
-            test_data.len(),
-            decoded.len()
-        );
-    }
-
-    if decoded == test_data {
-        println!("✓ Round-trip preserves data (but contains nul in encoded form)");
-    } else {
-        println!("❌ Round-trip corrupted data");
-    }
+    let err = result.unwrap_err();
+    println!("Correctly rejected: {}", err);
+    assert!(
+        err.contains("Unsafe ByteRange"),
+        "Error message should mention unsafe ByteRange: {}",
+        err
+    );
 }
 
 /// Test what happens when ByteRange maps to surrogate range

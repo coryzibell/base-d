@@ -5,6 +5,44 @@ use std::collections::HashMap;
 
 const MAX_LOOKUP_TABLE_SIZE: usize = 256;
 
+/// Checks whether a ByteRange dictionary with the given `start_codepoint` is safe
+/// for encoding all 256 possible byte values (0-255).
+///
+/// A range is considered **unsafe** if any mapped codepoint falls in:
+/// - U+0000 (NUL) -- causes CString/git failures
+/// - U+0080..=U+009F (C1 control characters) -- non-printable, break terminals/parsers
+/// - U+D800..=U+DFFF (surrogates) -- invalid in UTF-8, `char::from_u32` returns None
+///
+/// A safe `start_codepoint` must satisfy:
+/// - `start >= 0x00A0` (skips NUL and all C0/C1 controls)
+/// - `start + 255 < 0xD800` OR `start > 0xDFFF` (avoids surrogate gap)
+/// - `start + 255 <= 0x10FFFF` (stays within Unicode)
+pub fn is_safe_byte_range(start: u32) -> bool {
+    // Must be above C1 control range (avoids NUL U+0000 and C1 controls U+0080-U+009F)
+    if start < 0x00A0 {
+        return false;
+    }
+
+    // end codepoint for byte 255
+    let end = match start.checked_add(255) {
+        Some(e) => e,
+        None => return false,
+    };
+
+    // Must not exceed Unicode maximum
+    if end > 0x10FFFF {
+        return false;
+    }
+
+    // Must not overlap with surrogate range U+D800..=U+DFFF
+    // Overlap occurs when start <= 0xDFFF AND end >= 0xD800
+    if start <= 0xDFFF && end >= 0xD800 {
+        return false;
+    }
+
+    true
+}
+
 /// Represents an encoding dictionary with its characters and configuration.
 ///
 /// An dictionary defines the character set and encoding mode used for converting
@@ -129,6 +167,18 @@ impl Dictionary {
                     }
                 } else {
                     return Err("Start codepoint too high for 256-byte range".to_string());
+                }
+
+                // Validate safety: reject ranges that map bytes to NUL, C1 controls,
+                // or surrogates. These produce encoded strings that break git, terminals,
+                // and other text-processing tools.
+                if !is_safe_byte_range(start) {
+                    return Err(format!(
+                        "Unsafe ByteRange start_codepoint U+{:04X}: mapped range U+{:04X}..U+{:04X} \
+                         overlaps with dangerous codepoints (NUL U+0000, C1 controls U+0080-U+009F, \
+                         or surrogates U+D800-U+DFFF)",
+                        start, start, start + 255
+                    ));
                 }
 
                 return Ok(Dictionary {
@@ -284,6 +334,26 @@ impl Dictionary {
     /// Returns the starting Unicode codepoint for ByteRange mode.
     pub fn start_codepoint(&self) -> Option<u32> {
         self.start_codepoint
+    }
+
+    /// Returns whether this dictionary is safe for encoding arbitrary byte data.
+    ///
+    /// For ByteRange dictionaries, checks that the mapped codepoint range does not
+    /// overlap NUL (U+0000), C1 controls (U+0080-U+009F), or surrogates (U+D800-U+DFFF).
+    ///
+    /// Non-ByteRange dictionaries are always considered safe (their character sets
+    /// are explicitly validated during construction).
+    pub fn is_safe_for_encoding(&self) -> bool {
+        match self.mode {
+            EncodingMode::ByteRange => {
+                if let Some(start) = self.start_codepoint {
+                    is_safe_byte_range(start)
+                } else {
+                    false
+                }
+            }
+            _ => true,
+        }
     }
 
     /// Encodes a digit (0 to base-1) as a character.

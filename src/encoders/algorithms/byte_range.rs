@@ -3,6 +3,13 @@ use crate::core::dictionary::Dictionary;
 
 /// Encode data using byte range mode (direct byte-to-character mapping)
 /// Each byte maps to start_codepoint + byte_value
+///
+/// # Panics
+///
+/// Panics if any byte maps to an invalid Unicode codepoint. This indicates the
+/// dictionary was constructed with an unsafe `start_codepoint` that overlaps the
+/// surrogate range (U+D800-U+DFFF). Use `Dictionary::is_safe_for_encoding()` or
+/// `is_safe_byte_range()` to validate before encoding.
 pub fn encode_byte_range(data: &[u8], dictionary: &Dictionary) -> String {
     let start = dictionary
         .start_codepoint()
@@ -18,17 +25,33 @@ pub fn encode_byte_range(data: &[u8], dictionary: &Dictionary) -> String {
 
     for chunk in chunks {
         for &byte in chunk {
-            if let Some(c) = std::char::from_u32(start + byte as u32) {
-                result.push(c);
-            }
+            let codepoint = start + byte as u32;
+            let c = std::char::from_u32(codepoint).unwrap_or_else(|| {
+                panic!(
+                    "ByteRange encoding produced invalid codepoint U+{:04X} \
+                     (start_codepoint=U+{:04X}, byte=0x{:02X}). \
+                     Dictionary has an unsafe start_codepoint that overlaps \
+                     the surrogate range U+D800-U+DFFF.",
+                    codepoint, start, byte
+                )
+            });
+            result.push(c);
         }
     }
 
     // Process remainder
     for &byte in remainder {
-        if let Some(c) = std::char::from_u32(start + byte as u32) {
-            result.push(c);
-        }
+        let codepoint = start + byte as u32;
+        let c = std::char::from_u32(codepoint).unwrap_or_else(|| {
+            panic!(
+                "ByteRange encoding produced invalid codepoint U+{:04X} \
+                 (start_codepoint=U+{:04X}, byte=0x{:02X}). \
+                 Dictionary has an unsafe start_codepoint that overlaps \
+                 the surrogate range U+D800-U+DFFF.",
+                codepoint, start, byte
+            )
+        });
+        result.push(c);
     }
 
     result

@@ -390,6 +390,7 @@ impl DictionaryRegistry {
     /// # }
     /// ```
     pub fn random(&self) -> Result<(String, crate::Dictionary), Box<dyn std::error::Error>> {
+        use crate::core::dictionary::is_safe_byte_range;
         use rand::seq::IteratorRandom;
 
         let common_names: Vec<&String> = self
@@ -397,7 +398,20 @@ impl DictionaryRegistry {
             .iter()
             .filter(|(_, config)| {
                 // Only include common, character-based dictionaries
-                config.common && config.dictionary_type == DictionaryType::Char
+                if !config.common || config.dictionary_type != DictionaryType::Char {
+                    return false;
+                }
+
+                // For ByteRange dictionaries, verify the codepoint range is safe
+                // (no NUL, C1 controls, or surrogates in the mapped range)
+                if config.effective_mode() == EncodingMode::ByteRange {
+                    if let Some(start) = config.start_codepoint {
+                        return is_safe_byte_range(start);
+                    }
+                    return false; // ByteRange without start_codepoint is invalid
+                }
+
+                true
             })
             .map(|(name, _)| name)
             .collect();
