@@ -177,7 +177,9 @@ impl Dictionary {
                         "Unsafe ByteRange start_codepoint U+{:04X}: mapped range U+{:04X}..U+{:04X} \
                          overlaps with dangerous codepoints (NUL U+0000, C1 controls U+0080-U+009F, \
                          or surrogates U+D800-U+DFFF)",
-                        start, start, start + 255
+                        start,
+                        start,
+                        start + 255
                     ));
                 }
 
