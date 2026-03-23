@@ -10,11 +10,13 @@ const MAX_LOOKUP_TABLE_SIZE: usize = 256;
 ///
 /// A range is considered **unsafe** if any mapped codepoint falls in:
 /// - U+0000 (NUL) -- causes CString/git failures
+/// - U+0001..=U+001F (C0 control characters) -- non-printable, break terminals/parsers
+/// - U+007F (DEL) -- non-printable control character
 /// - U+0080..=U+009F (C1 control characters) -- non-printable, break terminals/parsers
 /// - U+D800..=U+DFFF (surrogates) -- invalid in UTF-8, `char::from_u32` returns None
 ///
 /// A safe `start_codepoint` must satisfy:
-/// - `start >= 0x00A0` (skips NUL and all C0/C1 controls)
+/// - `start >= 0x00A0` (skips NUL, C0 controls, DEL, and C1 controls)
 /// - `start + 255 < 0xD800` OR `start > 0xDFFF` (avoids surrogate gap)
 /// - `start + 255 <= 0x10FFFF` (stays within Unicode)
 pub fn is_safe_byte_range(start: u32) -> bool {
@@ -149,26 +151,6 @@ impl Dictionary {
         if mode == EncodingMode::ByteRange {
             if let Some(start) = start_codepoint {
                 // Validate that we can represent all 256 bytes
-                if let Some(end_codepoint) = start.checked_add(255) {
-                    if std::char::from_u32(end_codepoint).is_none() {
-                        return Err(format!(
-                            "Invalid Unicode range: {}-{}",
-                            start, end_codepoint
-                        ));
-                    }
-                    // Validate all codepoints in range are valid Unicode
-                    for offset in 0..=255 {
-                        if std::char::from_u32(start + offset).is_none() {
-                            return Err(format!(
-                                "Invalid Unicode codepoint in range: {}",
-                                start + offset
-                            ));
-                        }
-                    }
-                } else {
-                    return Err("Start codepoint too high for 256-byte range".to_string());
-                }
-
                 // Validate safety: reject ranges that map bytes to NUL, C1 controls,
                 // or surrogates. These produce encoded strings that break git, terminals,
                 // and other text-processing tools.
@@ -336,26 +318,6 @@ impl Dictionary {
     /// Returns the starting Unicode codepoint for ByteRange mode.
     pub fn start_codepoint(&self) -> Option<u32> {
         self.start_codepoint
-    }
-
-    /// Returns whether this dictionary is safe for encoding arbitrary byte data.
-    ///
-    /// For ByteRange dictionaries, checks that the mapped codepoint range does not
-    /// overlap NUL (U+0000), C1 controls (U+0080-U+009F), or surrogates (U+D800-U+DFFF).
-    ///
-    /// Non-ByteRange dictionaries are always considered safe (their character sets
-    /// are explicitly validated during construction).
-    pub fn is_safe_for_encoding(&self) -> bool {
-        match self.mode {
-            EncodingMode::ByteRange => {
-                if let Some(start) = self.start_codepoint {
-                    is_safe_byte_range(start)
-                } else {
-                    false
-                }
-            }
-            _ => true,
-        }
     }
 
     /// Encodes a digit (0 to base-1) as a character.
@@ -766,5 +728,55 @@ mod tests {
         assert_eq!(dict.base(), 2);
         assert_eq!(dict.mode(), &EncodingMode::Chunked);
         assert_eq!(dict.padding(), Some('='));
+    }
+
+    // --- is_safe_byte_range boundary tests ---
+
+    #[test]
+    fn test_is_safe_byte_range_nul() {
+        // start=0 maps byte 0 to U+0000 (NUL) -- unsafe
+        assert!(!is_safe_byte_range(0));
+    }
+
+    #[test]
+    fn test_is_safe_byte_range_end_of_c1() {
+        // start=0x009F: end = 0x009F+255 = 0x019E, but start itself is in C1 range -- unsafe
+        assert!(!is_safe_byte_range(0x009F));
+    }
+
+    #[test]
+    fn test_is_safe_byte_range_first_safe() {
+        // start=0x00A0: end = 0x00A0+255 = 0x019F, all valid printable codepoints -- safe
+        assert!(is_safe_byte_range(0x00A0));
+    }
+
+    #[test]
+    fn test_is_safe_byte_range_just_below_surrogates() {
+        // start=0xD700: end = 0xD700+255 = 0xD7FF, just below surrogate start -- safe
+        assert!(is_safe_byte_range(0xD700));
+    }
+
+    #[test]
+    fn test_is_safe_byte_range_overlaps_surrogate_start() {
+        // start=0xD701: end = 0xD701+255 = 0xD800, overlaps surrogate start -- unsafe
+        assert!(!is_safe_byte_range(0xD701));
+    }
+
+    #[test]
+    fn test_is_safe_byte_range_above_surrogates() {
+        // start=0xE000: above surrogate range, all valid -- safe
+        assert!(is_safe_byte_range(0xE000));
+    }
+
+    #[test]
+    fn test_is_safe_byte_range_at_unicode_max() {
+        // start=0x10FF00: end = 0x10FF00+255 = 0x10FFFF, exactly at Unicode max -- safe
+        assert!(is_safe_byte_range(0x10FF00));
+    }
+
+    #[test]
+    fn test_is_safe_byte_range_exceeds_unicode_max() {
+        // start=0x10FF01: end = 0x10FF01+255 = 0x110000, exceeds Unicode max -- unsafe
+        assert!(!is_safe_byte_range(0x10FF01));
     }
 }

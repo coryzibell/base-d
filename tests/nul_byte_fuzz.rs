@@ -232,64 +232,31 @@ fn test_byte_range_start_zero() {
     );
 }
 
-/// Test what happens when ByteRange maps to surrogate range
+/// Test that ByteRange with start_codepoint overlapping surrogates is REJECTED
+///
+/// With start=0xD701, end = 0xD701+255 = 0xD800, which overlaps the surrogate
+/// range (U+D800-U+DFFF). The Dictionary builder must reject this.
 #[test]
 fn test_byte_range_surrogate_range() {
-    println!("\n=== Testing ByteRange Mapping to Surrogate Range ===\n");
+    println!("\n=== Testing ByteRange with start_codepoint overlapping surrogates (should be rejected) ===\n");
 
-    // Create dictionary with start=0xD700
-    // This puts bytes 0x80-0xFF into surrogate range 0xD780-0xD7FF (INVALID)
-    let dict = Dictionary::builder()
+    // Create ByteRange dictionary with start=0xD701 (end = 0xD800, overlaps surrogate start)
+    // This MUST fail because byte 0xFF would map to U+D800 (first surrogate)
+    let result = Dictionary::builder()
         .mode(EncodingMode::ByteRange)
-        .start_codepoint(0xD700)
-        .build()
-        .unwrap();
+        .start_codepoint(0xD701)
+        .build();
 
-    // Test data with bytes in problematic range
-    let test_data: Vec<u8> = (0x00..=0xFF).collect(); // All possible bytes
+    assert!(
+        result.is_err(),
+        "ByteRange with start_codepoint=0xD701 should be rejected (end 0xD800 overlaps surrogates)"
+    );
 
-    println!("Input: All 256 byte values (0x00-0xFF)");
-
-    let encoded = encode(&test_data, &dict);
-    println!("Encoded length: {} chars", encoded.chars().count());
-    println!("Expected length: 256 chars (if no bytes dropped)");
-
-    // Decode to see what we got back
-    let decoded = decode(&encoded, &dict).unwrap();
-    println!("Decoded length: {} bytes", decoded.len());
-
-    let bytes_lost = test_data.len() - decoded.len();
-    if bytes_lost > 0 {
-        println!("\n❌ CRITICAL: {} BYTES LOST IN ENCODING!", bytes_lost);
-        println!("ByteRange encoder silently drops bytes that map to invalid codepoints!");
-
-        // Find which bytes were dropped
-        let mut lost_bytes = Vec::new();
-        for (i, &byte) in test_data.iter().enumerate() {
-            if i >= decoded.len() || decoded[i] != byte {
-                lost_bytes.push(byte);
-            }
-        }
-
-        println!(
-            "\nDropped bytes (first 20): {:02X?}",
-            &lost_bytes[..20.min(lost_bytes.len())]
-        );
-
-        // Check if these map to invalid codepoints
-        for &byte in &lost_bytes[..10] {
-            let codepoint = 0xD700u32 + byte as u32;
-            let is_surrogate = (0xD800..=0xDFFF).contains(&codepoint);
-            println!(
-                "  Byte 0x{:02X} -> U+{:04X} {}",
-                byte,
-                codepoint,
-                if is_surrogate {
-                    "(surrogate - INVALID)"
-                } else {
-                    ""
-                }
-            );
-        }
-    }
+    let err = result.unwrap_err();
+    println!("Correctly rejected: {}", err);
+    assert!(
+        err.contains("Unsafe ByteRange"),
+        "Error message should mention unsafe ByteRange: {}",
+        err
+    );
 }

@@ -164,9 +164,12 @@ pub use core::alternating_dictionary::AlternatingWordDictionary;
 pub use core::config::{
     CompressionConfig, DictionaryConfig, DictionaryRegistry, DictionaryType, EncodingMode, Settings,
 };
-pub use core::dictionary::{Dictionary, DictionaryBuilder, is_safe_byte_range};
+pub use core::dictionary::{Dictionary, DictionaryBuilder};
 pub use core::word_dictionary::{WordDictionary, WordDictionaryBuilder};
-pub use encoders::algorithms::{DecodeError, DictionaryNotFoundError, find_closest_dictionary};
+pub use encoders::algorithms::{
+    DecodeError, DictionaryNotFoundError, EncodeError, find_closest_dictionary,
+};
+pub use core::dictionary::is_safe_byte_range;
 
 /// Word-based encoding using radix conversion.
 ///
@@ -370,6 +373,7 @@ pub fn encode(data: &[u8], dictionary: &Dictionary) -> String {
         EncodingMode::Chunked => encoders::algorithms::chunked::encode_chunked(data, dictionary),
         EncodingMode::ByteRange => {
             encoders::algorithms::byte_range::encode_byte_range(data, dictionary)
+                .expect("ByteRange encode failed: dictionary should have been validated at construction time")
         }
     }
 }

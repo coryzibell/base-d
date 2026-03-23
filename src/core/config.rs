@@ -431,10 +431,29 @@ impl DictionaryRegistry {
     }
 
     /// Returns a list of common dictionary names (suitable for random selection).
+    ///
+    /// Applies the same safety filtering as `random()`: excludes word dictionaries
+    /// and ByteRange dictionaries with unsafe codepoint ranges.
     pub fn common_names(&self) -> Vec<&str> {
+        use crate::core::dictionary::is_safe_byte_range;
+
         self.dictionaries
             .iter()
-            .filter(|(_, config)| config.common)
+            .filter(|(_, config)| {
+                if !config.common || config.dictionary_type != DictionaryType::Char {
+                    return false;
+                }
+
+                // For ByteRange dictionaries, verify the codepoint range is safe
+                if config.effective_mode() == EncodingMode::ByteRange {
+                    if let Some(start) = config.start_codepoint {
+                        return is_safe_byte_range(start);
+                    }
+                    return false;
+                }
+
+                true
+            })
             .map(|(name, _)| name.as_str())
             .collect()
     }
