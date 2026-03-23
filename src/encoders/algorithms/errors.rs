@@ -63,7 +63,7 @@ pub enum DecodeError {
 
 /// Truncate a string to at most `max_chars` characters, appending "..." if truncated.
 /// Uses char-count instead of byte-index to avoid panics on multi-byte UTF-8 input.
-fn safe_truncate(s: &str, max_chars: usize) -> String {
+pub(crate) fn safe_truncate(s: &str, max_chars: usize) -> String {
     if s.chars().count() > max_chars {
         let truncated: String = s.chars().take(max_chars).collect();
         format!("{}...", truncated)
@@ -477,5 +477,30 @@ mod tests {
         unsafe {
             std::env::remove_var("NO_COLOR");
         }
+    }
+
+    #[test]
+    fn test_safe_truncate_multibyte() {
+        let input = "\u{1F3AD}".repeat(20); // 20 chars, 80 bytes
+        let result = safe_truncate(&input, 10);
+        assert_eq!(result, format!("{}...", "\u{1F3AD}".repeat(10)));
+    }
+
+    #[test]
+    fn test_safe_truncate_no_truncation() {
+        assert_eq!(safe_truncate("hello", 10), "hello");
+    }
+
+    #[test]
+    fn test_safe_truncate_exact_boundary() {
+        assert_eq!(safe_truncate("hello", 5), "hello");
+    }
+
+    #[test]
+    fn test_invalid_character_multibyte_no_panic() {
+        let input = "\u{1F711}".repeat(30); // 30 alchemical symbols, 120 bytes
+        // This must not panic -- the old &input[..60] would have
+        let err = DecodeError::invalid_character('x', 0, &input, "abc");
+        let _ = format!("{}", err);
     }
 }
