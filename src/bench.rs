@@ -188,8 +188,9 @@ fn encode_scalar(data: &[u8], dict: &Dictionary) -> String {
     match dict.mode() {
         EncodingMode::Radix => radix::encode(data, dict),
         EncodingMode::Chunked => encode_chunked_scalar(data, dict),
-        EncodingMode::ByteRange => byte_range::encode_byte_range(data, dict)
-            .expect("ByteRange encode failed: dictionary should have been validated at construction time"),
+        EncodingMode::ByteRange => byte_range::encode_byte_range(data, dict).expect(
+            "ByteRange encode failed: dictionary should have been validated at construction time",
+        ),
     }
 }
 

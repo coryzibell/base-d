@@ -238,7 +238,9 @@ fn test_byte_range_start_zero() {
 /// range (U+D800-U+DFFF). The Dictionary builder must reject this.
 #[test]
 fn test_byte_range_surrogate_range() {
-    println!("\n=== Testing ByteRange with start_codepoint overlapping surrogates (should be rejected) ===\n");
+    println!(
+        "\n=== Testing ByteRange with start_codepoint overlapping surrogates (should be rejected) ===\n"
+    );
 
     // Create ByteRange dictionary with start=0xD701 (end = 0xD800, overlaps surrogate start)
     // This MUST fail because byte 0xFF would map to U+D800 (first surrogate)
