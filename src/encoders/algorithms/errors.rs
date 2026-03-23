@@ -1,5 +1,38 @@
 use std::fmt;
 
+/// Errors that can occur during encoding.
+#[derive(Debug, PartialEq, Eq)]
+pub enum EncodeError {
+    /// A byte mapped to an invalid Unicode codepoint during ByteRange encoding
+    InvalidCodepoint {
+        codepoint: u32,
+        start_codepoint: u32,
+        byte: u8,
+    },
+}
+
+impl fmt::Display for EncodeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            EncodeError::InvalidCodepoint {
+                codepoint,
+                start_codepoint,
+                byte,
+            } => {
+                write!(
+                    f,
+                    "ByteRange encoding produced invalid codepoint U+{:04X} \
+                     (start_codepoint=U+{:04X}, byte=0x{:02X}). \
+                     This dictionary should have been rejected at construction time.",
+                    codepoint, start_codepoint, byte
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for EncodeError {}
+
 /// Errors that can occur during decoding.
 #[derive(Debug, PartialEq, Eq)]
 pub enum DecodeError {

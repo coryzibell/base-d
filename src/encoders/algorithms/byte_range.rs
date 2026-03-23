@@ -1,9 +1,31 @@
-use super::errors::DecodeError;
+use super::errors::{DecodeError, EncodeError};
 use crate::core::dictionary::Dictionary;
 
-/// Encode data using byte range mode (direct byte-to-character mapping)
-/// Each byte maps to start_codepoint + byte_value
-pub fn encode_byte_range(data: &[u8], dictionary: &Dictionary) -> String {
+/// Convert a codepoint to a char, returning an EncodeError if it is invalid.
+///
+/// This covers the case where a byte maps to a surrogate or otherwise invalid
+/// Unicode codepoint. In practice this should never fire because the Dictionary
+/// builder rejects unsafe `start_codepoint` values, but returning a Result
+/// ensures the library never panics on invalid input.
+fn safe_char_from_codepoint(codepoint: u32, start: u32, byte: u8) -> Result<char, EncodeError> {
+    std::char::from_u32(codepoint).ok_or(EncodeError::InvalidCodepoint {
+        codepoint,
+        start_codepoint: start,
+        byte,
+    })
+}
+
+/// Encode data using byte range mode (direct byte-to-character mapping).
+/// Each byte maps to `start_codepoint + byte_value`.
+///
+/// # Errors
+///
+/// Returns `EncodeError::InvalidCodepoint` if any byte maps to an invalid
+/// Unicode codepoint (e.g., surrogates U+D800-U+DFFF). This indicates the
+/// dictionary was constructed with an unsafe `start_codepoint`.
+/// With the current builder validation via `is_safe_byte_range()`, this error
+/// should never occur for properly constructed dictionaries.
+pub fn encode_byte_range(data: &[u8], dictionary: &Dictionary) -> Result<String, EncodeError> {
     let start = dictionary
         .start_codepoint()
         .expect("ByteRange mode requires start_codepoint");
@@ -18,20 +40,20 @@ pub fn encode_byte_range(data: &[u8], dictionary: &Dictionary) -> String {
 
     for chunk in chunks {
         for &byte in chunk {
-            if let Some(c) = std::char::from_u32(start + byte as u32) {
-                result.push(c);
-            }
+            let codepoint = start + byte as u32;
+            let c = safe_char_from_codepoint(codepoint, start, byte)?;
+            result.push(c);
         }
     }
 
     // Process remainder
     for &byte in remainder {
-        if let Some(c) = std::char::from_u32(start + byte as u32) {
-            result.push(c);
-        }
+        let codepoint = start + byte as u32;
+        let c = safe_char_from_codepoint(codepoint, start, byte)?;
+        result.push(c);
     }
 
-    result
+    Ok(result)
 }
 
 /// Decode data using byte range mode
@@ -108,7 +130,7 @@ mod tests {
         .unwrap();
 
         let data = b"Hello, World!";
-        let encoded = encode_byte_range(data, &dictionary);
+        let encoded = encode_byte_range(data, &dictionary).unwrap();
         let decoded = decode_byte_range(&encoded, &dictionary).unwrap();
 
         assert_eq!(data, &decoded[..]);
@@ -126,7 +148,7 @@ mod tests {
 
         // Test all 256 possible byte values
         let data: Vec<u8> = (0..=255).collect();
-        let encoded = encode_byte_range(&data, &dictionary);
+        let encoded = encode_byte_range(&data, &dictionary).unwrap();
         let decoded = decode_byte_range(&encoded, &dictionary).unwrap();
 
         assert_eq!(data, decoded);
@@ -143,7 +165,7 @@ mod tests {
         .unwrap();
 
         let data = b"";
-        let encoded = encode_byte_range(data, &dictionary);
+        let encoded = encode_byte_range(data, &dictionary).unwrap();
         let decoded = decode_byte_range(&encoded, &dictionary).unwrap();
 
         assert_eq!(data, &decoded[..]);

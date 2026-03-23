@@ -202,120 +202,63 @@ fn test_compress_encode_nul_safety() {
     }
 }
 
-/// Focused test: ByteRange with start_codepoint=0
+/// Focused test: ByteRange with start_codepoint=0 should be REJECTED
+///
+/// Previously this would succeed and produce strings containing NUL (U+0000)
+/// and C1 control characters, causing garbled git commit messages.
+/// After the fix, the Dictionary builder rejects unsafe start_codepoints.
 #[test]
 fn test_byte_range_start_zero() {
-    println!("\n=== Testing ByteRange with start_codepoint=0 ===\n");
+    println!("\n=== Testing ByteRange with start_codepoint=0 (should be rejected) ===\n");
 
     // Create ByteRange dictionary with start=0 (maps byte 0 -> U+0000)
-    let dict = Dictionary::builder()
+    // This MUST fail because the range U+0000..U+00FF includes NUL and C1 controls
+    let result = Dictionary::builder()
         .mode(EncodingMode::ByteRange)
         .start_codepoint(0)
-        .build()
-        .unwrap();
+        .build();
 
-    // Test data with nul bytes
-    let test_data = vec![0x48, 0x00, 0x65, 0x00, 0x6C, 0x6C, 0x6F]; // "H\0e\0llo"
+    assert!(
+        result.is_err(),
+        "ByteRange with start_codepoint=0 should be rejected (maps to NUL and C1 controls)"
+    );
 
-    println!("Input bytes: {:?}", test_data);
-    println!("Input length: {} bytes", test_data.len());
-
-    let encoded = encode(&test_data, &dict);
-
-    println!("\nEncoded: {:?}", encoded);
-    println!("Encoded length: {} chars", encoded.chars().count());
-    println!("Expected length: {} chars", test_data.len());
-
-    // Check if nul is in encoded string
-    if encoded.contains('\0') {
-        println!("\n❌ CRITICAL: Encoded string contains nul character!");
-        println!("This will cause 'nul byte found in provided data' error in git -m");
-
-        // Show where the nuls are
-        for (i, c) in encoded.chars().enumerate() {
-            if c == '\0' {
-                println!("  Nul at position {}", i);
-            }
-        }
-    }
-
-    // Try to decode
-    let decoded = decode(&encoded, &dict).unwrap();
-    println!("\nDecoded length: {} bytes", decoded.len());
-
-    if decoded.len() != test_data.len() {
-        println!(
-            "❌ BYTES LOST: {} -> {} bytes",
-            test_data.len(),
-            decoded.len()
-        );
-    }
-
-    if decoded == test_data {
-        println!("✓ Round-trip preserves data (but contains nul in encoded form)");
-    } else {
-        println!("❌ Round-trip corrupted data");
-    }
+    let err = result.unwrap_err();
+    println!("Correctly rejected: {}", err);
+    assert!(
+        err.contains("Unsafe ByteRange"),
+        "Error message should mention unsafe ByteRange: {}",
+        err
+    );
 }
 
-/// Test what happens when ByteRange maps to surrogate range
+/// Test that ByteRange with start_codepoint overlapping surrogates is REJECTED
+///
+/// With start=0xD701, end = 0xD701+255 = 0xD800, which overlaps the surrogate
+/// range (U+D800-U+DFFF). The Dictionary builder must reject this.
 #[test]
 fn test_byte_range_surrogate_range() {
-    println!("\n=== Testing ByteRange Mapping to Surrogate Range ===\n");
+    println!(
+        "\n=== Testing ByteRange with start_codepoint overlapping surrogates (should be rejected) ===\n"
+    );
 
-    // Create dictionary with start=0xD700
-    // This puts bytes 0x80-0xFF into surrogate range 0xD780-0xD7FF (INVALID)
-    let dict = Dictionary::builder()
+    // Create ByteRange dictionary with start=0xD701 (end = 0xD800, overlaps surrogate start)
+    // This MUST fail because byte 0xFF would map to U+D800 (first surrogate)
+    let result = Dictionary::builder()
         .mode(EncodingMode::ByteRange)
-        .start_codepoint(0xD700)
-        .build()
-        .unwrap();
+        .start_codepoint(0xD701)
+        .build();
 
-    // Test data with bytes in problematic range
-    let test_data: Vec<u8> = (0x00..=0xFF).collect(); // All possible bytes
+    assert!(
+        result.is_err(),
+        "ByteRange with start_codepoint=0xD701 should be rejected (end 0xD800 overlaps surrogates)"
+    );
 
-    println!("Input: All 256 byte values (0x00-0xFF)");
-
-    let encoded = encode(&test_data, &dict);
-    println!("Encoded length: {} chars", encoded.chars().count());
-    println!("Expected length: 256 chars (if no bytes dropped)");
-
-    // Decode to see what we got back
-    let decoded = decode(&encoded, &dict).unwrap();
-    println!("Decoded length: {} bytes", decoded.len());
-
-    let bytes_lost = test_data.len() - decoded.len();
-    if bytes_lost > 0 {
-        println!("\n❌ CRITICAL: {} BYTES LOST IN ENCODING!", bytes_lost);
-        println!("ByteRange encoder silently drops bytes that map to invalid codepoints!");
-
-        // Find which bytes were dropped
-        let mut lost_bytes = Vec::new();
-        for (i, &byte) in test_data.iter().enumerate() {
-            if i >= decoded.len() || decoded[i] != byte {
-                lost_bytes.push(byte);
-            }
-        }
-
-        println!(
-            "\nDropped bytes (first 20): {:02X?}",
-            &lost_bytes[..20.min(lost_bytes.len())]
-        );
-
-        // Check if these map to invalid codepoints
-        for &byte in &lost_bytes[..10] {
-            let codepoint = 0xD700u32 + byte as u32;
-            let is_surrogate = (0xD800..=0xDFFF).contains(&codepoint);
-            println!(
-                "  Byte 0x{:02X} -> U+{:04X} {}",
-                byte,
-                codepoint,
-                if is_surrogate {
-                    "(surrogate - INVALID)"
-                } else {
-                    ""
-                }
-            );
-        }
-    }
+    let err = result.unwrap_err();
+    println!("Correctly rejected: {}", err);
+    assert!(
+        err.contains("Unsafe ByteRange"),
+        "Error message should mention unsafe ByteRange: {}",
+        err
+    );
 }

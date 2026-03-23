@@ -318,7 +318,8 @@ impl<'a, W: Write> StreamingEncoder<'a, W> {
             }
 
             let encoded =
-                crate::encoders::algorithms::byte_range::encode_byte_range(chunk, self.dictionary);
+                crate::encoders::algorithms::byte_range::encode_byte_range(chunk, self.dictionary)
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
             self.writer.write_all(encoded.as_bytes())?;
         }
 
@@ -337,7 +338,8 @@ impl<'a, W: Write> StreamingEncoder<'a, W> {
             let encoded = crate::encoders::algorithms::byte_range::encode_byte_range(
                 &buffer[..bytes_read],
                 self.dictionary,
-            );
+            )
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
             self.writer.write_all(encoded.as_bytes())?;
         }
 

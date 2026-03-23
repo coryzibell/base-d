@@ -7,7 +7,7 @@ pub mod word;
 pub mod word_alternating;
 
 // Re-export error types for public API
-pub use errors::{DecodeError, DictionaryNotFoundError, find_closest_dictionary};
+pub use errors::{DecodeError, DictionaryNotFoundError, EncodeError, find_closest_dictionary};
 
 // Re-export schema functions for CLI
 #[allow(unused_imports)]
