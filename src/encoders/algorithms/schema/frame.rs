@@ -1,3 +1,4 @@
+use super::super::errors::safe_truncate;
 use super::display96;
 use super::types::SchemaError;
 use num_bigint::BigUint;
@@ -42,12 +43,8 @@ pub fn encode_framed(binary: &[u8]) -> String {
 /// let binary = decode_framed(framed)?;
 /// ```
 pub fn decode_framed(encoded: &str) -> Result<Vec<u8>, SchemaError> {
-    // Show preview of what was received
-    let preview = if encoded.len() > 40 {
-        format!("{}...", &encoded.chars().take(40).collect::<String>())
-    } else {
-        encoded.to_string()
-    };
+    // Show preview of what was received (char-safe truncation)
+    let preview = safe_truncate(encoded, 40);
 
     // Validate frame delimiters
     if !encoded.starts_with(FRAME_START) {

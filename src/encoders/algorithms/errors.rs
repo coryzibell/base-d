@@ -61,20 +61,24 @@ pub enum DecodeError {
     },
 }
 
+/// Truncate a string to at most `max_chars` characters, appending "..." if truncated.
+/// Uses char-count instead of byte-index to avoid panics on multi-byte UTF-8 input.
+pub(crate) fn safe_truncate(s: &str, max_chars: usize) -> String {
+    if s.chars().count() > max_chars {
+        let truncated: String = s.chars().take(max_chars).collect();
+        format!("{}...", truncated)
+    } else {
+        s.to_string()
+    }
+}
+
 impl DecodeError {
     /// Create an InvalidCharacter error with context
     pub fn invalid_character(c: char, position: usize, input: &str, valid_chars: &str) -> Self {
-        // Truncate long inputs
-        let display_input = if input.len() > 60 {
-            format!("{}...", &input[..60])
-        } else {
-            input.to_string()
-        };
-
         DecodeError::InvalidCharacter {
             char: c,
             position,
-            input: display_input,
+            input: safe_truncate(input, 60),
             valid_chars: valid_chars.to_string(),
         }
     }
@@ -94,17 +98,10 @@ impl DecodeError {
 
     /// Create an InvalidWord error for word-based decoding
     pub fn invalid_word(word: &str, position: usize, input: &str) -> Self {
-        // Truncate long inputs
-        let display_input = if input.len() > 80 {
-            format!("{}...", &input[..80])
-        } else {
-            input.to_string()
-        };
-
         DecodeError::InvalidWord {
             word: word.to_string(),
             position,
-            input: display_input,
+            input: safe_truncate(input, 80),
         }
     }
 }
@@ -149,11 +146,7 @@ impl fmt::Display for DecodeError {
                 writeln!(f)?;
 
                 // Hint with valid characters (truncate if too long)
-                let hint_chars = if valid_chars.len() > 80 {
-                    format!("{}...", &valid_chars[..80])
-                } else {
-                    valid_chars.clone()
-                };
+                let hint_chars = safe_truncate(valid_chars, 80);
 
                 if use_color {
                     write!(f, "\x1b[1;36mhint:\x1b[0m valid characters: {}", hint_chars)?;
@@ -484,5 +477,30 @@ mod tests {
         unsafe {
             std::env::remove_var("NO_COLOR");
         }
+    }
+
+    #[test]
+    fn test_safe_truncate_multibyte() {
+        let input = "\u{1F3AD}".repeat(20); // 20 chars, 80 bytes
+        let result = safe_truncate(&input, 10);
+        assert_eq!(result, format!("{}...", "\u{1F3AD}".repeat(10)));
+    }
+
+    #[test]
+    fn test_safe_truncate_no_truncation() {
+        assert_eq!(safe_truncate("hello", 10), "hello");
+    }
+
+    #[test]
+    fn test_safe_truncate_exact_boundary() {
+        assert_eq!(safe_truncate("hello", 5), "hello");
+    }
+
+    #[test]
+    fn test_invalid_character_multibyte_no_panic() {
+        let input = "\u{1F711}".repeat(30); // 30 alchemical symbols, 120 bytes
+        // This must not panic -- the old &input[..60] would have
+        let err = DecodeError::invalid_character('x', 0, &input, "abc");
+        let _ = format!("{}", err);
     }
 }
