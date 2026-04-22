@@ -215,7 +215,7 @@ fn unflatten_object(flat: HashMap<String, Value>) -> Value {
     #[allow(clippy::type_complexity)]
     let mut array_entries: Vec<(String, Vec<(usize, String, Value)>)> =
         array_elements.into_iter().collect();
-    array_entries.sort_by(|(a, _), (b, _)| b.len().cmp(&a.len()));
+    array_entries.sort_by_key(|(b, _)| std::cmp::Reverse(b.len()));
 
     for (array_path, mut elements) in array_entries {
         // Sort by index
