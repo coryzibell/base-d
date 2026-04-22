@@ -11,7 +11,7 @@ on:
 jobs:
   wasm:
     name: Build WASM
-    uses: coryzibell/nebuchadnezzar/.github/workflows/there-is-no-spoon.yml@main
+    uses: coryzibell/nebuchadnezzar/.github/workflows/there-is-no-spoon.yml@v1
     with:
       features: wasm
       no-default-features: true
