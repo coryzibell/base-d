@@ -379,8 +379,15 @@ impl DictionaryMetadata {
         // 1. Power of 2 base
         // 2. Sequential or known ranged pattern
         // 3. Base supported by existing SIMD (4, 5, 6, 8 bits)
+        // 4. Sequential dictionaries must fit in one byte: SequentialTranslate
+        //    applies the offset with a single `paddb`, so a start codepoint above
+        //    U+00FF is silently truncated to its low byte (U+1F400 -> 0x00).
         let simd_compatible = matches!(bits_per_symbol, 4 | 5 | 6 | 8)
-            && !matches!(strategy, TranslationStrategy::Arbitrary { .. });
+            && !matches!(strategy, TranslationStrategy::Arbitrary { .. })
+            && !matches!(
+                strategy,
+                TranslationStrategy::Sequential { start_codepoint } if start_codepoint > 0xFF
+            );
 
         Self {
             base,
@@ -568,7 +575,9 @@ mod tests {
                 start_codepoint: 0x100
             }
         ));
-        assert!(metadata.simd_compatible);
+        // Above the U+00FF ceiling that SequentialTranslate's single-byte add
+        // can represent, so SIMD is refused and the scalar path is used.
+        assert!(!metadata.simd_compatible);
     }
 
     #[test]
@@ -704,7 +713,33 @@ mod tests {
                 start_codepoint: 0x100
             }
         ));
+        // Above the U+00FF ceiling — see test_sequential_dictionary_detection.
+        assert!(!metadata.simd_compatible);
+    }
+
+    #[test]
+    fn test_sequential_codepoint_ceiling() {
+        // SequentialTranslate adds the start codepoint with a single `paddb`,
+        // so U+00FF is the highest start it can represent. Straddle the boundary.
+        let at_ceiling: Vec<char> = (0xF0..0x100)
+            .map(|cp| char::from_u32(cp).unwrap())
+            .collect();
+        let dict = Dictionary::new(at_ceiling).unwrap();
+        let metadata = DictionaryMetadata::from_dictionary(&dict);
+        assert!(matches!(
+            metadata.strategy,
+            TranslationStrategy::Sequential {
+                start_codepoint: 0xF0
+            }
+        ));
         assert!(metadata.simd_compatible);
+
+        let over_ceiling: Vec<char> = (0x100..0x110)
+            .map(|cp| char::from_u32(cp).unwrap())
+            .collect();
+        let dict = Dictionary::new(over_ceiling).unwrap();
+        let metadata = DictionaryMetadata::from_dictionary(&dict);
+        assert!(!metadata.simd_compatible);
     }
 
     #[test]
