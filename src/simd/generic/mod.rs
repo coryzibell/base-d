@@ -1925,8 +1925,20 @@ mod tests {
 
     #[test]
     fn test_sequential_base64_creation() {
-        // Create a sequential base64 dictionary starting at Latin Extended-A (U+0100)
-        let chars: Vec<char> = (0x100..0x140)
+        // Sequential base64 within the single-byte ceiling SequentialTranslate
+        // can represent: U+00C0 + 2^6 - 1 == U+00FF, so the whole symbol range
+        // fits and the codec is correctly created.
+        //
+        // SCOPE: this asserts CLASSIFICATION ONLY -- that the gate admits this
+        // dictionary and reports the right strategy. It deliberately does not
+        // assert a round trip, because this dictionary does NOT round-trip:
+        // the 6-bit path has a separate block-count truncation defect,
+        // unrelated to the codepoint ceiling and not fixed here. Adding a
+        // round-trip assertion would fail for that reason, not this one.
+        // Ceiling behavior is verified end-to-end in
+        // `simd::variants::tests::assert_sequential_roundtrips`, which uses
+        // 4-bit dictionaries to keep the two defects separate.
+        let chars: Vec<char> = (0xC0..0x100)
             .map(|cp| char::from_u32(cp).unwrap())
             .collect();
         let dict = Dictionary::new_with_mode(chars, EncodingMode::Chunked, None).unwrap();
@@ -1939,9 +1951,22 @@ mod tests {
         assert!(matches!(
             codec.metadata.strategy,
             TranslationStrategy::Sequential {
-                start_codepoint: 0x100
+                start_codepoint: 0xC0
             }
         ));
+    }
+
+    #[test]
+    fn test_sequential_above_ceiling_refused() {
+        // Starting at U+0100 the offset no longer fits in the `paddb` that
+        // SequentialTranslate uses, so the codec must decline and let the
+        // scalar path handle it rather than truncate the codepoint.
+        let chars: Vec<char> = (0x100..0x140)
+            .map(|cp| char::from_u32(cp).unwrap())
+            .collect();
+        let dict = Dictionary::new_with_mode(chars, EncodingMode::Chunked, None).unwrap();
+
+        assert!(GenericSimdCodec::from_dictionary(&dict).is_none());
     }
 
     #[test]
@@ -1964,27 +1989,17 @@ mod tests {
     }
 
     #[test]
-    fn test_sequential_base256_creation() {
-        // Create a sequential base256 dictionary using Latin Extended-A range
+    fn test_sequential_base256_refused() {
+        // A sequential base256 dictionary needs 256 contiguous codepoints, so it
+        // cannot fit under the U+00FF ceiling without being U+0000..=U+00FF.
+        // Every real one therefore declines here; the byte-range dictionaries
+        // (base100, weather) are served by the specialized base256 codec instead.
         let chars: Vec<char> = (0x100..0x200)
             .map(|cp| char::from_u32(cp).unwrap())
             .collect();
         let dict = Dictionary::new(chars).unwrap();
 
-        let codec = GenericSimdCodec::from_dictionary(&dict);
-        assert!(
-            codec.is_some(),
-            "Should create codec for sequential base256"
-        );
-
-        let codec = codec.unwrap();
-        assert_eq!(codec.metadata.bits_per_symbol, 8);
-        assert!(matches!(
-            codec.metadata.strategy,
-            TranslationStrategy::Sequential {
-                start_codepoint: 0x100
-            }
-        ));
+        assert!(GenericSimdCodec::from_dictionary(&dict).is_none());
     }
 
     #[test]

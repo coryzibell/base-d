@@ -379,8 +379,23 @@ impl DictionaryMetadata {
         // 1. Power of 2 base
         // 2. Sequential or known ranged pattern
         // 3. Base supported by existing SIMD (4, 5, 6, 8 bits)
+        // 4. Sequential dictionaries must fit ENTIRELY in one byte:
+        //    SequentialTranslate applies the offset with a single `paddb`, so
+        //    every codepoint it can represent has to be <= U+00FF -- not just
+        //    the start. The constraint is on the whole symbol range, because
+        //    the last symbol is `start + 2^bits - 1`. Checking only the start
+        //    lets a dictionary that begins inside Latin-1 and runs over the
+        //    top (e.g. U+00F8..U+0107) take this path and emit NUL bytes and
+        //    control characters where the range wrapped. Nothing in the
+        //    registry straddles U+00FF today, so that class is latent -- and
+        //    invisible to any sweep over the real dictionaries.
         let simd_compatible = matches!(bits_per_symbol, 4 | 5 | 6 | 8)
-            && !matches!(strategy, TranslationStrategy::Arbitrary { .. });
+            && !matches!(strategy, TranslationStrategy::Arbitrary { .. })
+            && !matches!(
+                strategy,
+                TranslationStrategy::Sequential { start_codepoint }
+                    if start_codepoint + (1u32 << bits_per_symbol) - 1 > 0xFF
+            );
 
         Self {
             base,
@@ -568,7 +583,9 @@ mod tests {
                 start_codepoint: 0x100
             }
         ));
-        assert!(metadata.simd_compatible);
+        // Above the U+00FF ceiling that SequentialTranslate's single-byte add
+        // can represent, so SIMD is refused and the scalar path is used.
+        assert!(!metadata.simd_compatible);
     }
 
     #[test]
@@ -704,7 +721,158 @@ mod tests {
                 start_codepoint: 0x100
             }
         ));
+        // Above the U+00FF ceiling — see test_sequential_dictionary_detection.
+        assert!(!metadata.simd_compatible);
+    }
+
+    /// Build a Chunked dictionary over `range`. Chunked is required for the
+    /// public encode/decode path to dispatch through SIMD at all.
+    fn seq_dict(range: std::ops::Range<u32>) -> Dictionary {
+        let chars: Vec<char> = range.map(|cp| char::from_u32(cp).unwrap()).collect();
+        Dictionary::new_with_mode(chars, EncodingMode::Chunked, None).unwrap()
+    }
+
+    /// Assert that a sequential dictionary over `range` never emits a byte
+    /// that the codepoint ceiling would have truncated.
+    ///
+    /// **This is the ceiling property in isolation.** When a symbol range
+    /// spills past U+00FF and still takes `SequentialTranslate`, the `paddb`
+    /// offset wraps and the encoder emits NUL bytes and control characters.
+    /// The property holds at every length and on either path, so unlike a
+    /// round trip it is a clean signal for this specific defect.
+    ///
+    /// Metadata assertions cannot catch a wrong gate on their own: a
+    /// misclassified dictionary still reports the strategy and start
+    /// codepoint a test expects, and only the emitted bytes show the wrap.
+    fn assert_no_truncated_symbols(range: std::ops::Range<u32>) {
+        let start = range.start;
+        let dict = seq_dict(range);
+        for len in 1..=80usize {
+            let data: Vec<u8> = (0..len).map(|i| (i as u8).wrapping_mul(37)).collect();
+            let encoded = crate::encode(&data, &dict);
+            assert!(
+                !encoded.chars().any(|c| c == '\0' || c.is_control()),
+                "U+{:04X}.. emitted NUL/control characters at len {} -- the \
+                 symbol range wrapped past U+00FF",
+                start,
+                len
+            );
+        }
+    }
+
+    /// Assert a full encode/decode round trip at every one of `lengths`.
+    fn assert_roundtrips_at(range: std::ops::Range<u32>, lengths: &[usize]) {
+        let start = range.start;
+        let dict = seq_dict(range);
+        for &len in lengths {
+            let data: Vec<u8> = (0..len).map(|i| (i as u8).wrapping_mul(37)).collect();
+            let encoded = crate::encode(&data, &dict);
+            let decoded = crate::decode(&encoded, &dict).unwrap_or_else(|e| {
+                panic!("U+{:04X}.. decode failed at len {}: {:?}", start, len, e)
+            });
+            assert_eq!(
+                decoded, data,
+                "U+{:04X}.. round trip failed at len {}",
+                start, len
+            );
+        }
+    }
+
+    /// Lengths at which the 4-bit SIMD path is known to round-trip.
+    ///
+    /// A SEPARATE, PRE-EXISTING defect -- block-count truncation, not the
+    /// codepoint ceiling and not fixed by this change -- makes the 4-bit
+    /// vector path drop trailing data at most input lengths.
+    ///
+    /// Swept 1..=80 bytes: the ONLY lengths that round trip are 1..=16, 32
+    /// and 64. All 62 others fail, 48 included -- so it is not simply
+    /// "multiples of the block size". Measured identically for a plain
+    /// ASCII-range dictionary (U+0030) and a Latin-1 one (U+00F0), so the
+    /// defect is length-dependent rather than codepoint-dependent, and it
+    /// reproduces unchanged on `origin/main`.
+    ///
+    /// Dictionaries the ceiling gate REJECTS take the scalar path and round
+    /// trip at every one of the 80 lengths. That contrast is the point: this
+    /// list is short because of the OTHER defect, not this one.
+    const SIMD_SAFE_LENGTHS: &[usize] = &[8, 16, 32, 64];
+
+    /// Every length from 1 to 80. All of them pass on the scalar path.
+    fn all_lengths() -> Vec<usize> {
+        (1..=80).collect()
+    }
+
+    #[test]
+    fn test_sequential_codepoint_ceiling() {
+        // SequentialTranslate adds the start codepoint with a single `paddb`,
+        // so the whole symbol range must fit in a byte. Straddle the boundary.
+        let at_ceiling: Vec<char> = (0xF0..0x100)
+            .map(|cp| char::from_u32(cp).unwrap())
+            .collect();
+        let dict = Dictionary::new(at_ceiling).unwrap();
+        let metadata = DictionaryMetadata::from_dictionary(&dict);
+        assert!(matches!(
+            metadata.strategy,
+            TranslationStrategy::Sequential {
+                start_codepoint: 0xF0
+            }
+        ));
+        // U+00F0 + 16 - 1 == U+00FF: the last symbol lands exactly on the
+        // ceiling, so this one is genuinely representable.
         assert!(metadata.simd_compatible);
+        assert_no_truncated_symbols(0xF0..0x100);
+        assert_roundtrips_at(0xF0..0x100, SIMD_SAFE_LENGTHS);
+
+        let over_ceiling: Vec<char> = (0x100..0x110)
+            .map(|cp| char::from_u32(cp).unwrap())
+            .collect();
+        let dict = Dictionary::new(over_ceiling).unwrap();
+        let metadata = DictionaryMetadata::from_dictionary(&dict);
+        assert!(!metadata.simd_compatible);
+        assert_no_truncated_symbols(0x100..0x110);
+        // Gated, so it runs on the scalar path -- correct at EVERY length.
+        assert_roundtrips_at(0x100..0x110, &all_lengths());
+    }
+
+    #[test]
+    fn test_sequential_range_spilling_past_ceiling_is_gated() {
+        // The constraint is on the whole symbol range, not on the start. A
+        // dictionary that BEGINS inside Latin-1 and RUNS OVER U+00FF passed
+        // the old `start_codepoint > 0xFF` gate, took SequentialTranslate,
+        // and emitted NUL bytes where the range wrapped.
+        //
+        // These ranges are synthetic on purpose: nothing in the registry
+        // straddles U+00FF, so no sweep over the real dictionaries -- however
+        // many dictionaries, lengths, and seeds it covers -- can reach this
+        // case. It is latent, and only a constructed range exercises it.
+        //
+        // 4 bits/symbol throughout, which keeps the separate 6-bit
+        // block-count truncation defect out of the result.
+        for start in [0xF1u32, 0xF8, 0xFC] {
+            let chars: Vec<char> = (start..start + 16)
+                .map(|cp| char::from_u32(cp).unwrap())
+                .collect();
+            let dict = Dictionary::new(chars).unwrap();
+            let metadata = DictionaryMetadata::from_dictionary(&dict);
+
+            assert!(
+                matches!(metadata.strategy, TranslationStrategy::Sequential { .. }),
+                "U+{:04X}.. should still classify as sequential",
+                start
+            );
+            assert!(
+                !metadata.simd_compatible,
+                "U+{:04X}..U+{:04X} spills past the U+00FF ceiling and must \
+                 not take SequentialTranslate",
+                start,
+                start + 15
+            );
+
+            // Having been gated, it must actually produce correct output: no
+            // wrapped symbols, and a clean round trip at every length,
+            // because the scalar path has neither defect.
+            assert_no_truncated_symbols(start..start + 16);
+            assert_roundtrips_at(start..start + 16, &all_lengths());
+        }
     }
 
     #[test]

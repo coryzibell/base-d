@@ -126,6 +126,21 @@ impl SequentialTranslate {
     /// * `start_codepoint` - The Unicode codepoint of index 0
     /// * `bits_per_symbol` - Number of bits per symbol (e.g., 6 for base64)
     ///
+    /// # Codepoint ceiling
+    ///
+    /// Every symbol this translator can represent must fit in a single byte:
+    /// the offset is applied with one `paddb`, so the entire range
+    /// `start_codepoint ..= start_codepoint + 2^bits_per_symbol - 1` has to
+    /// stay at or below **U+00FF**. Beyond it the codepoint is silently
+    /// truncated to its low byte and the codec emits NUL bytes and control
+    /// characters rather than failing.
+    ///
+    /// The ceiling is enforced upstream by
+    /// `DictionaryMetadata::from_dictionary`, which refuses `simd_compatible`
+    /// for a spilling range and routes it to the scalar path. The
+    /// `debug_assert!` here is a backstop so a future caller that constructs
+    /// a translator directly does not rediscover this the hard way.
+    ///
     /// # Example
     /// ```ignore
     /// // Base64 dictionary starting at '@' (U+0040)
@@ -133,6 +148,10 @@ impl SequentialTranslate {
     /// ```
     #[allow(dead_code)]
     pub const fn new(start_codepoint: u32, bits_per_symbol: u8) -> Self {
+        debug_assert!(
+            start_codepoint + (1u32 << bits_per_symbol) - 1 <= 0xFF,
+            "SequentialTranslate symbol range must fit in one byte (<= U+00FF)"
+        );
         Self {
             start_codepoint,
             bits_per_symbol,
@@ -172,6 +191,9 @@ impl SimdTranslate for SequentialTranslate {
         //
         // Compiles to: paddb xmm0, xmm1
         // Safe: SIMD intrinsics are safe with target_feature
+        //
+        // `as i8` truncates to the low byte. Sound only because the range
+        // ceiling is upheld -- see `SequentialTranslate::new`.
         let offset = _mm_set1_epi8(self.start_codepoint as i8);
         _mm_add_epi8(indices, offset)
     }
@@ -180,6 +202,8 @@ impl SimdTranslate for SequentialTranslate {
     unsafe fn translate_decode(&self, chars: __m128i) -> Option<__m128i> {
         // Reverse translation: subtract start_codepoint
         // chars - start_codepoint = indices
+        //
+        // `as i8` truncates to the low byte -- see `SequentialTranslate::new`.
         let offset = _mm_set1_epi8(self.start_codepoint as i8);
         let indices = _mm_sub_epi8(chars, offset);
 
@@ -207,6 +231,12 @@ impl SimdTranslate for SequentialTranslate {
     #[target_feature(enable = "ssse3")]
     unsafe fn validate(&self, chars: __m128i) -> bool {
         // Validate that all characters are in [start, start + 2^bits)
+        //
+        // NOTE: the validator truncates too. `as i8` keeps only the low byte,
+        // so for an out-of-range dictionary this check compares against the
+        // wrong window and will wrongly ACCEPT characters it should reject --
+        // it is not a safety net for a bad start codepoint. The ceiling in
+        // `SequentialTranslate::new` is what makes this correct.
         let start = _mm_set1_epi8(self.start_codepoint as i8);
 
         // Check: start <= chars < end
@@ -228,6 +258,8 @@ impl SimdTranslate for SequentialTranslate {
     #[target_feature(enable = "avx2")]
     unsafe fn translate_encode_256(&self, indices: __m256i) -> __m256i {
         // Zero-cost translation: single vector add (AVX2 version)
+        //
+        // `as i8` truncates to the low byte -- see `SequentialTranslate::new`.
         let offset = _mm256_set1_epi8(self.start_codepoint as i8);
         _mm256_add_epi8(indices, offset)
     }
@@ -235,6 +267,8 @@ impl SimdTranslate for SequentialTranslate {
     #[target_feature(enable = "avx2")]
     unsafe fn translate_decode_256(&self, chars: __m256i) -> Option<__m256i> {
         // Reverse translation: subtract start_codepoint
+        //
+        // `as i8` truncates to the low byte -- see `SequentialTranslate::new`.
         let offset = _mm256_set1_epi8(self.start_codepoint as i8);
         let indices = _mm256_sub_epi8(chars, offset);
 

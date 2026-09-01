@@ -558,8 +558,9 @@ mod tests {
             return;
         }
 
-        // Sequential base64 (non-standard) should use GenericSimdCodec
-        let chars: Vec<char> = (0x100..0x140)
+        // Sequential base64 (non-standard) should use GenericSimdCodec.
+        // Stays within the U+00FF ceiling that SequentialTranslate can represent.
+        let chars: Vec<char> = (0xC0..0x100)
             .map(|cp| char::from_u32(cp).unwrap())
             .collect();
         let dict = Dictionary::builder()
