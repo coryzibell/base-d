@@ -1926,7 +1926,18 @@ mod tests {
     #[test]
     fn test_sequential_base64_creation() {
         // Sequential base64 within the single-byte ceiling SequentialTranslate
-        // can represent (starts at U+00C0, ends at U+00FF).
+        // can represent: U+00C0 + 2^6 - 1 == U+00FF, so the whole symbol range
+        // fits and the codec is correctly created.
+        //
+        // SCOPE: this asserts CLASSIFICATION ONLY -- that the gate admits this
+        // dictionary and reports the right strategy. It deliberately does not
+        // assert a round trip, because this dictionary does NOT round-trip:
+        // the 6-bit path has a separate block-count truncation defect,
+        // unrelated to the codepoint ceiling and not fixed here. Adding a
+        // round-trip assertion would fail for that reason, not this one.
+        // Ceiling behavior is verified end-to-end in
+        // `simd::variants::tests::assert_sequential_roundtrips`, which uses
+        // 4-bit dictionaries to keep the two defects separate.
         let chars: Vec<char> = (0xC0..0x100)
             .map(|cp| char::from_u32(cp).unwrap())
             .collect();
