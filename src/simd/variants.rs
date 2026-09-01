@@ -889,4 +889,3 @@ mod tests {
         assert!(metadata.simd_compatible);
     }
 }
-
