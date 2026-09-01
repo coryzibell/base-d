@@ -35,8 +35,7 @@ pub fn encode_byte_range(data: &[u8], dictionary: &Dictionary) -> Result<String,
 
     // Process in chunks for better CPU cache utilization
     const CHUNK_SIZE: usize = 64;
-    let chunks = data.chunks_exact(CHUNK_SIZE);
-    let remainder = chunks.remainder();
+    let (chunks, remainder) = data.as_chunks::<CHUNK_SIZE>();
 
     for chunk in chunks {
         for &byte in chunk {
@@ -74,8 +73,7 @@ pub fn decode_byte_range(encoded: &str, dictionary: &Dictionary) -> Result<Vec<u
     // Process in chunks for better cache utilization
     const CHUNK_SIZE: usize = 64;
     let chars: Vec<char> = encoded.chars().collect();
-    let chunks = chars.chunks_exact(CHUNK_SIZE);
-    let remainder = chunks.remainder();
+    let (chunks, remainder) = chars.as_chunks::<CHUNK_SIZE>();
 
     for chunk in chunks {
         for &c in chunk {

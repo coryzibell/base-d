@@ -591,7 +591,7 @@ fn decode_scalar_remainder(data: &[u8], result: &mut Vec<u8>) -> bool {
         return false;
     }
 
-    for chunk in data.chunks_exact(2) {
+    for chunk in data.as_chunks::<2>().0 {
         let hi = match decode_hex_char(chunk[0]) {
             Some(v) => v,
             None => return false,
