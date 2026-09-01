@@ -782,17 +782,21 @@ mod tests {
     ///
     /// A SEPARATE, PRE-EXISTING defect -- block-count truncation, not the
     /// codepoint ceiling and not fixed by this change -- makes the 4-bit
-    /// vector path drop trailing data at any input length that is neither
-    /// <= 16 bytes nor an exact multiple of 16. Measured identically for a
-    /// plain ASCII-range dictionary (U+0030) and a Latin-1 one (U+00F0), so
-    /// it is length-dependent, not codepoint-dependent, and it reproduces on
-    /// `origin/main`.
+    /// vector path drop trailing data at most input lengths.
+    ///
+    /// Swept 1..=80 bytes: the ONLY lengths that round trip are 1..=16, 32
+    /// and 64. All 62 others fail, 48 included -- so it is not simply
+    /// "multiples of the block size". Measured identically for a plain
+    /// ASCII-range dictionary (U+0030) and a Latin-1 one (U+00F0), so the
+    /// defect is length-dependent rather than codepoint-dependent, and it
+    /// reproduces unchanged on `origin/main`.
     ///
     /// Dictionaries the ceiling gate REJECTS take the scalar path and round
-    /// trip at every length -- see `ALL_LENGTHS`. That contrast is the point.
+    /// trip at every one of the 80 lengths. That contrast is the point: this
+    /// list is short because of the OTHER defect, not this one.
     const SIMD_SAFE_LENGTHS: &[usize] = &[8, 16, 32, 64];
 
-    /// Every length from 1 to 80. Usable only on the scalar path.
+    /// Every length from 1 to 80. All of them pass on the scalar path.
     fn all_lengths() -> Vec<usize> {
         (1..=80).collect()
     }
