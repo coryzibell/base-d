@@ -42,8 +42,7 @@ fn encode_chunked_scalar(data: &[u8], dictionary: &Dictionary) -> String {
 
     // Process in chunks for better CPU cache utilization
     const PROCESS_CHUNK: usize = 64;
-    let chunks = data.chunks_exact(PROCESS_CHUNK);
-    let remainder = chunks.remainder();
+    let (chunks, remainder) = data.as_chunks::<PROCESS_CHUNK>();
 
     // Process main chunks
     for chunk in chunks {
@@ -142,8 +141,7 @@ fn decode_chunked_scalar(encoded: &str, dictionary: &Dictionary) -> Result<Vec<u
 
     // Process in chunks for better CPU cache utilization
     const CHUNK_SIZE: usize = 64;
-    let chunks = chars.chunks_exact(CHUNK_SIZE);
-    let remainder = chunks.remainder();
+    let (chunks, remainder) = chars.as_chunks::<CHUNK_SIZE>();
 
     // Process main chunks
     for chunk in chunks {
